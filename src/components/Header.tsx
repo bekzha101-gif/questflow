@@ -11,7 +11,8 @@ import {
   Bell, 
   Smartphone,
   Check,
-  Search
+  Search,
+  RotateCcw
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -21,11 +22,11 @@ interface HeaderProps {
   onOpenSearch?: () => void;
   onOpenCalendarModal: () => void;
   onOpenDeviceSyncModal: () => void;
+  onResetProgress?: () => void;
   notifications: NotificationItem[];
   onMarkNotificationsRead: () => void;
   calendarConfig: GoogleCalendarConfig;
 }
-
 
 export const Header: React.FC<HeaderProps> = ({
   stats,
@@ -34,6 +35,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenSearch,
   onOpenCalendarModal,
   onOpenDeviceSyncModal,
+  onResetProgress,
   notifications,
   onMarkNotificationsRead,
   calendarConfig,
@@ -158,6 +160,20 @@ export const Header: React.FC<HeaderProps> = ({
             {stats.soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
           </button>
 
+          {/* Reset Farmed Progress Button */}
+          {onResetProgress && (
+            <button
+              onClick={() => {
+                if (window.confirm('Сбросить весь тестовый прогресс до 1 уровня (0 EXP, 0 золота, 100 HP)?')) {
+                  onResetProgress();
+                }
+              }}
+              className="p-1.5 rounded-xl bg-zinc-900 hover:bg-rose-950/60 border border-white/10 hover:border-rose-500/40 text-zinc-400 hover:text-rose-300 transition-colors cursor-pointer"
+              title="Сбросить прогресс до 1 уровня"
+            >
+              <RotateCcw className="w-4 h-4" />
+            </button>
+          )}
 
           {/* Device Sync Modal Trigger */}
           <button

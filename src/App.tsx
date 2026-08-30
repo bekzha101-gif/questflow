@@ -18,6 +18,7 @@ import {
 import { AuthGate } from './components/AuthGate';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { useSupabaseSync } from './hooks/useSupabaseSync';
+import { initialStats, initialTasks, initialRewards } from './data/initialData';
 
 
 import { Header } from './components/Header';
@@ -250,6 +251,39 @@ export function App() {
         gold: newGold,
       }));
     }
+  };
+
+  // Reset All Farmed Stats & Progress (Fresh Start)
+  const handleResetAllProgress = () => {
+    const freshStats: UserStats = { ...initialStats };
+
+    setStats(freshStats);
+    setTasks(initialTasks);
+    setRewards(initialRewards);
+    
+    // Clear localStorage
+    localStorage.removeItem('questflow_stats_v1');
+    localStorage.removeItem('questflow_tasks_v1');
+    localStorage.removeItem('questflow_rewards_v1');
+    localStorage.removeItem('questflow_bigdata_entries_v1');
+    localStorage.removeItem('questflow_content_videos_v1');
+
+    // Push fresh state to Supabase
+    pushStats(freshStats);
+    pushTasks(initialTasks);
+    pushRewards(initialRewards);
+
+    setNotifications((prev) => [
+      {
+        id: `reset-${Date.now()}`,
+        title: '🧹 Прогресс сброшен!',
+        message: 'Статистика сброшена: 1 Уровень, 0 EXP, 0 Золота, 100 HP. Начните с чистого листа!',
+        time: new Date().toLocaleTimeString(),
+        type: 'sync',
+        read: false,
+      },
+      ...prev,
+    ]);
   };
 
   // Complete / Toggle Task
@@ -504,6 +538,7 @@ export function App() {
         onOpenSearch={() => setIsCommandPaletteOpen(true)}
         onOpenCalendarModal={() => setIsCalendarModalOpen(true)}
         onOpenDeviceSyncModal={() => setIsDeviceSyncOpen(true)}
+        onResetProgress={handleResetAllProgress}
         notifications={notifications}
         onMarkNotificationsRead={handleMarkNotificationsRead}
         calendarConfig={calendarConfig}
