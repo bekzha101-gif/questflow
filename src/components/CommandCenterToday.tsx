@@ -29,6 +29,7 @@ interface CommandCenterTodayProps {
   onDeleteTask?: (taskId: string) => void;
   onBuyReward?: (reward: Reward) => boolean;
   onOpenQuickAdd: () => void;
+  onOpenHealthModal?: () => void;
   onOpenStudioTab?: () => void;
   onOpenLifeTab?: () => void;
 }
@@ -374,6 +375,8 @@ export function CommandCenterToday({
   onAddSubtask,
   onDeleteTask,
   onBuyReward,
+  onOpenHealthModal,
+  onOpenLifeTab,
 }: CommandCenterTodayProps) {
   const [todoFilter, setTodoFilter] = useState<TodoFilter>('active');
   const [boughtId, setBoughtId] = useState<string | null>(null);
@@ -428,15 +431,28 @@ export function CommandCenterToday({
           <h1 className="text-lg font-bold text-white leading-tight">Сегодня</h1>
         </div>
 
-        <div className="flex items-center gap-4">
-          <div className="hidden sm:flex items-center gap-2">
-            <span className="text-[10px] text-rose-400 font-mono w-5">HP</span>
-            <div className="w-20 h-1.5 bg-zinc-900 rounded-full overflow-hidden">
-              <div className="h-full bg-rose-500/80 rounded-full transition-all duration-500"
-                style={{ width: `${Math.round((stats.hp / stats.maxHp) * 100)}%` }} />
+        <div className="flex items-center gap-3">
+          {/* Clickable HP Health pill */}
+          <button
+            onClick={() => {
+              if (onOpenHealthModal) onOpenHealthModal();
+              else if (onOpenLifeTab) onOpenLifeTab();
+            }}
+            className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-[#111115] hover:bg-rose-950/40 border border-white/[0.06] hover:border-rose-500/40 transition-all cursor-pointer group"
+            title="Открыть Центр Здоровья, Биоритмы и Будильники"
+          >
+            <span className="text-xs group-hover:scale-125 transition-transform">❤️</span>
+            <span className="text-[10px] text-rose-400 font-mono font-bold">HP</span>
+            <div className="w-16 sm:w-20 h-1.5 bg-zinc-900 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-rose-500 rounded-full transition-all duration-500"
+                style={{ width: `${Math.round((stats.hp / stats.maxHp) * 100)}%` }}
+              />
             </div>
-            <span className="text-[10px] font-mono text-zinc-500">{stats.hp}</span>
-          </div>
+            <span className="text-[10px] font-mono text-zinc-400 group-hover:text-white font-semibold">
+              {stats.hp}
+            </span>
+          </button>
           <div className="hidden sm:flex items-center gap-2">
             <span className="text-[10px] text-indigo-400 font-mono w-8">EXP</span>
             <div className="w-20 h-1.5 bg-zinc-900 rounded-full overflow-hidden">

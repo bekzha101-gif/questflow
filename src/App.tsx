@@ -37,6 +37,7 @@ import { LevelUpModal } from './components/LevelUpModal';
 import { GlobalCommandPalette } from './components/GlobalCommandPalette';
 import { UndoSnackbar, SnackbarAction } from './components/UndoSnackbar';
 import { PomodoroTimerWidget } from './components/PomodoroTimerWidget';
+import { HealthBioTracker } from './components/HealthBioTracker';
 import { playLevelUpSound } from './utils/sound';
 import { triggerLevelUpConfetti } from './utils/confetti';
 
@@ -63,6 +64,7 @@ export function App() {
   const [isAiMasterOpen, setIsAiMasterOpen] = useState(false);
   const [aiGoalDraft, setAiGoalDraft] = useState('');
   const [isLevelUpModalOpen, setIsLevelUpModalOpen] = useState(false);
+  const [isHealthModalOpen, setIsHealthModalOpen] = useState(false);
   const [snackbarAction, setSnackbarAction] = useState<SnackbarAction | null>(null);
 
 
@@ -580,6 +582,7 @@ export function App() {
             onAddSubtask={handleAddSubtask}
             onBuyReward={handleBuyReward}
             onOpenQuickAdd={() => setIsQuickAddOpen(true)}
+            onOpenHealthModal={() => setIsHealthModalOpen(true)}
             onOpenStudioTab={() => setActiveTab('studio')}
             onOpenLifeTab={() => setActiveTab('life')}
           />
@@ -637,7 +640,10 @@ export function App() {
             <LifeAnalyticsHub
               tasks={tasks}
               projects={projects}
+              stats={stats}
               calendarConfig={calendarConfig}
+              onUpdateStats={handleUpdateStats}
+              onAddNotification={(n) => setNotifications((prev) => [n, ...prev])}
               onSyncCalendar={() => {
                 setCalendarConfig((prev) => ({
                   ...prev,
@@ -713,6 +719,33 @@ export function App() {
         onClose={() => setIsLevelUpModalOpen(false)}
         stats={stats}
       />
+
+      {/* Bio-Health & Alarm Center Modal */}
+      {isHealthModalOpen && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-md animate-fade-in">
+          <div className="bg-[#101014] border border-rose-500/30 rounded-3xl max-w-4xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-white/10 bg-zinc-900/60">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">❤️</span>
+                <span className="font-bold text-sm text-white">Центр Био-Здоровья & Ресурса HP</span>
+              </div>
+              <button
+                onClick={() => setIsHealthModalOpen(false)}
+                className="w-7 h-7 flex items-center justify-center rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white cursor-pointer transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+              <HealthBioTracker
+                stats={stats}
+                onUpdateStats={handleUpdateStats}
+                onAddNotification={(n) => setNotifications((prev) => [n, ...prev])}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Global Command Palette (Cmd + K) */}
       <GlobalCommandPalette
