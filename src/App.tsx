@@ -473,6 +473,13 @@ export function App() {
     setTasks((prev) => [task, ...prev]);
   };
 
+  // Update Task fields (dueDate, priority, title, notes, etc.)
+  const handleUpdateTask = (taskId: string, patch: Partial<TaskItem>) => {
+    setTasks((prev) =>
+      prev.map((t) => (t.id === taskId ? { ...t, ...patch } : t))
+    );
+  };
+
   // Add Batch of Quests from AI
   const handleAddQuestsBatch = (newQuests: Omit<TaskItem, 'id' | 'completed'>[]) => {
     const tasksToAdd: TaskItem[] = newQuests.map((q, idx) => ({
@@ -568,6 +575,7 @@ export function App() {
             onTriggerHabit={handleTriggerHabit}
             onToggleDaily={handleToggleDaily}
             onAddTask={handleAddTask}
+            onUpdateTask={handleUpdateTask}
             onDeleteTask={handleDeleteTask}
             onAddSubtask={handleAddSubtask}
             onBuyReward={handleBuyReward}

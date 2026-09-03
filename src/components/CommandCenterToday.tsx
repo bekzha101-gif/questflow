@@ -10,6 +10,8 @@ import {
   Minus,
   ChevronDown,
   ChevronRight,
+  Calendar,
+  AlertCircle,
 } from 'lucide-react';
 
 interface CommandCenterTodayProps {
@@ -22,6 +24,7 @@ interface CommandCenterTodayProps {
   onTriggerHabit: (taskId: string, direction: 'positive' | 'negative') => void;
   onToggleDaily: (taskId: string) => void;
   onAddTask: (task: Omit<TaskItem, 'id' | 'completed' | 'subtasks'>) => void;
+  onUpdateTask?: (taskId: string, patch: Partial<TaskItem>) => void;
   onAddSubtask?: (taskId: string, text: string) => void;
   onDeleteTask?: (taskId: string) => void;
   onBuyReward?: (reward: Reward) => boolean;
@@ -39,9 +42,26 @@ function isCompletedToday(completedAt?: string): boolean {
   return completedAt.slice(0, 10) === todayStr();
 }
 
+function isOverdue(dueDate?: string): boolean {
+  if (!dueDate) return false;
+  return dueDate < todayStr();
+}
+
+function formatDueDate(dueDate: string): string {
+  const today = todayStr();
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowStr = tomorrow.toISOString().slice(0, 10);
+
+  if (dueDate === today) return 'Сегодня';
+  if (dueDate === tomorrowStr) return 'Завтра';
+
+  return new Date(dueDate).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+}
+
 type TodoFilter = 'active' | 'completed';
 
-// ─── Reusable: Column wrapper ────────────────────────────────────────────────
+// ─── Column wrapper ───────────────────────────────────────────────────────────
 function Column({ title, count, badge, children }: {
   title: string;
   count?: number;
@@ -68,7 +88,7 @@ function Column({ title, count, badge, children }: {
   );
 }
 
-// ─── Reusable: Mini add input ─────────────────────────────────────────────────
+// ─── Mini add input ───────────────────────────────────────────────────────────
 function AddInput({ placeholder, onAdd }: { placeholder: string; onAdd: (v: string) => void }) {
   const [val, setVal] = useState('');
   const submit = (e: React.FormEvent) => {
@@ -97,18 +117,20 @@ function AddInput({ placeholder, onAdd }: { placeholder: string; onAdd: (v: stri
   );
 }
 
-// ─── Expanded Task with Subtask Checklist ────────────────────────────────────
+// ─── Task row with expandable detail panel ────────────────────────────────────
 function TaskRow({
   task,
   onToggle,
   onToggleSubtask,
   onAddSubtask,
+  onUpdateTask,
   onDelete,
 }: {
   task: TaskItem;
   onToggle: () => void;
   onToggleSubtask?: (subtaskId: string) => void;
   onAddSubtask?: (text: string) => void;
+  onUpdateTask?: (patch: Partial<TaskItem>) => void;
   onDelete?: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -117,6 +139,7 @@ function TaskRow({
   const subtasks = task.subtasks ?? [];
   const doneCount = subtasks.filter((s) => s.completed).length;
   const progress = subtasks.length > 0 ? Math.round((doneCount / subtasks.length) * 100) : 0;
+  const overdue = isOverdue(task.dueDate) && !task.completed;
 
   const handleAddStep = (e: React.FormEvent) => {
     e.preventDefault();
@@ -129,10 +152,13 @@ function TaskRow({
     <div className={`rounded-2xl border transition-all overflow-hidden ${
       task.completed
         ? 'bg-[#0e0e12] border-white/[0.03] opacity-55'
-        : 'bg-[#16161c] border-white/[0.05] hover:border-white/[0.09]'
+        : overdue
+          ? 'bg-[#180e0e] border-rose-900/40'
+          : 'bg-[#16161c] border-white/[0.05] hover:border-white/[0.09]'
     }`}>
-      {/* Main task row */}
-      <div className="flex items-center gap-2 overflow-hidden">
+
+      {/* ── Main task row ─────────────────────────────────────────── */}
+      <div className="flex items-center gap-0 overflow-hidden">
         {/* Priority stripe */}
         <div className={`w-0.5 self-stretch shrink-0 ${
           task.priority === 'p1' ? 'bg-rose-500' :
@@ -140,7 +166,7 @@ function TaskRow({
           'bg-zinc-800'
         }`} />
 
-        <div className="flex items-center gap-2 flex-1 min-w-0 py-2.5 pr-2.5">
+        <div className="flex items-center gap-2 flex-1 min-w-0 py-2.5 pl-2 pr-2.5">
           {/* Checkbox */}
           <button
             onClick={onToggle}
@@ -159,20 +185,37 @@ function TaskRow({
             onClick={() => setExpanded(!expanded)}
             className="flex-1 text-left flex items-center gap-1.5 min-w-0 group/title"
           >
-            <span className={`text-xs truncate ${task.completed ? 'line-through text-zinc-600' : 'text-zinc-300 group-hover/title:text-zinc-100'} transition-colors`}>
+            <span className={`text-xs truncate transition-colors ${
+              task.completed ? 'line-through text-zinc-600' : 'text-zinc-300 group-hover/title:text-white'
+            }`}>
               {task.title}
             </span>
+
             {subtasks.length > 0 && (
               <span className="shrink-0 text-[9px] font-mono text-zinc-600">
                 {doneCount}/{subtasks.length}
               </span>
             )}
-            {/* Expand chevron */}
+
             {expanded
               ? <ChevronDown className="w-3 h-3 text-zinc-600 shrink-0" />
               : <ChevronRight className="w-3 h-3 text-zinc-700 shrink-0 opacity-0 group-hover/title:opacity-100 transition-opacity" />
             }
           </button>
+
+          {/* Due date badge */}
+          {task.dueDate && !task.completed && (
+            <span className={`shrink-0 flex items-center gap-0.5 text-[10px] font-mono px-1.5 py-0.5 rounded-md ${
+              overdue
+                ? 'text-rose-400 bg-rose-950/40'
+                : task.dueDate === todayStr()
+                  ? 'text-amber-400 bg-amber-950/30'
+                  : 'text-zinc-500 bg-zinc-900'
+            }`}>
+              {overdue && <AlertCircle className="w-2.5 h-2.5" />}
+              {formatDueDate(task.dueDate)}
+            </span>
+          )}
 
           {/* Delete */}
           {onDelete && (
@@ -187,7 +230,7 @@ function TaskRow({
         </div>
       </div>
 
-      {/* Progress bar (if has subtasks) */}
+      {/* Progress bar (collapsed, only if subtasks exist) */}
       {subtasks.length > 0 && !expanded && (
         <div className="h-0.5 bg-zinc-900 mx-3 mb-2.5 rounded-full overflow-hidden">
           <div
@@ -197,75 +240,119 @@ function TaskRow({
         </div>
       )}
 
-      {/* Expanded subtask checklist */}
+      {/* ── Expanded detail panel ─────────────────────────────────── */}
       {expanded && (
-        <div className="px-4 pb-3 space-y-1.5 border-t border-white/[0.04] pt-2">
+        <div className="border-t border-white/[0.05] px-4 py-3 space-y-3">
 
-          {/* Progress bar */}
-          {subtasks.length > 0 && (
-            <div className="flex items-center gap-2 mb-2">
-              <div className="flex-1 h-1 bg-zinc-900 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-indigo-500/70 rounded-full transition-all duration-300"
-                  style={{ width: `${progress}%` }}
-                />
-              </div>
-              <span className="text-[10px] font-mono text-zinc-600 shrink-0">{doneCount}/{subtasks.length}</span>
-            </div>
-          )}
+          {/* ── Deadline row ──────────────────────────────────────── */}
+          <div className="flex items-center gap-2">
+            <Calendar className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+            <span className="text-[11px] text-zinc-500 font-medium w-20 shrink-0">Дедлайн</span>
+            <input
+              type="date"
+              value={task.dueDate ?? ''}
+              min={todayStr()}
+              onChange={(e) => onUpdateTask?.({ dueDate: e.target.value || undefined })}
+              className="flex-1 bg-[#1a1a20] border border-white/[0.07] focus:border-zinc-500/50 rounded-xl px-3 py-1.5 text-xs text-zinc-200 focus:outline-none transition-colors cursor-pointer [color-scheme:dark]"
+            />
+            {task.dueDate && (
+              <button
+                onClick={() => onUpdateTask?.({ dueDate: undefined })}
+                className="shrink-0 text-zinc-700 hover:text-zinc-400 transition-colors cursor-pointer text-xs"
+                title="Убрать дедлайн"
+              >
+                ✕
+              </button>
+            )}
+          </div>
 
-          {/* Subtask list */}
-          {subtasks.map((sub) => (
-            <button
-              key={sub.id}
-              onClick={() => onToggleSubtask?.(sub.id)}
-              className={`w-full flex items-center gap-2.5 px-2 py-1.5 rounded-xl text-left transition-all cursor-pointer ${
-                sub.completed
-                  ? 'bg-emerald-950/10 text-zinc-600'
-                  : 'hover:bg-white/[0.03] text-zinc-400'
-              }`}
-            >
-              <div className={`shrink-0 w-3.5 h-3.5 rounded border flex items-center justify-center transition-all ${
-                sub.completed
-                  ? 'bg-emerald-500/30 border-emerald-600/50'
-                  : 'border-zinc-700 bg-transparent'
-              }`}>
-                {sub.completed && (
-                  <svg className="w-2 h-2 text-emerald-400" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                  </svg>
-                )}
-              </div>
-              <span className={`text-xs flex-1 ${sub.completed ? 'line-through text-zinc-600' : 'text-zinc-400'}`}>
-                {sub.text}
-              </span>
-            </button>
-          ))}
-
-          {/* Add new step */}
-          {onAddSubtask && (
-            <form onSubmit={handleAddStep} className="flex items-center gap-1.5 mt-2">
-              <input
-                type="text"
-                value={newStep}
-                onChange={(e) => setNewStep(e.target.value)}
-                placeholder="+ Добавить шаг..."
-                className="flex-1 min-w-0 bg-transparent border border-dashed border-white/[0.08] focus:border-zinc-600/60 rounded-xl px-3 py-1.5 text-xs text-zinc-400 placeholder:text-zinc-700 focus:outline-none transition-colors"
-              />
-              {newStep.trim() && (
+          {/* ── Priority row ──────────────────────────────────────── */}
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+            <span className="text-[11px] text-zinc-500 font-medium w-20 shrink-0">Приоритет</span>
+            <div className="flex items-center gap-1.5">
+              {(['p1', 'p2', 'p3'] as const).map((p) => (
                 <button
-                  type="submit"
-                  className="shrink-0 px-2 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs transition-colors cursor-pointer"
+                  key={p}
+                  onClick={() => onUpdateTask?.({ priority: p })}
+                  className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
+                    task.priority === p
+                      ? p === 'p1' ? 'bg-rose-900/70 border border-rose-700/60 text-rose-300'
+                        : p === 'p2' ? 'bg-amber-900/70 border border-amber-700/60 text-amber-300'
+                        : 'bg-zinc-700 border border-zinc-600 text-zinc-200'
+                      : 'bg-[#1a1a20] border border-white/[0.05] text-zinc-600 hover:text-zinc-400'
+                  }`}
                 >
-                  Добавить
+                  {p === 'p1' ? '🔴 Срочно' : p === 'p2' ? '🟡 Обычный' : '⚪ Низкий'}
                 </button>
-              )}
-            </form>
-          )}
+              ))}
+            </div>
+          </div>
 
-          {subtasks.length === 0 && !onAddSubtask && (
-            <p className="text-xs text-zinc-700 text-center py-2">Нет подзадач</p>
-          )}
+          {/* ── Subtask checklist ─────────────────────────────────── */}
+          <div className="space-y-1">
+            {/* Progress bar */}
+            {subtasks.length > 0 && (
+              <div className="flex items-center gap-2 mb-2">
+                <div className="flex-1 h-1 bg-zinc-900 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-indigo-500/70 rounded-full transition-all duration-300"
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+                <span className="text-[10px] font-mono text-zinc-600 shrink-0">{doneCount}/{subtasks.length}</span>
+              </div>
+            )}
+
+            {/* Subtask items */}
+            {subtasks.map((sub) => (
+              <button
+                key={sub.id}
+                onClick={() => onToggleSubtask?.(sub.id)}
+                className={`w-full flex items-center gap-2.5 px-2 py-1.5 rounded-xl text-left transition-all cursor-pointer ${
+                  sub.completed
+                    ? 'bg-emerald-950/10 text-zinc-600'
+                    : 'hover:bg-white/[0.03] text-zinc-400'
+                }`}
+              >
+                <div className={`shrink-0 w-3.5 h-3.5 rounded border flex items-center justify-center transition-all ${
+                  sub.completed
+                    ? 'bg-emerald-500/30 border-emerald-600/50'
+                    : 'border-zinc-700'
+                }`}>
+                  {sub.completed && (
+                    <svg className="w-2 h-2 text-emerald-400" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                    </svg>
+                  )}
+                </div>
+                <span className={`text-xs flex-1 ${sub.completed ? 'line-through text-zinc-600' : 'text-zinc-400'}`}>
+                  {sub.text}
+                </span>
+              </button>
+            ))}
+
+            {/* Add new step */}
+            {onAddSubtask && (
+              <form onSubmit={handleAddStep} className="flex items-center gap-1.5 mt-1.5">
+                <input
+                  type="text"
+                  value={newStep}
+                  onChange={(e) => setNewStep(e.target.value)}
+                  placeholder="+ Добавить шаг..."
+                  className="flex-1 min-w-0 bg-transparent border border-dashed border-white/[0.07] focus:border-zinc-600/60 rounded-xl px-3 py-1.5 text-xs text-zinc-400 placeholder:text-zinc-700 focus:outline-none transition-colors"
+                />
+                {newStep.trim() && (
+                  <button
+                    type="submit"
+                    className="shrink-0 px-2 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs transition-colors cursor-pointer"
+                  >
+                    ОК
+                  </button>
+                )}
+              </form>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -283,6 +370,7 @@ export function CommandCenterToday({
   onTriggerHabit,
   onToggleDaily,
   onAddTask,
+  onUpdateTask,
   onAddSubtask,
   onDeleteTask,
   onBuyReward,
@@ -371,7 +459,6 @@ export function CommandCenterToday({
         {/* ── COL 1: HABITS ───────────────────────────────────────────── */}
         <Column title="Привычки" count={habits.length}>
           <AddInput placeholder="Добавить привычку..." onAdd={addHabit} />
-
           {habits.length === 0 ? (
             <div className="py-8 text-center">
               <p className="text-xs text-zinc-600">Нет привычек</p>
@@ -382,29 +469,21 @@ export function CommandCenterToday({
               <div key={habit.id}
                 className="group flex items-center gap-2 px-2.5 py-2 rounded-xl bg-[#16161c] hover:bg-[#1c1c24] border border-white/[0.04] hover:border-white/[0.08] transition-all"
               >
-                <button
-                  onClick={() => onTriggerHabit(habit.id, 'positive')}
-                  className="shrink-0 w-6 h-6 rounded-lg bg-emerald-900/60 hover:bg-emerald-800/80 text-emerald-300 font-bold flex items-center justify-center transition-all cursor-pointer active:scale-90"
-                  title="+1"
-                >
+                <button onClick={() => onTriggerHabit(habit.id, 'positive')}
+                  className="shrink-0 w-6 h-6 rounded-lg bg-emerald-900/60 hover:bg-emerald-800/80 text-emerald-300 flex items-center justify-center transition-all cursor-pointer active:scale-90">
                   <Plus className="w-3 h-3" />
                 </button>
                 <span className="flex-1 text-xs text-zinc-300 truncate">{habit.title}</span>
                 {(habit.habitCounter ?? 0) > 0 && (
                   <span className="shrink-0 text-[10px] font-mono text-zinc-600">×{habit.habitCounter}</span>
                 )}
-                <button
-                  onClick={() => onTriggerHabit(habit.id, 'negative')}
-                  className="shrink-0 w-6 h-6 rounded-lg bg-rose-900/60 hover:bg-rose-800/80 text-rose-300 font-bold flex items-center justify-center transition-all cursor-pointer active:scale-90"
-                  title="−1"
-                >
+                <button onClick={() => onTriggerHabit(habit.id, 'negative')}
+                  className="shrink-0 w-6 h-6 rounded-lg bg-rose-900/60 hover:bg-rose-800/80 text-rose-300 flex items-center justify-center transition-all cursor-pointer active:scale-90">
                   <Minus className="w-3 h-3" />
                 </button>
                 {onDeleteTask && (
-                  <button
-                    onClick={() => onDeleteTask(habit.id)}
-                    className="shrink-0 p-1 text-zinc-700 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
-                  >
+                  <button onClick={() => onDeleteTask(habit.id)}
+                    className="shrink-0 p-1 text-zinc-700 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition-all cursor-pointer">
                     <Trash2 className="w-3 h-3" />
                   </button>
                 )}
@@ -420,7 +499,6 @@ export function CommandCenterToday({
           badge={`${dailies.filter((d) => d.completed).length}/${dailies.length} ✓`}
         >
           <AddInput placeholder="Добавить ежедневную..." onAdd={addDaily} />
-
           {dailies.length === 0 ? (
             <div className="py-8 text-center">
               <p className="text-xs text-zinc-600">Нет ежедневных задач</p>
@@ -434,12 +512,10 @@ export function CommandCenterToday({
                     : 'bg-[#16161c] hover:bg-[#1c1c24] border-white/[0.04] hover:border-white/[0.09]'
                 }`}
               >
-                <button
-                  onClick={() => onToggleDaily(daily.id)}
+                <button onClick={() => onToggleDaily(daily.id)}
                   className={`shrink-0 cursor-pointer active:scale-90 transition-all ${
                     daily.completed ? 'text-emerald-400' : 'text-zinc-600 hover:text-emerald-400'
-                  }`}
-                >
+                  }`}>
                   {daily.completed
                     ? <CheckCircle2 className="w-4 h-4 fill-emerald-500/20" />
                     : <Circle className="w-4 h-4" />
@@ -454,10 +530,8 @@ export function CommandCenterToday({
                   </span>
                 )}
                 {onDeleteTask && (
-                  <button
-                    onClick={() => onDeleteTask(daily.id)}
-                    className="shrink-0 p-1 text-zinc-700 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
-                  >
+                  <button onClick={() => onDeleteTask(daily.id)}
+                    className="shrink-0 p-1 text-zinc-700 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition-all cursor-pointer">
                     <Trash2 className="w-3 h-3" />
                   </button>
                 )}
@@ -466,16 +540,14 @@ export function CommandCenterToday({
           )}
         </Column>
 
-        {/* ── COL 3: TO-DO's with SUBTASKS ────────────────────────────── */}
+        {/* ── COL 3: TO-DO's (with subtasks + deadline) ───────────────── */}
         <Column title="Задачи" count={activeTodos.length}>
           <AddInput placeholder="Добавить задачу..." onAdd={addTodo} />
 
           {/* Filter tabs */}
           <div className="flex items-center gap-1 mb-1">
             {(['active', 'completed'] as TodoFilter[]).map((f) => (
-              <button
-                key={f}
-                onClick={() => setTodoFilter(f)}
+              <button key={f} onClick={() => setTodoFilter(f)}
                 className={`flex-1 py-1 rounded-lg text-[10px] font-semibold transition-all cursor-pointer ${
                   todoFilter === f ? 'bg-zinc-800 text-white' : 'text-zinc-600 hover:text-zinc-400'
                 }`}
@@ -500,6 +572,7 @@ export function CommandCenterToday({
                   onToggle={() => onToggleTask(task.id)}
                   onToggleSubtask={(stId) => onToggleSubtask(task.id, stId)}
                   onAddSubtask={onAddSubtask ? (text) => onAddSubtask(task.id, text) : undefined}
+                  onUpdateTask={onUpdateTask ? (patch) => onUpdateTask(task.id, patch) : undefined}
                   onDelete={onDeleteTask ? () => onDeleteTask(task.id) : undefined}
                 />
               ))}
@@ -513,7 +586,6 @@ export function CommandCenterToday({
             <ShoppingBag className="w-3.5 h-3.5 text-amber-400 shrink-0" />
             <span className="text-[11px] text-zinc-400">Трать золото на награды</span>
           </div>
-
           {rewards.length === 0 ? (
             <div className="py-8 text-center">
               <p className="text-xs text-zinc-600">Нет наград</p>
@@ -524,16 +596,12 @@ export function CommandCenterToday({
                 const canAfford = stats.gold >= reward.cost;
                 const justBought = boughtId === reward.id;
                 return (
-                  <button
-                    key={reward.id}
-                    onClick={() => handleBuy(reward)}
+                  <button key={reward.id} onClick={() => handleBuy(reward)}
                     disabled={!canAfford || !onBuyReward}
                     className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border text-center transition-all cursor-pointer active:scale-95 disabled:cursor-not-allowed ${
-                      justBought
-                        ? 'bg-emerald-950/40 border-emerald-700/40'
-                        : canAfford
-                          ? 'bg-[#16161c] hover:bg-[#1e1e28] border-white/[0.06] hover:border-amber-700/30'
-                          : 'bg-[#111115] border-white/[0.03] opacity-40'
+                      justBought ? 'bg-emerald-950/40 border-emerald-700/40'
+                        : canAfford ? 'bg-[#16161c] hover:bg-[#1e1e28] border-white/[0.06] hover:border-amber-700/30'
+                        : 'bg-[#111115] border-white/[0.03] opacity-40'
                     }`}
                     title={reward.description}
                   >
