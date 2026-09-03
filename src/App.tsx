@@ -528,7 +528,7 @@ export function App() {
   const dueTodayCount = tasks.filter((t) => !t.completed && (t.dueDate === todayStr || t.type === 'daily')).length;
 
   return (
-    <div className="min-h-screen bg-[#09090c] text-white flex flex-col font-sans selection:bg-purple-500 selection:text-white bg-grid-pattern pb-20 md:pb-12">
+    <div className="h-screen bg-[#09090c] text-white flex flex-col font-sans selection:bg-purple-500 selection:text-white overflow-hidden pb-16 md:pb-0">
       
       {/* 1. Header with Hero Sheet, Sync & Currencies */}
       <Header
@@ -554,7 +554,7 @@ export function App() {
       />
 
       {/* 3. Main Views (5 Clean Flagship Hubs) */}
-      <main className="flex-1 pb-4">
+      <main className="flex-1 overflow-hidden flex flex-col">
         
         {/* 1. TODAY (Command Center / Home Focus) */}
         {activeTab === 'today' && (
@@ -562,12 +562,14 @@ export function App() {
             tasks={tasks}
             projects={projects}
             stats={stats}
+            rewards={rewards}
             onToggleTask={handleToggleTask}
             onToggleSubtask={handleToggleSubtask}
             onTriggerHabit={handleTriggerHabit}
             onToggleDaily={handleToggleDaily}
             onAddTask={handleAddTask}
             onDeleteTask={handleDeleteTask}
+            onBuyReward={handleBuyReward}
             onOpenQuickAdd={() => setIsQuickAddOpen(true)}
             onOpenStudioTab={() => setActiveTab('studio')}
             onOpenLifeTab={() => setActiveTab('life')}
@@ -576,75 +578,83 @@ export function App() {
 
         {/* 2. MEDIA STUDIO (Shorts, Production Kanban, Ideas, AI) */}
         {(activeTab === 'studio' || activeTab === 'production' || activeTab === 'shorts' || activeTab === 'ideas' || activeTab === 'ai') && (
-          <MediaStudioHub
-            tasks={tasks}
-            projects={projects}
-            stats={stats}
-            onToggleTask={handleToggleTask}
-            onToggleSubtask={handleToggleSubtask}
-            onSnoozeTask={handleSnoozeTask}
-            onToggleFocus={handleToggleFocus}
-            onAddTask={handleAddTask}
-            onOpenAiDecompose={(title) => {
-              setAiGoalDraft(title);
-              setIsAiMasterOpen(true);
-            }}
-            onPublishReward={(exp, gold) => awardRewards(exp, gold)}
-            onOpenAiMaster={() => setIsAiMasterOpen(true)}
-          />
+          <div className="flex-1 overflow-y-auto">
+            <MediaStudioHub
+              tasks={tasks}
+              projects={projects}
+              stats={stats}
+              onToggleTask={handleToggleTask}
+              onToggleSubtask={handleToggleSubtask}
+              onSnoozeTask={handleSnoozeTask}
+              onToggleFocus={handleToggleFocus}
+              onAddTask={handleAddTask}
+              onOpenAiDecompose={(title) => {
+                setAiGoalDraft(title);
+                setIsAiMasterOpen(true);
+              }}
+              onPublishReward={(exp, gold) => awardRewards(exp, gold)}
+              onOpenAiMaster={() => setIsAiMasterOpen(true)}
+            />
+          </div>
         )}
 
         {/* 3. QUESTS & HABITS BACKLOG */}
         {(activeTab === 'quests' || activeTab === 'tasks' || activeTab === 'habits') && (
-          <QuestsHub
-            tasks={tasks}
-            projects={projects}
-            stats={stats}
-            rewards={rewards}
-            onToggleTask={handleToggleTask}
-            onToggleSubtask={handleToggleSubtask}
-            onAddSubtask={handleAddSubtask}
-            onToggleFocus={handleToggleFocus}
-            onDeleteTask={handleDeleteTask}
-            onTriggerHabit={handleTriggerHabit}
-            onToggleDaily={handleToggleDaily}
-            onResetDailies={handleResetDailies}
-            onUpdateStats={handleUpdateStats}
-            onBuyReward={handleBuyReward}
-            onAddReward={handleAddReward}
-            onOpenQuickAdd={() => setIsQuickAddOpen(true)}
-          />
+          <div className="flex-1 overflow-y-auto">
+            <QuestsHub
+              tasks={tasks}
+              projects={projects}
+              stats={stats}
+              rewards={rewards}
+              onToggleTask={handleToggleTask}
+              onToggleSubtask={handleToggleSubtask}
+              onAddSubtask={handleAddSubtask}
+              onToggleFocus={handleToggleFocus}
+              onDeleteTask={handleDeleteTask}
+              onTriggerHabit={handleTriggerHabit}
+              onToggleDaily={handleToggleDaily}
+              onResetDailies={handleResetDailies}
+              onUpdateStats={handleUpdateStats}
+              onBuyReward={handleBuyReward}
+              onAddReward={handleAddReward}
+              onOpenQuickAdd={() => setIsQuickAddOpen(true)}
+            />
+          </div>
         )}
 
-        {/* 4. LIFE OS & ANALYTICS (Life Calendar 80y, Big Data, Time Blocking, Finances) */}
+        {/* 4. LIFE OS & ANALYTICS */}
         {(activeTab === 'life' || activeTab === 'bigdata' || activeTab === 'calendar' || activeTab === 'finances') && (
-          <LifeAnalyticsHub
-            tasks={tasks}
-            projects={projects}
-            calendarConfig={calendarConfig}
-            onSyncCalendar={() => {
-              setCalendarConfig((prev) => ({
-                ...prev,
-                lastSyncedAt: new Date().toLocaleTimeString(),
-              }));
-            }}
-            onOpenCalendarModal={() => setIsCalendarModalOpen(true)}
-            onOpenQuickAdd={() => setIsQuickAddOpen(true)}
-            onToggleTask={handleToggleTask}
-            onAddGoldReward={(gold) => setStats((prev) => ({ ...prev, gold: prev.gold + gold }))}
-            onLogReward={(exp, gold) => awardRewards(exp, gold)}
-          />
+          <div className="flex-1 overflow-y-auto">
+            <LifeAnalyticsHub
+              tasks={tasks}
+              projects={projects}
+              calendarConfig={calendarConfig}
+              onSyncCalendar={() => {
+                setCalendarConfig((prev) => ({
+                  ...prev,
+                  lastSyncedAt: new Date().toLocaleTimeString(),
+                }));
+              }}
+              onOpenCalendarModal={() => setIsCalendarModalOpen(true)}
+              onOpenQuickAdd={() => setIsQuickAddOpen(true)}
+              onToggleTask={handleToggleTask}
+              onAddGoldReward={(gold) => setStats((prev) => ({ ...prev, gold: prev.gold + gold }))}
+              onLogReward={(exp, gold) => awardRewards(exp, gold)}
+            />
+          </div>
         )}
 
         {/* 5. TAVERN & REWARDS */}
         {(activeTab === 'tavern' || activeTab === 'team') && (
-          <TavernHub
-            stats={stats}
-            rewards={rewards}
-            onUpdateStats={handleUpdateStats}
-            onBuyReward={handleBuyReward}
-            onAddReward={handleAddReward}
-          />
+          <div className="flex-1 overflow-y-auto">
+            <TavernHub
+              stats={stats}
+              rewards={rewards}
+              onUpdateStats={handleUpdateStats}
+              onBuyReward={handleBuyReward}
+              onAddReward={handleAddReward}
+            />
+          </div>
         )}
       </main>
 
