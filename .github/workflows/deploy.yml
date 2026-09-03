@@ -27,14 +27,19 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
 
       - name: Build
-        run: npm run build
+        env:
+          VITE_SUPABASE_URL: https://hqmxyrlznzlwapplekfl.supabase.co
+          VITE_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhxbXh5cmx6bnpsd2FwcGxla2ZsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgwMDk5MDMsImV4cCI6MjEwMzU4NTkwM30.B_pkGT-RGz3hnp6l9dOm24PcLMwVMO1UqNlmLLABzUU
+        run: |
+          npm run build
+          cp dist/index.html dist/404.html
 
       - name: Setup Pages
         uses: actions/configure-pages@v5

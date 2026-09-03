@@ -2,7 +2,10 @@ import { createClient } from '@supabase/supabase-js';
 import type { Database } from './database.types';
 
 // ─── Supabase Dynamic Configuration ──────────────────────────────────────────
-// Checks environment variables first, then localStorage fallback
+const DEFAULT_SUPABASE_URL = 'https://hqmxyrlznzlwapplekfl.supabase.co';
+const DEFAULT_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhxbXh5cmx6bnpsd2FwcGxla2ZsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgwMDk5MDMsImV4cCI6MjEwMzU4NTkwM30.B_pkGT-RGz3hnp6l9dOm24PcLMwVMO1UqNlmLLABzUU';
+
+// Checks environment variables first, then localStorage fallback, then default cloud project
 export function getSupabaseCredentials() {
   const envUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
   const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
@@ -10,8 +13,8 @@ export function getSupabaseCredentials() {
   const localUrl = typeof window !== 'undefined' ? localStorage.getItem('questflow_supabase_url') : null;
   const localKey = typeof window !== 'undefined' ? localStorage.getItem('questflow_supabase_anon_key') : null;
 
-  const url = (envUrl && envUrl !== 'https://placeholder.supabase.co' ? envUrl : localUrl) || '';
-  const anonKey = (envKey && !envKey.includes('placeholder') ? envKey : localKey) || '';
+  const url = (envUrl && envUrl !== 'https://placeholder.supabase.co' ? envUrl : localUrl) || DEFAULT_SUPABASE_URL;
+  const anonKey = (envKey && !envKey.includes('placeholder') ? envKey : localKey) || DEFAULT_SUPABASE_ANON_KEY;
 
   return { url, anonKey };
 }

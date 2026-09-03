@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8">
+    <title>QuestFlow</title>
+    <script>
+      sessionStorage.redirect = location.href;
+      var pathSegments = location.pathname.split('/');
+      var basePath = pathSegments.length > 1 && pathSegments[1] ? '/' + pathSegments[1] + '/' : '/';
+      location.replace(basePath);
+    </script>
+  </head>
+  <body></body>
+</html>
