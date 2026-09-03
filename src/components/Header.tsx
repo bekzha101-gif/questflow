@@ -50,12 +50,8 @@ export const Header: React.FC<HeaderProps> = ({
           </span>
         </div>
 
-        {/* Center: Minimalist Stat Pill */}
-        <div className="hidden sm:flex items-center gap-2 px-3 py-1 rounded-full bg-[#121216] border border-white/[0.06] text-xs text-zinc-300">
-          <span className="font-medium text-zinc-400">Уровень {stats.level}</span>
-          <span className="text-zinc-600">•</span>
-          <span className="text-amber-400 font-mono font-semibold">{stats.gold} 🪙</span>
-        </div>
+
+
 
         {/* Right: Actions */}
         <div className="flex items-center gap-2">

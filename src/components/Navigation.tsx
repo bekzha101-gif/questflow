@@ -47,7 +47,7 @@ export const Navigation: React.FC<NavigationProps> = ({
     },
     {
       id: 'quests' as TabType,
-      label: 'Все задачи',
+      label: 'Задачи',
       icon: CheckSquare,
     },
     {
