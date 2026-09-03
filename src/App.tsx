@@ -569,6 +569,7 @@ export function App() {
             onToggleDaily={handleToggleDaily}
             onAddTask={handleAddTask}
             onDeleteTask={handleDeleteTask}
+            onAddSubtask={handleAddSubtask}
             onBuyReward={handleBuyReward}
             onOpenQuickAdd={() => setIsQuickAddOpen(true)}
             onOpenStudioTab={() => setActiveTab('studio')}
