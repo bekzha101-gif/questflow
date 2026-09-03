@@ -28,10 +28,21 @@ export function saveStats(stats: UserStats) {
   }
 }
 
+const DUMMY_TASK_IDS = new Set([
+  'habit-1', 'habit-2', 'habit-3',
+  'daily-1', 'daily-2', 'daily-3',
+  'todo-1', 'todo-2', 'todo-3'
+]);
+
 export function loadTasks(): TaskItem[] {
   try {
     const data = localStorage.getItem(KEYS.TASKS);
-    return data ? JSON.parse(data) : initialTasks;
+    if (!data) return initialTasks;
+    const parsed = JSON.parse(data);
+    if (!Array.isArray(parsed)) return initialTasks;
+    // Strip out all unwanted sample/dummy tasks
+    const cleaned = parsed.filter((t: TaskItem) => !DUMMY_TASK_IDS.has(t.id));
+    return cleaned;
   } catch {
     return initialTasks;
   }

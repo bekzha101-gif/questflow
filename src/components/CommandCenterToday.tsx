@@ -1,26 +1,15 @@
 import React, { useState } from 'react';
 import { TaskItem, Project, UserStats } from '../types';
-import { 
-  CheckCircle2, 
-  Circle, 
-  Flame, 
-  Plus, 
-  Sparkles, 
-  Zap, 
-  Calendar, 
-  Clock, 
-  Compass, 
-  Coins, 
-  Heart, 
-  ArrowRight,
-  TrendingUp,
-  Target,
-  Play,
-  RotateCcw,
-  Volume2,
-  VolumeX,
-  Trophy,
-  Coffee
+import {
+  CheckCircle2,
+  Circle,
+  Plus,
+  Trash2,
+  Flame,
+  Clock,
+  CheckSquare,
+  Sparkles,
+  Timer
 } from 'lucide-react';
 import { PomodoroTimerWidget } from './PomodoroTimerWidget';
 
@@ -33,6 +22,7 @@ interface CommandCenterTodayProps {
   onTriggerHabit: (taskId: string, direction: 'positive' | 'negative') => void;
   onToggleDaily: (taskId: string) => void;
   onAddTask: (task: Omit<TaskItem, 'id' | 'completed' | 'subtasks'>) => void;
+  onDeleteTask?: (taskId: string) => void;
   onOpenQuickAdd: () => void;
   onOpenStudioTab?: () => void;
   onOpenLifeTab?: () => void;
@@ -43,370 +33,393 @@ export function CommandCenterToday({
   projects,
   stats,
   onToggleTask,
-  onToggleSubtask,
   onTriggerHabit,
   onToggleDaily,
   onAddTask,
-  onOpenQuickAdd,
-  onOpenStudioTab,
-  onOpenLifeTab,
+  onDeleteTask,
 }: CommandCenterTodayProps) {
   const [quickTaskTitle, setQuickTaskTitle] = useState('');
-  const [selectedProjectId, setSelectedProjectId] = useState<string>(projects[0]?.id || 'inbox');
+  const [isPriority, setIsPriority] = useState(false);
+  const [activeSubTab, setActiveSubTab] = useState<'tasks' | 'habits' | 'pomodoro'>('tasks');
 
   const now = new Date();
-  const todayStr = now.toLocaleDateString('ru-RU', {
+  const todayFormatted = now.toLocaleDateString('ru-RU', {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
   });
+  // Capitalize first letter of day
+  const formattedDate = todayFormatted.charAt(0).toUpperCase() + todayFormatted.slice(1);
 
-  // Filter Tasks for Today
-  const todayTasks = tasks.filter((t) => {
-    if (t.type !== 'todo') return false;
-    if (t.priority === 'p1' && !t.completed) return true;
-    if (t.dueDate) {
-      const taskDate = new Date(t.dueDate);
-      return (
-        taskDate.getDate() === now.getDate() &&
-        taskDate.getMonth() === now.getMonth() &&
-        taskDate.getFullYear() === now.getFullYear()
-      );
-    }
-    return !t.completed;
-  }).slice(0, 8);
+  // Filter Tasks for Today (Only to-do items)
+  const todayTasks = tasks.filter((t) => t.type === 'todo');
+  const activeTasks = todayTasks.filter((t) => !t.completed);
+  const completedTasks = todayTasks.filter((t) => t.completed);
 
-  const completedTodayTasksCount = tasks.filter(
-    (t) => t.type === 'todo' && t.completed
-  ).length;
-
-  // Filter Habits & Dailies
+  // Habits & Dailies
   const dailies = tasks.filter((t) => t.type === 'daily');
   const habits = tasks.filter((t) => t.type === 'habit');
-  const completedDailiesCount = dailies.filter((d) => d.completed).length;
-  const totalDailiesCount = dailies.length;
-  const dailiesProgress = totalDailiesCount > 0 ? Math.round((completedDailiesCount / totalDailiesCount) * 100) : 100;
+  const allHabitsAndDailies = [...dailies, ...habits];
 
   const handleQuickAddSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!quickTaskTitle.trim()) return;
 
-    onAddTask({
-      title: quickTaskTitle.trim(),
-      type: 'todo',
-      priority: 'p1',
-      projectId: selectedProjectId,
-      difficulty: 'medium',
-      expReward: 35,
-      goldReward: 20,
-      tags: ['Фокус Дня'],
-    });
+    if (activeSubTab === 'habits') {
+      onAddTask({
+        title: quickTaskTitle.trim(),
+        type: 'daily',
+        priority: 'p2',
+        projectId: projects[0]?.id || 'proj-inbox',
+        difficulty: 'easy',
+        expReward: 25,
+        goldReward: 15,
+        streakCount: 0,
+        tags: ['Привычка'],
+      });
+    } else {
+      onAddTask({
+        title: quickTaskTitle.trim(),
+        type: 'todo',
+        priority: isPriority ? 'p1' : 'p2',
+        projectId: projects[0]?.id || 'proj-inbox',
+        difficulty: isPriority ? 'hard' : 'medium',
+        expReward: isPriority ? 50 : 35,
+        goldReward: isPriority ? 30 : 20,
+        tags: isPriority ? ['Срочно P1'] : ['Сегодня'],
+      });
+    }
 
     setQuickTaskTitle('');
+    setIsPriority(false);
   };
 
   return (
-    <div className="max-w-7xl mx-auto py-3 px-3 sm:px-6 space-y-6 animate-fade-in select-none text-zinc-200">
+    <div className="max-w-4xl mx-auto py-6 px-4 sm:px-6 space-y-6 animate-fade-in text-zinc-100">
       
-      {/* ─── 1. Minimalist Morning Briefing Header ─────────────────────────── */}
-      <div className="bg-[#101014] border border-white/[0.06] rounded-3xl p-5 sm:p-6 shadow-xl relative overflow-hidden">
-        {/* Subtle background glow */}
-        <div className="absolute top-0 right-0 w-96 h-96 bg-purple-600/5 rounded-full blur-3xl pointer-events-none" />
-        
-        <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 text-xs font-mono text-zinc-500 uppercase tracking-wider">
-              <Calendar className="w-3.5 h-3.5 text-zinc-400" />
-              <span>{todayStr}</span>
-              <span>•</span>
-              <span className="text-emerald-400 font-bold flex items-center gap-1">
-                <Flame className="w-3.5 h-3.5 text-orange-400" /> {stats.streak} дней подряд
-              </span>
-            </div>
-            <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight mt-1">
-              Командный Центр • Ваш Фокус на Сегодня
-            </h1>
-            <p className="text-xs text-zinc-400 mt-1 max-w-xl">
-              Только самое важное: 3 ключевые задачи, привычки и таймер потока. Никакого визуального шума.
-            </p>
-          </div>
+      {/* ─── Header: Calm & Minimalist ────────────────────────────────────────── */}
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 pb-2 border-b border-white/[0.06]">
+        <div>
+          <p className="text-xs font-medium text-zinc-500 uppercase tracking-wider font-mono">
+            {formattedDate}
+          </p>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white mt-0.5">
+            Сегодня
+          </h1>
+        </div>
 
-          {/* Hero RPG Status Pill */}
-          <div className="flex items-center gap-3 bg-black/40 border border-white/10 rounded-2xl p-2.5 px-3.5 shrink-0">
-            <div className="w-9 h-9 rounded-xl bg-purple-600/20 border border-purple-500/30 flex items-center justify-center text-base">
-              {stats.heroClass === 'Warrior' ? '⚔️' : stats.heroClass === 'Mage' ? '🧙‍♂️' : stats.heroClass === 'Rogue' ? '🗡️' : '🌿'}
+        {/* Status Pill */}
+        <div className="flex items-center gap-3">
+          {stats.streak > 0 && (
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-orange-950/40 border border-orange-800/30 text-xs font-medium text-orange-300">
+              <Flame className="w-3.5 h-3.5 text-orange-400" />
+              <span>{stats.streak} дн. подряд</span>
             </div>
-            <div className="space-y-0.5 font-mono text-xs">
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-white">Ур. {stats.level} {stats.heroClass}</span>
-                <span className="text-[10px] text-amber-400 font-bold">{stats.gold} 🪙</span>
-              </div>
-              <div className="w-24 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-purple-500 to-pink-500 rounded-full"
-                  style={{ width: `${Math.min(100, (stats.exp / stats.maxExp) * 100)}%` }}
-                />
-              </div>
-            </div>
+          )}
+
+          <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-zinc-900 border border-white/[0.08] text-xs font-medium text-zinc-300">
+            <span>Ур. {stats.level}</span>
+            <span className="text-zinc-600">•</span>
+            <span className="text-amber-400 font-mono">{stats.gold} 🪙</span>
           </div>
         </div>
       </div>
 
-      {/* ─── 2. Core 3-Pillar Workspace Grid ───────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-        
-        {/* ─── Pillar A: Top Tasks for Today (Col span 7) ──────────────────── */}
-        <div className="lg:col-span-7 space-y-4">
-          <div className="bg-[#101014] border border-white/[0.06] rounded-3xl p-5 shadow-xl space-y-4">
-            
-            {/* Column Header */}
-            <div className="flex items-center justify-between gap-2 pb-2 border-b border-white/[0.04]">
-              <div className="flex items-center gap-2">
-                <Target className="w-4 h-4 text-purple-400" />
-                <h2 className="text-sm font-bold text-white">Главные Задачи на Сегодня</h2>
-                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-purple-950/60 text-purple-300 border border-purple-800/40">
-                  {todayTasks.filter(t => !t.completed).length} активных
-                </span>
-              </div>
+      {/* ─── Segmented Tabs (Clean & Intuitive) ─────────────────────────────────── */}
+      <div className="flex items-center gap-2 bg-[#121216] p-1 rounded-2xl border border-white/[0.06] w-fit">
+        <button
+          onClick={() => setActiveSubTab('tasks')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-medium transition-all cursor-pointer ${
+            activeSubTab === 'tasks'
+              ? 'bg-zinc-800 text-white shadow-sm'
+              : 'text-zinc-400 hover:text-zinc-200'
+          }`}
+        >
+          <CheckSquare className="w-3.5 h-3.5" />
+          <span>Задачи</span>
+          <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-zinc-900 text-zinc-400">
+            {activeTasks.length}
+          </span>
+        </button>
 
-              <button
-                onClick={onOpenQuickAdd}
-                className="text-[11px] text-zinc-400 hover:text-white flex items-center gap-1 transition-colors cursor-pointer"
-              >
-                <span>Все задачи</span>
-                <ArrowRight className="w-3 h-3" />
-              </button>
-            </div>
+        <button
+          onClick={() => setActiveSubTab('habits')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-medium transition-all cursor-pointer ${
+            activeSubTab === 'habits'
+              ? 'bg-zinc-800 text-white shadow-sm'
+              : 'text-zinc-400 hover:text-zinc-200'
+          }`}
+        >
+          <Flame className="w-3.5 h-3.5 text-orange-400" />
+          <span>Привычки</span>
+          {allHabitsAndDailies.length > 0 && (
+            <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-zinc-900 text-zinc-400">
+              {allHabitsAndDailies.length}
+            </span>
+          )}
+        </button>
 
-            {/* Inline Quick Task Input */}
-            <form onSubmit={handleQuickAddSubmit} className="flex items-center gap-2">
-              <div className="relative flex-1">
-                <input
-                  type="text"
-                  placeholder="Добавить задачу на сегодня... (Нажмите Enter)"
-                  value={quickTaskTitle}
-                  onChange={(e) => setQuickTaskTitle(e.target.value)}
-                  className="w-full bg-[#181820] border border-white/[0.08] focus:border-purple-500/60 rounded-2xl px-4 py-2.5 text-xs text-white placeholder:text-zinc-600 focus:outline-none transition-all shadow-inner"
-                />
-              </div>
-              <button
-                type="submit"
-                className="px-3.5 py-2.5 rounded-2xl bg-white text-zinc-950 font-bold text-xs hover:bg-zinc-200 active:scale-95 transition-all shadow cursor-pointer shrink-0"
-              >
-                <Plus className="w-4 h-4" />
-              </button>
-            </form>
+        <button
+          onClick={() => setActiveSubTab('pomodoro')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-medium transition-all cursor-pointer ${
+            activeSubTab === 'pomodoro'
+              ? 'bg-zinc-800 text-white shadow-sm'
+              : 'text-zinc-400 hover:text-zinc-200'
+          }`}
+        >
+          <Timer className="w-3.5 h-3.5 text-emerald-400" />
+          <span>Таймер фокуса</span>
+        </button>
+      </div>
 
-            {/* Task List Items */}
-            <div className="space-y-2 pt-1">
-              {todayTasks.length === 0 ? (
-                <div className="p-8 text-center rounded-2xl bg-black/20 border border-white/[0.02] space-y-2">
-                  <span className="text-2xl">🎉</span>
-                  <p className="text-xs text-zinc-400 font-medium">Все главные задачи на сегодня выполнены!</p>
-                  <p className="text-[11px] text-zinc-600">Добавьте новую задачу сверху или отдохните.</p>
+      {/* ─── Primary Quick Add Input ────────────────────────────────────────── */}
+      {activeSubTab !== 'pomodoro' && (
+        <form
+          onSubmit={handleQuickAddSubmit}
+          className="bg-[#121216] border border-white/[0.08] focus-within:border-zinc-500/60 rounded-2xl p-2 sm:p-2.5 flex items-center gap-2 transition-all shadow-md"
+        >
+          <input
+            type="text"
+            placeholder={
+              activeSubTab === 'habits'
+                ? 'Новая ежедневная привычка... (Нажмите Enter)'
+                : 'Что нужно сделать сегодня? (Нажмите Enter)'
+            }
+            value={quickTaskTitle}
+            onChange={(e) => setQuickTaskTitle(e.target.value)}
+            className="flex-1 bg-transparent px-3 py-2 text-sm text-white placeholder:text-zinc-600 focus:outline-none"
+            autoFocus
+          />
+
+          {activeSubTab === 'tasks' && (
+            <button
+              type="button"
+              onClick={() => setIsPriority(!isPriority)}
+              className={`px-2.5 py-1.5 rounded-xl text-xs font-medium transition-colors cursor-pointer shrink-0 ${
+                isPriority
+                  ? 'bg-rose-950/80 border border-rose-700/60 text-rose-300'
+                  : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-500 border border-white/[0.04]'
+              }`}
+              title="Сделать задачу приоритетом дня (P1)"
+            >
+              {isPriority ? '⚡ P1 Срочно' : 'Обычная'}
+            </button>
+          )}
+
+          <button
+            type="submit"
+            disabled={!quickTaskTitle.trim()}
+            className="px-4 py-2 rounded-xl bg-white hover:bg-zinc-200 disabled:opacity-30 disabled:hover:bg-white text-zinc-950 font-semibold text-xs transition-all active:scale-95 cursor-pointer shrink-0 flex items-center gap-1.5"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>Добавить</span>
+          </button>
+        </form>
+      )}
+
+      {/* ─── 1. SubTab: TASKS ─────────────────────────────────────────────────── */}
+      {activeSubTab === 'tasks' && (
+        <div className="space-y-4">
+          
+          {/* Active Tasks */}
+          <div className="space-y-2">
+            {activeTasks.length === 0 && completedTasks.length === 0 ? (
+              <div className="py-16 text-center rounded-3xl bg-[#101014] border border-white/[0.04] space-y-3">
+                <div className="w-12 h-12 rounded-2xl bg-zinc-900 border border-white/[0.08] flex items-center justify-center text-xl mx-auto">
+                  ✨
                 </div>
-              ) : (
-                todayTasks.map((task) => {
-                  const project = projects.find((p) => p.id === task.projectId);
-                  return (
-                    <div
-                      key={task.id}
-                      className={`group p-3.5 rounded-2xl border transition-all flex items-start gap-3 ${
-                        task.completed
-                          ? 'bg-black/30 border-transparent opacity-50'
-                          : 'bg-[#14141a] hover:bg-[#181822] border-white/[0.05] hover:border-purple-500/30 shadow-md'
-                      }`}
+                <h3 className="text-sm font-semibold text-zinc-300">На сегодня всё чисто</h3>
+                <p className="text-xs text-zinc-500 max-w-sm mx-auto">
+                  Добавьте вашу первую задачу в поле выше, чтобы начать день.
+                </p>
+              </div>
+            ) : (
+              activeTasks.map((task) => (
+                <div
+                  key={task.id}
+                  className="group bg-[#121216] hover:bg-[#16161c] border border-white/[0.06] hover:border-white/[0.12] rounded-2xl p-3.5 flex items-center justify-between gap-3 transition-all"
+                >
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <button
+                      onClick={() => onToggleTask(task.id)}
+                      className="text-zinc-500 hover:text-emerald-400 transition-transform active:scale-90 cursor-pointer shrink-0"
+                      title="Завершить задачу"
                     >
-                      {/* Complete Checkbox */}
+                      <Circle className="w-4 h-4" />
+                    </button>
+
+                    <span className="text-sm text-zinc-200 truncate font-normal">
+                      {task.title}
+                    </span>
+
+                    {task.priority === 'p1' && (
+                      <span className="px-2 py-0.5 rounded-md bg-rose-950/60 border border-rose-800/40 text-rose-300 text-[10px] font-bold shrink-0">
+                        P1
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-[11px] font-mono text-zinc-500">
+                      +{task.expReward} XP
+                    </span>
+
+                    {onDeleteTask && (
+                      <button
+                        onClick={() => onDeleteTask(task.id)}
+                        className="p-1.5 rounded-lg text-zinc-600 hover:text-rose-400 hover:bg-rose-950/30 transition-all cursor-pointer"
+                        title="Удалить задачу"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* Completed Tasks Accordion */}
+          {completedTasks.length > 0 && (
+            <div className="pt-4 border-t border-white/[0.04] space-y-2">
+              <p className="text-xs font-mono text-zinc-500 px-1">
+                Завершено ({completedTasks.length})
+              </p>
+
+              <div className="space-y-1.5 opacity-60">
+                {completedTasks.map((task) => (
+                  <div
+                    key={task.id}
+                    className="bg-[#0e0e12] border border-transparent hover:border-white/[0.04] rounded-2xl p-3 flex items-center justify-between gap-3 transition-all"
+                  >
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
                       <button
                         onClick={() => onToggleTask(task.id)}
-                        className={`mt-0.5 transition-transform active:scale-90 cursor-pointer ${
-                          task.completed ? 'text-emerald-400' : 'text-zinc-500 hover:text-purple-400'
-                        }`}
+                        className="text-emerald-400 transition-transform active:scale-90 cursor-pointer shrink-0"
+                        title="Вернуть задачу"
                       >
-                        {task.completed ? (
-                          <CheckCircle2 className="w-4 h-4 fill-emerald-500/20" />
+                        <CheckCircle2 className="w-4 h-4 fill-emerald-500/20" />
+                      </button>
+
+                      <span className="text-sm text-zinc-400 line-through truncate">
+                        {task.title}
+                      </span>
+                    </div>
+
+                    {onDeleteTask && (
+                      <button
+                        onClick={() => onDeleteTask(task.id)}
+                        className="p-1 text-zinc-600 hover:text-rose-400 transition-colors cursor-pointer"
+                        title="Удалить"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+        </div>
+      )}
+
+      {/* ─── 2. SubTab: HABITS ─────────────────────────────────────────────────── */}
+      {activeSubTab === 'habits' && (
+        <div className="space-y-2">
+          {allHabitsAndDailies.length === 0 ? (
+            <div className="py-16 text-center rounded-3xl bg-[#101014] border border-white/[0.04] space-y-3">
+              <div className="w-12 h-12 rounded-2xl bg-zinc-900 border border-white/[0.08] flex items-center justify-center text-xl mx-auto">
+                🔥
+              </div>
+              <h3 className="text-sm font-semibold text-zinc-300">Список привычек пуст</h3>
+              <p className="text-xs text-zinc-500 max-w-sm mx-auto">
+                Добавьте регулярные привычки (например: «Выпить стакан воды» или «Зарядка 15 мин»).
+              </p>
+            </div>
+          ) : (
+            allHabitsAndDailies.map((item) => {
+              const isDaily = item.type === 'daily';
+              return (
+                <div
+                  key={item.id}
+                  className={`bg-[#121216] border rounded-2xl p-3.5 flex items-center justify-between gap-3 transition-all ${
+                    item.completed ? 'border-emerald-800/30 bg-emerald-950/10' : 'border-white/[0.06]'
+                  }`}
+                >
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    {isDaily ? (
+                      <button
+                        onClick={() => onToggleDaily(item.id)}
+                        className="text-zinc-500 hover:text-emerald-400 transition-transform active:scale-90 cursor-pointer shrink-0"
+                      >
+                        {item.completed ? (
+                          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
                         ) : (
                           <Circle className="w-4 h-4" />
                         )}
                       </button>
+                    ) : (
+                      <span className="w-2 h-2 rounded-full bg-orange-400 shrink-0" />
+                    )}
 
-                      {/* Title & Tags */}
-                      <div className="flex-1 min-w-0 space-y-1">
-                        <div className="flex items-center justify-between gap-2">
-                          <span
-                            className={`text-xs font-semibold block truncate ${
-                              task.completed ? 'line-through text-zinc-500' : 'text-zinc-100'
-                            }`}
-                          >
-                            {task.title}
-                          </span>
-
-                          <div className="flex items-center gap-1.5 shrink-0 font-mono text-[10px]">
-                            {task.priority === 'p1' && (
-                              <span className="px-1.5 py-0.2 rounded bg-rose-950/60 text-rose-300 border border-rose-800/40 font-bold">
-                                P1 Срочно
-                              </span>
-                            )}
-                            <span className="text-purple-300 bg-purple-950/50 px-1.5 py-0.2 rounded border border-purple-800/30">
-                              +{task.expReward} XP
-                            </span>
-                            <span className="text-amber-400 bg-amber-950/50 px-1.5 py-0.2 rounded border border-amber-800/30">
-                              +{task.goldReward} 🪙
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Project / Tag Sub-bar */}
-                        <div className="flex items-center gap-2 text-[10px] text-zinc-500 font-mono">
-                          {project && (
-                            <span className="flex items-center gap-1 text-zinc-400">
-                              <span>{project.icon}</span> {project.name}
-                            </span>
-                          )}
-                          {task.subtasks?.length > 0 && (
-                            <span>
-                              {task.subtasks.filter((st) => st.completed).length}/{task.subtasks.length} подзадач
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </div>
-
-          {/* Daily Motivational Life Pill */}
-          <div 
-            onClick={onOpenLifeTab}
-            className="p-4 rounded-3xl bg-gradient-to-r from-emerald-950/30 via-[#101014] to-rose-950/30 border border-emerald-500/20 hover:border-emerald-500/40 transition-all cursor-pointer flex items-center justify-between gap-3 shadow-lg"
-          >
-            <div className="flex items-center gap-3">
-              <span className="text-xl">⏳</span>
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-white">Календарь Жизни • 18 лет</span>
-                  <span className="text-[9px] font-bold text-emerald-400 bg-emerald-950/80 px-2 py-0.2 rounded-md border border-emerald-700/40">
-                    🟢 100% Пик Энергии
-                  </span>
-                </div>
-                <p className="text-[11px] text-zinc-400 mt-0.5">
-                  Осталось ~315 недель абсолютного золотого пика до 25 лет. Каждый час сегодня дает x10 отдачу.
-                </p>
-              </div>
-            </div>
-            <ArrowRight className="w-4 h-4 text-emerald-400 shrink-0" />
-          </div>
-        </div>
-
-        {/* ─── Pillar B: Habits, Dailies & Focus Sprint (Col span 5) ───────── */}
-        <div className="lg:col-span-5 space-y-4">
-          
-          {/* Habits & Dailies Card */}
-          <div className="bg-[#101014] border border-white/[0.06] rounded-3xl p-5 shadow-xl space-y-4">
-            
-            <div className="flex items-center justify-between pb-2 border-b border-white/[0.04]">
-              <div className="flex items-center gap-2">
-                <Flame className="w-4 h-4 text-orange-400" />
-                <h2 className="text-sm font-bold text-white">Привычки & Дейлики</h2>
-              </div>
-              <span className="text-xs font-mono text-orange-300 font-bold">
-                {completedDailiesCount}/{totalDailiesCount} ({dailiesProgress}%)
-              </span>
-            </div>
-
-            {/* Dailies Progress Bar */}
-            <div className="h-1.5 w-full bg-zinc-900 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-gradient-to-r from-orange-500 to-amber-400 rounded-full transition-all duration-500"
-                style={{ width: `${dailiesProgress}%` }}
-              />
-            </div>
-
-            {/* Dailies List */}
-            <div className="space-y-2">
-              {dailies.length === 0 ? (
-                <p className="text-xs text-zinc-500 text-center py-4">Нет активных дейликов</p>
-              ) : (
-                dailies.map((daily) => (
-                  <div
-                    key={daily.id}
-                    onClick={() => onToggleDaily(daily.id)}
-                    className={`p-3 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-2.5 ${
-                      daily.completed
-                        ? 'bg-emerald-950/20 border-emerald-800/30 text-emerald-300'
-                        : 'bg-[#14141a] hover:bg-[#181822] border-white/[0.05] text-zinc-200'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      {daily.completed ? (
-                        <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                      ) : (
-                        <Circle className="w-4 h-4 text-zinc-500 shrink-0" />
-                      )}
-                      <span className={`text-xs font-medium truncate ${daily.completed ? 'line-through opacity-70' : ''}`}>
-                        {daily.title}
-                      </span>
-                    </div>
-
-                    <span className="text-[10px] font-mono text-orange-400 font-bold shrink-0 flex items-center gap-0.5">
-                      <Flame className="w-3 h-3" /> {daily.streakCount || 0}
+                    <span className={`text-sm text-zinc-200 truncate ${item.completed ? 'line-through opacity-60' : ''}`}>
+                      {item.title}
                     </span>
                   </div>
-                ))
-              )}
-            </div>
 
-            {/* Habits Plus/Minus Tracker */}
-            {habits.length > 0 && (
-              <div className="pt-2 border-t border-white/[0.04] space-y-2">
-                <span className="text-[11px] font-mono text-zinc-500 uppercase tracking-wider block">
-                  Быстрый трекер привычек
-                </span>
-                <div className="space-y-1.5">
-                  {habits.slice(0, 3).map((h) => (
-                    <div
-                      key={h.id}
-                      className="p-2.5 rounded-xl bg-black/40 border border-white/[0.03] flex items-center justify-between gap-2"
-                    >
-                      <span className="text-xs text-zinc-300 truncate">{h.title}</span>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {item.streakCount !== undefined && item.streakCount > 0 && (
+                      <span className="text-xs font-mono text-orange-400 flex items-center gap-0.5">
+                        <Flame className="w-3 h-3" /> {item.streakCount}
+                      </span>
+                    )}
+
+                    {!isDaily && (
                       <div className="flex items-center gap-1">
                         <button
-                          onClick={() => onTriggerHabit(h.id, 'positive')}
-                          className="w-6 h-6 rounded-lg bg-emerald-950 text-emerald-300 hover:bg-emerald-900 border border-emerald-700/50 text-xs font-bold flex items-center justify-center transition-all cursor-pointer"
+                          onClick={() => onTriggerHabit(item.id, 'positive')}
+                          className="w-7 h-7 rounded-lg bg-zinc-800 hover:bg-emerald-950 text-zinc-300 hover:text-emerald-300 font-bold text-xs flex items-center justify-center transition-all cursor-pointer"
                         >
                           +
                         </button>
                         <button
-                          onClick={() => onTriggerHabit(h.id, 'negative')}
-                          className="w-6 h-6 rounded-lg bg-rose-950 text-rose-300 hover:bg-rose-900 border border-rose-700/50 text-xs font-bold flex items-center justify-center transition-all cursor-pointer"
+                          onClick={() => onTriggerHabit(item.id, 'negative')}
+                          className="w-7 h-7 rounded-lg bg-zinc-800 hover:bg-rose-950 text-zinc-300 hover:text-rose-300 font-bold text-xs flex items-center justify-center transition-all cursor-pointer"
                         >
                           -
                         </button>
                       </div>
-                    </div>
-                  ))}
+                    )}
+
+                    {onDeleteTask && (
+                      <button
+                        onClick={() => onDeleteTask(item.id)}
+                        className="p-1.5 text-zinc-600 hover:text-rose-400 transition-colors cursor-pointer"
+                        title="Удалить"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
-          </div>
-
-          {/* Focus Sprint Pomodoro Widget Card */}
-          <div className="bg-[#101014] border border-white/[0.06] rounded-3xl p-5 shadow-xl space-y-3">
-            <div className="flex items-center justify-between pb-2 border-b border-white/[0.04]">
-              <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                <Clock className="w-4 h-4 text-emerald-400" /> Фокус-Спринт (Помодоро)
-              </span>
-              <span className="text-[10px] font-mono text-zinc-500">25 мин + Альфа-волны</span>
-            </div>
-
-            <PomodoroTimerWidget />
-          </div>
-
+              );
+            })
+          )}
         </div>
-      </div>
+      )}
+
+      {/* ─── 3. SubTab: POMODORO ──────────────────────────────────────────────── */}
+      {activeSubTab === 'pomodoro' && (
+        <div className="bg-[#121216] border border-white/[0.06] rounded-3xl p-6 shadow-xl max-w-lg mx-auto">
+          <div className="flex items-center gap-2 pb-4 mb-4 border-b border-white/[0.06] text-xs font-semibold text-zinc-400">
+            <Clock className="w-4 h-4 text-emerald-400" />
+            <span>Фокус-Спринт 25 минут</span>
+          </div>
+          <PomodoroTimerWidget />
+        </div>
+      )}
+
     </div>
   );
 }

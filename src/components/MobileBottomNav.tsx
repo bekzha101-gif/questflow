@@ -2,11 +2,10 @@ import React from 'react';
 import { TabType } from './Navigation';
 import { 
   Zap, 
-  Film,
+  Film, 
   CheckSquare, 
   Compass, 
-  ShoppingBag, 
-  Plus
+  Plus 
 } from 'lucide-react';
 
 interface MobileBottomNavProps {
@@ -23,14 +22,14 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   focusCount,
 }) => {
   return (
-    <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#09090b]/95 backdrop-blur-xl border-t border-white/[0.08] px-3 py-2">
+    <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#09090b]/95 backdrop-blur-xl border-t border-white/[0.06] px-3 py-2">
       <div className="flex items-center justify-around">
         
         {/* 1. Today */}
         <button
           onClick={() => onSelectTab('today')}
           className={`flex flex-col items-center gap-0.5 p-1 transition-all ${
-            activeTab === 'today' ? 'text-amber-400 font-bold' : 'text-zinc-500 hover:text-zinc-300'
+            activeTab === 'today' ? 'text-white font-semibold' : 'text-zinc-500 hover:text-zinc-300'
           }`}
         >
           <Zap className="w-5 h-5" />
@@ -42,19 +41,19 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
           onClick={() => onSelectTab('studio')}
           className={`flex flex-col items-center gap-0.5 p-1 transition-all ${
             activeTab === 'studio' || activeTab === 'production' || activeTab === 'shorts' || activeTab === 'ideas'
-              ? 'text-pink-400 font-bold'
+              ? 'text-white font-semibold'
               : 'text-zinc-500 hover:text-zinc-300'
           }`}
         >
           <div className="relative">
             <Film className="w-5 h-5" />
             {focusCount > 0 && (
-              <span className="absolute -top-1 -right-2 w-3.5 h-3.5 rounded-full bg-pink-500 text-[9px] font-bold text-white flex items-center justify-center">
+              <span className="absolute -top-1 -right-2 w-3 h-3 rounded-full bg-zinc-100 text-[8px] font-bold text-black flex items-center justify-center">
                 {focusCount}
               </span>
             )}
           </div>
-          <span className="text-[10px]">Студия</span>
+          <span className="text-[10px]">Медиа</span>
         </button>
 
         {/* 3. Central Plus (Quick Add) */}
@@ -70,7 +69,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
           onClick={() => onSelectTab('quests')}
           className={`flex flex-col items-center gap-0.5 p-1 transition-all ${
             activeTab === 'quests' || activeTab === 'tasks' || activeTab === 'habits'
-              ? 'text-purple-400 font-bold'
+              ? 'text-white font-semibold'
               : 'text-zinc-500 hover:text-zinc-300'
           }`}
         >
@@ -83,12 +82,12 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
           onClick={() => onSelectTab('life')}
           className={`flex flex-col items-center gap-0.5 p-1 transition-all ${
             activeTab === 'life' || activeTab === 'bigdata' || activeTab === 'calendar' || activeTab === 'finances'
-              ? 'text-emerald-400 font-bold'
+              ? 'text-white font-semibold'
               : 'text-zinc-500 hover:text-zinc-300'
           }`}
         >
           <Compass className="w-5 h-5" />
-          <span className="text-[10px]">Жизнь</span>
+          <span className="text-[10px]">Аналитика</span>
         </button>
       </div>
     </div>

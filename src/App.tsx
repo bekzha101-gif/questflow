@@ -567,6 +567,7 @@ export function App() {
             onTriggerHabit={handleTriggerHabit}
             onToggleDaily={handleToggleDaily}
             onAddTask={handleAddTask}
+            onDeleteTask={handleDeleteTask}
             onOpenQuickAdd={() => setIsQuickAddOpen(true)}
             onOpenStudioTab={() => setActiveTab('studio')}
             onOpenLifeTab={() => setActiveTab('life')}
