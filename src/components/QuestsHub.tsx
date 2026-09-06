@@ -25,6 +25,7 @@ interface QuestsHubProps {
   onAddSubtask: (taskId: string, title: string) => void;
   onToggleFocus: (taskId: string) => void;
   onDeleteTask: (taskId: string) => void;
+  onEditTask?: (task: TaskItem) => void;
   onTriggerHabit: (taskId: string, direction: 'positive' | 'negative') => void;
   onToggleDaily: (taskId: string) => void;
   onResetDailies: () => void;
@@ -44,6 +45,7 @@ export function QuestsHub({
   onAddSubtask,
   onToggleFocus,
   onDeleteTask,
+  onEditTask,
   onTriggerHabit,
   onToggleDaily,
   onResetDailies,
@@ -170,6 +172,7 @@ export function QuestsHub({
           onAddSubtask={onAddSubtask}
           onToggleFocus={onToggleFocus}
           onDeleteTask={onDeleteTask}
+          onEditTask={onEditTask}
           onOpenQuickAdd={onOpenQuickAdd}
         />
       )}

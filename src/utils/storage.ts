@@ -42,7 +42,7 @@ export function loadTasks(): TaskItem[] {
     if (!Array.isArray(parsed)) return initialTasks;
     // Strip out all unwanted sample/dummy tasks
     const cleaned = parsed.filter((t: TaskItem) => !DUMMY_TASK_IDS.has(t.id));
-    return cleaned;
+    return cleaned.length > 0 ? cleaned : initialTasks;
   } catch {
     return initialTasks;
   }

@@ -12,6 +12,7 @@ import {
   ChevronRight,
   Calendar,
   AlertCircle,
+  Pencil,
 } from 'lucide-react';
 
 interface CommandCenterTodayProps {
@@ -25,6 +26,7 @@ interface CommandCenterTodayProps {
   onToggleDaily: (taskId: string) => void;
   onAddTask: (task: Omit<TaskItem, 'id' | 'completed' | 'subtasks'>) => void;
   onUpdateTask?: (taskId: string, patch: Partial<TaskItem>) => void;
+  onEditTask?: (task: TaskItem) => void;
   onAddSubtask?: (taskId: string, text: string) => void;
   onDeleteTask?: (taskId: string) => void;
   onBuyReward?: (reward: Reward) => boolean;
@@ -125,6 +127,7 @@ function TaskRow({
   onToggleSubtask,
   onAddSubtask,
   onUpdateTask,
+  onEdit,
   onDelete,
 }: {
   task: TaskItem;
@@ -132,6 +135,7 @@ function TaskRow({
   onToggleSubtask?: (subtaskId: string) => void;
   onAddSubtask?: (text: string) => void;
   onUpdateTask?: (patch: Partial<TaskItem>) => void;
+  onEdit?: () => void;
   onDelete?: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -216,6 +220,21 @@ function TaskRow({
               {overdue && <AlertCircle className="w-2.5 h-2.5" />}
               {formatDueDate(task.dueDate)}
             </span>
+          )}
+
+          {/* Edit */}
+          {onEdit && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onEdit();
+              }}
+              className="shrink-0 p-1 text-zinc-600 hover:text-purple-300 transition-colors cursor-pointer"
+              title="Редактировать задачу, чек-лист и дедлайн"
+            >
+              <Pencil className="w-3 h-3" />
+            </button>
           )}
 
           {/* Delete */}
@@ -354,6 +373,20 @@ function TaskRow({
               </form>
             )}
           </div>
+
+          {/* Open full editor button */}
+          {onEdit && (
+            <div className="pt-2 border-t border-white/[0.04] flex justify-end">
+              <button
+                type="button"
+                onClick={onEdit}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-950/40 hover:bg-purple-900/60 border border-purple-500/30 text-purple-300 hover:text-white text-[11px] font-semibold transition-all cursor-pointer shadow-sm"
+              >
+                <Pencil className="w-3 h-3" />
+                <span>Открыть полный редактор чек-листа & дедлайна</span>
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -372,6 +405,7 @@ export function CommandCenterToday({
   onToggleDaily,
   onAddTask,
   onUpdateTask,
+  onEditTask,
   onAddSubtask,
   onDeleteTask,
   onBuyReward,
@@ -497,9 +531,17 @@ export function CommandCenterToday({
                   className="shrink-0 w-6 h-6 rounded-lg bg-rose-900/60 hover:bg-rose-800/80 text-rose-300 flex items-center justify-center transition-all cursor-pointer active:scale-90">
                   <Minus className="w-3 h-3" />
                 </button>
+                {onEditTask && (
+                  <button onClick={() => onEditTask(habit)}
+                    className="shrink-0 p-1 text-zinc-600 hover:text-purple-300 opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
+                    title="Редактировать привычку">
+                    <Pencil className="w-3 h-3" />
+                  </button>
+                )}
                 {onDeleteTask && (
                   <button onClick={() => onDeleteTask(habit.id)}
-                    className="shrink-0 p-1 text-zinc-700 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition-all cursor-pointer">
+                    className="shrink-0 p-1 text-zinc-700 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
+                    title="Удалить привычку">
                     <Trash2 className="w-3 h-3" />
                   </button>
                 )}
@@ -545,9 +587,17 @@ export function CommandCenterToday({
                     <Flame className="w-2.5 h-2.5" />{daily.streakCount}
                   </span>
                 )}
+                {onEditTask && (
+                  <button onClick={() => onEditTask(daily)}
+                    className="shrink-0 p-1 text-zinc-600 hover:text-purple-300 opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
+                    title="Редактировать ежедневную">
+                    <Pencil className="w-3 h-3" />
+                  </button>
+                )}
                 {onDeleteTask && (
                   <button onClick={() => onDeleteTask(daily.id)}
-                    className="shrink-0 p-1 text-zinc-700 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition-all cursor-pointer">
+                    className="shrink-0 p-1 text-zinc-700 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
+                    title="Удалить ежедневную">
                     <Trash2 className="w-3 h-3" />
                   </button>
                 )}
@@ -589,6 +639,7 @@ export function CommandCenterToday({
                   onToggleSubtask={(stId) => onToggleSubtask(task.id, stId)}
                   onAddSubtask={onAddSubtask ? (text) => onAddSubtask(task.id, text) : undefined}
                   onUpdateTask={onUpdateTask ? (patch) => onUpdateTask(task.id, patch) : undefined}
+                  onEdit={onEditTask ? () => onEditTask(task) : undefined}
                   onDelete={onDeleteTask ? () => onDeleteTask(task.id) : undefined}
                 />
               ))}

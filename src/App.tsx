@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { UserStats, TaskItem, Project, Reward, NotificationItem, GoogleCalendarConfig } from './types';
+import { UserStats, TaskItem, Project, Reward, NotificationItem, GoogleCalendarConfig, SubTask } from './types';
 import { 
   loadStats, saveStats,
   loadTasks, saveTasks,
@@ -38,6 +38,7 @@ import { GlobalCommandPalette } from './components/GlobalCommandPalette';
 import { UndoSnackbar, SnackbarAction } from './components/UndoSnackbar';
 import { PomodoroTimerWidget } from './components/PomodoroTimerWidget';
 import { HealthBioTracker } from './components/HealthBioTracker';
+import { TaskEditModal } from './components/TaskEditModal';
 import { playLevelUpSound } from './utils/sound';
 import { triggerLevelUpConfetti } from './utils/confetti';
 
@@ -65,6 +66,7 @@ export function App() {
   const [aiGoalDraft, setAiGoalDraft] = useState('');
   const [isLevelUpModalOpen, setIsLevelUpModalOpen] = useState(false);
   const [isHealthModalOpen, setIsHealthModalOpen] = useState(false);
+  const [editingTask, setEditingTask] = useState<TaskItem | null>(null);
   const [snackbarAction, setSnackbarAction] = useState<SnackbarAction | null>(null);
 
 
@@ -75,7 +77,12 @@ export function App() {
   useEffect(() => {
     pullAll().then((cloudData) => {
       if (cloudData.stats) setStats(cloudData.stats);
-      if (cloudData.tasks?.length) setTasks(cloudData.tasks);
+      if (cloudData.tasks && cloudData.tasks.length > 0) {
+        setTasks(cloudData.tasks);
+      } else if (tasks.length > 0) {
+        // Local tasks exist, push to cloud so cloud has them
+        pushTasks(tasks);
+      }
       if (cloudData.projects?.length) setProjects(cloudData.projects);
       if (cloudData.rewards?.length) setRewards(cloudData.rewards);
     });
@@ -465,12 +472,19 @@ export function App() {
 
 
   // Add Task
-  const handleAddTask = (newTask: Omit<TaskItem, 'id' | 'completed' | 'subtasks'>) => {
+  const handleAddTask = (newTask: Partial<TaskItem> & { title: string }) => {
     const task: TaskItem = {
+      type: 'todo',
+      priority: 'p2',
+      projectId: projects[0]?.id || 'proj-inbox',
+      tags: [],
+      difficulty: 'medium',
+      expReward: 35,
+      goldReward: 20,
       ...newTask,
       id: `task-${Date.now()}`,
       completed: false,
-      subtasks: [],
+      subtasks: newTask.subtasks || [],
     };
     setTasks((prev) => [task, ...prev]);
   };
@@ -578,6 +592,7 @@ export function App() {
             onToggleDaily={handleToggleDaily}
             onAddTask={handleAddTask}
             onUpdateTask={handleUpdateTask}
+            onEditTask={(task) => setEditingTask(task)}
             onDeleteTask={handleDeleteTask}
             onAddSubtask={handleAddSubtask}
             onBuyReward={handleBuyReward}
@@ -623,6 +638,7 @@ export function App() {
               onAddSubtask={handleAddSubtask}
               onToggleFocus={handleToggleFocus}
               onDeleteTask={handleDeleteTask}
+              onEditTask={(task) => setEditingTask(task)}
               onTriggerHabit={handleTriggerHabit}
               onToggleDaily={handleToggleDaily}
               onResetDailies={handleResetDailies}
@@ -746,6 +762,21 @@ export function App() {
           </div>
         </div>
       )}
+
+      {/* Habitica-Style Task Edit Modal (Title, Notes, Checklist with Subtasks & Deadlines) */}
+      <TaskEditModal
+        isOpen={!!editingTask}
+        onClose={() => setEditingTask(null)}
+        task={editingTask}
+        onSave={(updatedTask) => {
+          handleUpdateTask(updatedTask.id, updatedTask);
+          setEditingTask(null);
+        }}
+        onDelete={(taskId) => {
+          handleDeleteTask(taskId);
+          setEditingTask(null);
+        }}
+      />
 
       {/* Global Command Palette (Cmd + K) */}
       <GlobalCommandPalette

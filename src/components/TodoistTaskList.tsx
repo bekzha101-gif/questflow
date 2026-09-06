@@ -10,7 +10,8 @@ import {
   ChevronRight, 
   ChevronDown, 
   Layers,
-  Check
+  Check,
+  Pencil,
 } from 'lucide-react';
 import { playQuestCompleteSound, playCoinSound } from '../utils/sound';
 import { triggerQuestConfetti } from '../utils/confetti';
@@ -24,6 +25,7 @@ interface TodoistTaskListProps {
   onAddSubtask: (taskId: string, text: string) => void;
   onToggleFocus: (taskId: string) => void;
   onDeleteTask: (taskId: string) => void;
+  onEditTask?: (task: TaskItem) => void;
   onOpenQuickAdd: () => void;
 }
 
@@ -36,6 +38,7 @@ export const TodoistTaskList: React.FC<TodoistTaskListProps> = ({
   onAddSubtask,
   onToggleFocus,
   onDeleteTask,
+  onEditTask,
   onOpenQuickAdd,
 }) => {
   const [selectedProjectId, setSelectedProjectId] = useState<string>('all');
@@ -210,9 +213,37 @@ export const TodoistTaskList: React.FC<TodoistTaskListProps> = ({
                         {task.title}
                       </p>
 
-                      <span className="text-[9px] uppercase font-mono px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-400 shrink-0">
-                        {task.priority}
-                      </span>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className="text-[9px] uppercase font-mono px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-400">
+                          {task.priority}
+                        </span>
+                        {onEditTask && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onEditTask(task);
+                            }}
+                            className="p-1 rounded-lg text-zinc-600 hover:text-purple-300 hover:bg-white/5 transition-colors cursor-pointer"
+                            title="Редактировать задачу, чек-лист и дедлайн"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (window.confirm(`Удалить задачу «${task.title}»?`)) {
+                              onDeleteTask(task.id);
+                            }
+                          }}
+                          className="p-1 rounded-lg text-zinc-700 hover:text-rose-400 hover:bg-rose-950/20 transition-colors cursor-pointer"
+                          title="Удалить задачу"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
 
                     {task.description && (
