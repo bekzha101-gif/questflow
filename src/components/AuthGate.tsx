@@ -25,23 +25,60 @@ export function AuthGate({ children }: AuthGateProps) {
   const [email, setEmail] = useState('bekzha101@gmail.com');
   const [password, setPassword] = useState('QuestFlow2026Secure!');
 
-  // On mount: check for existing session
+  // On mount: check for existing session with a safety timeout
   React.useEffect(() => {
     if (!supabase || !isSupabaseConfigured) {
       setChecked(true);
       return;
     }
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
+    let timedOut = false;
+
+    // Safety: if Supabase doesn't respond in 3 seconds, go to guest mode
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      console.warn('[AuthGate] Supabase session check timed out after 3s — entering guest mode');
       setChecked(true);
+      setGuestMode(true);
+    }, 3000);
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (timedOut) return; // already fell through
+      clearTimeout(timeout);
+      if (session) {
+        setSession(session);
+        setChecked(true);
+      } else {
+        // No existing session — attempt auto-login with owner credentials
+        supabase!.auth.signInWithPassword({
+          email: 'bekzha101@gmail.com',
+          password: 'QuestFlow2026Secure!',
+        }).then(({ data, error: loginErr }) => {
+          if (timedOut) return;
+          if (data?.session) {
+            setSession(data.session);
+          } else {
+            console.warn('[AuthGate] Auto-login failed:', loginErr?.message, '— entering guest mode');
+            setGuestMode(true);
+          }
+          setChecked(true);
+        });
+      }
+    }).catch(() => {
+      if (timedOut) return;
+      clearTimeout(timeout);
+      setChecked(true);
+      setGuestMode(true);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      clearTimeout(timeout);
+      subscription.unsubscribe();
+    };
   }, []);
 
   const handleEmailAuth = async (e?: React.FormEvent) => {
