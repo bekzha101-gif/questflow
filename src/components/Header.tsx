@@ -8,7 +8,9 @@ import {
   Smartphone,
   RotateCcw,
   Bell,
-  X
+  X,
+  Download,
+  Upload,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -19,6 +21,8 @@ interface HeaderProps {
   onOpenCalendarModal: () => void;
   onOpenDeviceSyncModal: () => void;
   onResetProgress?: () => void;
+  onExportData?: () => void;
+  onImportData?: (file: File) => void;
   notifications: NotificationItem[];
   onMarkNotificationsRead: () => void;
   calendarConfig: GoogleCalendarConfig;
@@ -30,11 +34,21 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenQuickAdd,
   onOpenDeviceSyncModal,
   onResetProgress,
+  onExportData,
+  onImportData,
   notifications,
   onMarkNotificationsRead,
 }) => {
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
   const unreadNotifs = notifications.filter((n) => !n.read).length;
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && onImportData) {
+      onImportData(file);
+    }
+  };
 
   return (
     <header className="sticky top-0 z-40 bg-[#09090b]/90 backdrop-blur-md border-b border-white/[0.06] px-4 sm:px-6 py-3 transition-all">
@@ -123,6 +137,43 @@ export const Header: React.FC<HeaderProps> = ({
                   <Smartphone className="w-4 h-4 text-purple-400" />
                   <span>Синхронизация с телефоном</span>
                 </button>
+
+                {/* Export Backup JSON */}
+                {onExportData && (
+                  <button
+                    onClick={() => {
+                      setShowSettingsMenu(false);
+                      onExportData();
+                    }}
+                    className="w-full flex items-center gap-2 px-2.5 py-2 rounded-xl hover:bg-emerald-950/30 text-zinc-300 hover:text-emerald-300 transition-colors text-left cursor-pointer"
+                  >
+                    <Download className="w-4 h-4 text-emerald-400" />
+                    <span>Скачать резервную копию (JSON)</span>
+                  </button>
+                )}
+
+                {/* Import Backup JSON */}
+                {onImportData && (
+                  <>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".json"
+                      onChange={handleFileChange}
+                      className="hidden"
+                    />
+                    <button
+                      onClick={() => {
+                        setShowSettingsMenu(false);
+                        fileInputRef.current?.click();
+                      }}
+                      className="w-full flex items-center gap-2 px-2.5 py-2 rounded-xl hover:bg-blue-950/30 text-zinc-300 hover:text-blue-300 transition-colors text-left cursor-pointer"
+                    >
+                      <Upload className="w-4 h-4 text-blue-400" />
+                      <span>Восстановить из файла (JSON)</span>
+                    </button>
+                  </>
+                )}
 
                 {/* Reset Progress */}
                 {onResetProgress && (

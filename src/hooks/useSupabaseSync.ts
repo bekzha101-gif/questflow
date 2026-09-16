@@ -25,52 +25,72 @@ interface UseSupabaseSyncReturn {
 // ─── Raw REST helper (bypasses typed client completely) ────────────────────
 // Uses Supabase PostgREST API directly via fetch to avoid TypeScript generics issues
 async function sbUpsert(table: string, rows: object | object[], onConflict?: string): Promise<boolean> {
-  if (!supabase || !isSupabaseConfigured) return false;
+  try {
+    if (!supabase || !isSupabaseConfigured) return false;
 
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session) return false;
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return false;
 
-  const { url: supabaseUrl, anonKey } = getSupabaseCredentials();
-  if (!supabaseUrl || !anonKey) return false;
+    const { url: supabaseUrl, anonKey } = getSupabaseCredentials();
+    if (!supabaseUrl || !anonKey) return false;
 
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${session.access_token}`,
-    'apikey': anonKey,
-    'Prefer': `resolution=merge-duplicates`,
-  };
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${session.access_token}`,
+      'apikey': anonKey,
+      'Prefer': `resolution=merge-duplicates`,
+    };
 
-  if (onConflict) {
-    headers['Prefer'] = `resolution=merge-duplicates,return=minimal`;
+    if (onConflict) {
+      headers['Prefer'] = `resolution=merge-duplicates,return=minimal`;
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 4000);
+
+    const res = await fetch(`${supabaseUrl}/rest/v1/${table}`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(rows),
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+
+    return res.ok;
+  } catch (e) {
+    console.warn('[Supabase REST] sbUpsert error (offline/paused):', e);
+    return false;
   }
-
-  const res = await fetch(`${supabaseUrl}/rest/v1/${table}`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(rows),
-  });
-
-  return res.ok;
 }
 
 async function sbSelect(table: string, userId: string): Promise<unknown[]> {
-  if (!supabase || !isSupabaseConfigured) return [];
+  try {
+    if (!supabase || !isSupabaseConfigured) return [];
 
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session) return [];
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return [];
 
-  const { url: supabaseUrl, anonKey } = getSupabaseCredentials();
-  if (!supabaseUrl || !anonKey) return [];
+    const { url: supabaseUrl, anonKey } = getSupabaseCredentials();
+    if (!supabaseUrl || !anonKey) return [];
 
-  const res = await fetch(`${supabaseUrl}/rest/v1/${table}?user_id=eq.${userId}&select=*`, {
-    headers: {
-      'Authorization': `Bearer ${session.access_token}`,
-      'apikey': anonKey,
-    },
-  });
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 4000);
 
-  if (!res.ok) return [];
-  return res.json();
+    const res = await fetch(`${supabaseUrl}/rest/v1/${table}?user_id=eq.${userId}&select=*`, {
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'apikey': anonKey,
+      },
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+
+    if (!res.ok) return [];
+    return res.json();
+  } catch (e) {
+    console.warn('[Supabase REST] sbSelect error (offline/paused):', e);
+    return [];
+  }
 }
 
 
@@ -213,71 +233,77 @@ export function useSupabaseSync(): UseSupabaseSyncReturn {
 
     setSyncStatus('syncing');
 
-    const [sRow, taskRows, projectRows, rewardRows] = await Promise.all([
-      sbSelectSingle('user_stats', userId),
-      sbSelect('tasks', userId),
-      sbSelect('projects', userId),
-      sbSelect('rewards', userId),
-    ]);
+    try {
+      const [sRow, taskRows, projectRows, rewardRows] = await Promise.all([
+        sbSelectSingle('user_stats', userId),
+        sbSelect('tasks', userId),
+        sbSelect('projects', userId),
+        sbSelect('rewards', userId),
+      ]);
 
-    setSyncStatus('synced');
+      setSyncStatus('synced');
 
-    const result: PulledData = {};
+      const result: PulledData = {};
 
-    if (sRow) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const s = sRow as any;
-      result.stats = {
-        level: s.level, exp: s.exp, maxExp: s.max_exp,
-        hp: s.hp, maxHp: s.max_hp, gold: s.gold,
-        streak: s.streak, title: s.title, heroClass: s.hero_class,
-        avatarUrl: s.avatar_url, soundEnabled: s.sound_enabled,
-      };
-    }
-
-    if (taskRows.length) {
-      result.tasks = taskRows.map((t) => {
+      if (sRow) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const r = t as any;
-        return {
-          id: r.id, title: r.title, description: r.description ?? undefined,
-          type: r.type, priority: r.priority, projectId: r.project_id,
-          tags: r.tags ?? [], difficulty: r.difficulty,
-          expReward: r.exp_reward, goldReward: r.gold_reward,
-          completed: r.completed, completedAt: r.completed_at ?? undefined,
-          dueDate: r.due_date ?? undefined, dueTime: r.due_time ?? undefined,
-          durationMinutes: r.duration_minutes ?? undefined,
-          recurrence: r.recurrence ?? undefined,
-          streakCount: r.streak_count ?? 0, habitDirection: r.habit_direction ?? undefined,
-          habitCounter: r.habit_counter ?? 0,
-          subtasks: (r.subtasks as Array<{ id: string; text: string; completed: boolean }>) ?? [],
-          googleCalendarEventId: r.google_calendar_event_id ?? undefined,
-          inFocusFlow: r.in_focus_flow ?? false, stage: r.stage ?? undefined,
-        } as TaskItem;
-      });
-    }
+        const s = sRow as any;
+        result.stats = {
+          level: s.level, exp: s.exp, maxExp: s.max_exp,
+          hp: s.hp, maxHp: s.max_hp, gold: s.gold,
+          streak: s.streak, title: s.title, heroClass: s.hero_class,
+          avatarUrl: s.avatar_url, soundEnabled: s.sound_enabled,
+        };
+      }
 
-    if (projectRows.length) {
-      result.projects = projectRows.map((p) => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const r = p as any;
-        return { id: r.id, name: r.name, color: r.color, icon: r.icon, isFavorite: r.is_favorite ?? false } as Project;
-      });
-    }
+      if (taskRows.length) {
+        result.tasks = taskRows.map((t) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const r = t as any;
+          return {
+            id: r.id, title: r.title, description: r.description ?? undefined,
+            type: r.type, priority: r.priority, projectId: r.project_id,
+            tags: r.tags ?? [], difficulty: r.difficulty,
+            expReward: r.exp_reward, goldReward: r.gold_reward,
+            completed: r.completed, completedAt: r.completed_at ?? undefined,
+            dueDate: r.due_date ?? undefined, dueTime: r.due_time ?? undefined,
+            durationMinutes: r.duration_minutes ?? undefined,
+            recurrence: r.recurrence ?? undefined,
+            streakCount: r.streak_count ?? 0, habitDirection: r.habit_direction ?? undefined,
+            habitCounter: r.habit_counter ?? 0,
+            subtasks: (r.subtasks as Array<{ id: string; text: string; completed: boolean }>) ?? [],
+            googleCalendarEventId: r.google_calendar_event_id ?? undefined,
+            inFocusFlow: r.in_focus_flow ?? false, stage: r.stage ?? undefined,
+          } as TaskItem;
+        });
+      }
 
-    if (rewardRows.length) {
-      result.rewards = rewardRows.map((rw) => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const r = rw as any;
-        return {
-          id: r.id, title: r.title, cost: r.cost, type: r.type,
-          icon: r.icon, description: r.description, timesPurchased: r.times_purchased,
-          buffEffect: r.buff_effect ?? undefined,
-        } as Reward;
-      });
-    }
+      if (projectRows.length) {
+        result.projects = projectRows.map((p) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const r = p as any;
+          return { id: r.id, name: r.name, color: r.color, icon: r.icon, isFavorite: r.is_favorite ?? false } as Project;
+        });
+      }
 
-    return result;
+      if (rewardRows.length) {
+        result.rewards = rewardRows.map((rw) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const r = rw as any;
+          return {
+            id: r.id, title: r.title, cost: r.cost, type: r.type,
+            icon: r.icon, description: r.description, timesPurchased: r.times_purchased,
+            buffEffect: r.buff_effect ?? undefined,
+          } as Reward;
+        });
+      }
+
+      return result;
+    } catch (e) {
+      console.warn('[Supabase Sync] pullAll failed (offline/paused):', e);
+      setSyncStatus('local');
+      return {};
+    }
   }, [userId]);
 
   // ─── Export All Data as JSON ──────────────────────────────────────────────

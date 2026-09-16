@@ -116,17 +116,95 @@ export function App() {
     }
   }, []);
 
-  // ─── Export All Data ──────────────────────────────────────────────────────
-  const handleExportData = useCallback(async () => {
-    const json = await exportAllData();
-    const blob = new Blob([json], { type: 'application/json' });
+  // ─── Safe 1-Click Export & Backup ─────────────────────────────────────────
+  const handleExportData = useCallback(() => {
+    const backupData: Record<string, unknown> = {
+      source: 'questflow_full_backup',
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      stats,
+      tasks,
+      projects,
+      rewards,
+      notifications,
+      calendarConfig,
+      localStorage: {} as Record<string, string | null>,
+    };
+    try {
+      Object.keys(localStorage)
+        .filter((k) => k.startsWith('questflow_'))
+        .forEach((k) => {
+          (backupData.localStorage as Record<string, string | null>)[k] = localStorage.getItem(k);
+        });
+    } catch {
+      // ignore
+    }
+    const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = `questflow-backup-${new Date().toISOString().split('T')[0]}.json`;
     a.click();
     URL.revokeObjectURL(url);
-  }, [exportAllData]);
+  }, [stats, tasks, projects, rewards, notifications, calendarConfig]);
+
+  // ─── Safe 1-Click Import & Restore ────────────────────────────────────────
+  const handleImportData = useCallback((file: File) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const content = e.target?.result as string;
+        const parsed = JSON.parse(content);
+
+        if (parsed.stats) {
+          setStats(parsed.stats);
+          saveStats(parsed.stats);
+        }
+        if (Array.isArray(parsed.tasks)) {
+          setTasks(parsed.tasks);
+          saveTasks(parsed.tasks);
+        }
+        if (Array.isArray(parsed.projects)) {
+          setProjects(parsed.projects);
+          saveProjects(parsed.projects);
+        }
+        if (Array.isArray(parsed.rewards)) {
+          setRewards(parsed.rewards);
+          saveRewards(parsed.rewards);
+        }
+        if (Array.isArray(parsed.notifications)) {
+          setNotifications(parsed.notifications);
+          saveNotifications(parsed.notifications);
+        }
+        if (parsed.calendarConfig) {
+          setCalendarConfig(parsed.calendarConfig);
+          saveCalendarConfig(parsed.calendarConfig);
+        }
+
+        if (parsed.localStorage && typeof parsed.localStorage === 'object') {
+          Object.entries(parsed.localStorage).forEach(([k, v]) => {
+            if (typeof v === 'string') localStorage.setItem(k, v);
+          });
+        } else if (parsed.questflow_tasks_v1) {
+          Object.entries(parsed).forEach(([k, v]) => {
+            if (k.startsWith('questflow_')) {
+              localStorage.setItem(k, typeof v === 'string' ? v : JSON.stringify(v));
+            }
+          });
+          if (Array.isArray(parsed.questflow_tasks_v1)) setTasks(parsed.questflow_tasks_v1);
+          if (parsed.questflow_stats_v1) setStats(parsed.questflow_stats_v1);
+          if (Array.isArray(parsed.questflow_projects_v1)) setProjects(parsed.questflow_projects_v1);
+          if (Array.isArray(parsed.questflow_rewards_v1)) setRewards(parsed.questflow_rewards_v1);
+        }
+
+        alert('✅ Резервная копия успешно загружена! Все задачи, проекты и статистика восстановлены.');
+      } catch (err) {
+        console.error('Failed to import backup:', err);
+        alert('❌ Ошибка при чтении файла резервной копии. Проверьте правильность файла .json.');
+      }
+    };
+    reader.readAsText(file);
+  }, []);
 
   // Persistent sync to local storage & broadcast to other tabs/devices
   // Also push to Supabase cloud
@@ -562,6 +640,8 @@ export function App() {
         onOpenCalendarModal={() => setIsCalendarModalOpen(true)}
         onOpenDeviceSyncModal={() => setIsDeviceSyncOpen(true)}
         onResetProgress={handleResetAllProgress}
+        onExportData={handleExportData}
+        onImportData={handleImportData}
         notifications={notifications}
         onMarkNotificationsRead={handleMarkNotificationsRead}
         calendarConfig={calendarConfig}
