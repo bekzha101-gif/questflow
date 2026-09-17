@@ -1,4 +1,5 @@
 import { UserStats, Project, TaskItem, Reward, Boss, GoogleCalendarConfig } from '../types';
+import { todoistProjects, todoistTasks } from './todoistImportData';
 
 export const initialStats: UserStats = {
   level: 1,
@@ -18,6 +19,7 @@ export const initialProjects: Project[] = [
   { id: 'proj-inbox', name: 'Входящие', color: '#6366f1', icon: 'Inbox', isFavorite: true },
   { id: 'proj-work', name: 'Работа & Проекты', color: '#3b82f6', icon: 'Briefcase', isFavorite: true },
   { id: 'proj-life', name: 'Личное & Здоровье', color: '#10b981', icon: 'Sun', isFavorite: true },
+  ...todoistProjects,
 ];
 
 export const initialTasks: TaskItem[] = [
@@ -186,6 +188,7 @@ export const initialTasks: TaskItem[] = [
       { id: 'st-i-20', text: '20. Финальная стратегия: выход на финансовую свободу', completed: false },
     ],
   },
+  ...todoistTasks,
 ];
 
 export const initialRewards: Reward[] = [

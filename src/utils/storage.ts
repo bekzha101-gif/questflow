@@ -1,5 +1,6 @@
 import { UserStats, TaskItem, Project, Reward, Boss, NotificationItem, GoogleCalendarConfig } from '../types';
 import { initialStats, initialTasks, initialProjects, initialRewards, initialBoss, initialCalendarConfig } from '../data/initialData';
+import { todoistProjects, todoistTasks } from '../data/todoistImportData';
 
 const KEYS = {
   STATS: 'questflow_stats_v1',
@@ -37,12 +38,27 @@ const DUMMY_TASK_IDS = new Set([
 export function loadTasks(): TaskItem[] {
   try {
     const data = localStorage.getItem(KEYS.TASKS);
-    if (!data) return initialTasks;
-    const parsed = JSON.parse(data);
-    if (!Array.isArray(parsed)) return initialTasks;
+    let tasks: TaskItem[] = data ? JSON.parse(data) : initialTasks;
+    if (!Array.isArray(tasks) || tasks.length === 0) {
+      tasks = [...initialTasks];
+    }
     // Strip out all unwanted sample/dummy tasks
-    const cleaned = parsed.filter((t: TaskItem) => !DUMMY_TASK_IDS.has(t.id));
-    return cleaned.length > 0 ? cleaned : initialTasks;
+    tasks = tasks.filter((t: TaskItem) => !DUMMY_TASK_IDS.has(t.id));
+
+    // Seamless auto-merge Todoist tasks if not already imported
+    const existingIds = new Set(tasks.map((t) => t.id));
+    let modified = false;
+    for (const tt of todoistTasks) {
+      if (!existingIds.has(tt.id)) {
+        tasks.push(tt);
+        existingIds.add(tt.id);
+        modified = true;
+      }
+    }
+    if (modified) {
+      saveTasks(tasks);
+    }
+    return tasks;
   } catch {
     return initialTasks;
   }
@@ -59,7 +75,23 @@ export function saveTasks(tasks: TaskItem[]) {
 export function loadProjects(): Project[] {
   try {
     const data = localStorage.getItem(KEYS.PROJECTS);
-    return data ? JSON.parse(data) : initialProjects;
+    let projects: Project[] = data ? JSON.parse(data) : initialProjects;
+    if (!Array.isArray(projects) || projects.length === 0) {
+      projects = [...initialProjects];
+    }
+
+    // Seamless auto-merge Todoist projects if not already present
+    let modified = false;
+    for (const tp of todoistProjects) {
+      if (!projects.some((p) => p.id === tp.id)) {
+        projects.push(tp);
+        modified = true;
+      }
+    }
+    if (modified) {
+      saveProjects(projects);
+    }
+    return projects;
   } catch {
     return initialProjects;
   }

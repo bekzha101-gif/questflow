@@ -3,6 +3,7 @@ import { TaskItem, Project, UserStats, Reward } from '../types';
 import { TodoistTaskList } from './TodoistTaskList';
 import { HabitsDailiesView } from './HabitsDailiesView';
 import { HeroTavern } from './HeroTavern';
+import { ShoppingListView } from './ShoppingListView';
 import { 
   CheckSquare, 
   Flame, 
@@ -54,10 +55,13 @@ export function QuestsHub({
   onAddReward,
   onOpenQuickAdd,
 }: QuestsHubProps) {
-  const [hubTab, setHubTab] = useState<'tasks' | 'habits' | 'tavern' | 'overview'>('tasks');
+  const [hubTab, setHubTab] = useState<'tasks' | 'shopping' | 'habits' | 'tavern' | 'overview'>('tasks');
 
   // Counts
   const activeTasksCount = tasks.filter((t) => t.type === 'todo' && !t.completed).length;
+  const shoppingCount = tasks.filter(
+    (t) => (t.projectId === '6h5FPgJ74x5g685w' || t.tags.includes('покупки') || t.tags.includes('желания')) && !t.completed
+  ).length;
   const habitsCount = tasks.filter((t) => t.type === 'habit').length;
   const uncompletedDailiesCount = tasks.filter((t) => t.type === 'daily' && !t.completed).length;
 
@@ -107,6 +111,21 @@ export function QuestsHub({
               {activeTasksCount > 0 && (
                 <span className="text-[9px] font-mono px-1 rounded bg-zinc-700 text-zinc-300">
                   {activeTasksCount}
+                </span>
+              )}
+            </button>
+
+            <button
+              onClick={() => setHubTab('shopping')}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-lg font-medium transition-all cursor-pointer ${
+                hubTab === 'shopping' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30 shadow-sm' : 'text-zinc-400 hover:text-white'
+              }`}
+            >
+              <ShoppingBag className="w-3.5 h-3.5 text-amber-400" />
+              <span>Покупки</span>
+              {shoppingCount > 0 && (
+                <span className="text-[9px] font-mono px-1 rounded bg-amber-950 text-amber-300 border border-amber-800/40">
+                  {shoppingCount}
                 </span>
               )}
             </button>
@@ -171,6 +190,20 @@ export function QuestsHub({
           onToggleSubtask={onToggleSubtask}
           onAddSubtask={onAddSubtask}
           onToggleFocus={onToggleFocus}
+          onDeleteTask={onDeleteTask}
+          onEditTask={onEditTask}
+          onOpenQuickAdd={onOpenQuickAdd}
+        />
+      )}
+
+      {hubTab === 'shopping' && (
+        <ShoppingListView
+          tasks={tasks}
+          projects={projects}
+          stats={stats}
+          onToggleTask={onToggleTask}
+          onToggleSubtask={onToggleSubtask}
+          onAddSubtask={onAddSubtask}
           onDeleteTask={onDeleteTask}
           onEditTask={onEditTask}
           onOpenQuickAdd={onOpenQuickAdd}

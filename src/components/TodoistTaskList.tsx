@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { playQuestCompleteSound, playCoinSound } from '../utils/sound';
 import { triggerQuestConfetti } from '../utils/confetti';
+import { renderFormattedText } from '../utils/textFormatter';
 
 interface TodoistTaskListProps {
   tasks: TaskItem[];
@@ -206,12 +207,12 @@ export const TodoistTaskList: React.FC<TodoistTaskListProps> = ({
 
                   {/* Body */}
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className={`text-xs sm:text-sm font-medium leading-snug ${
+                    <div className="flex items-start justify-between gap-2">
+                      <div className={`text-xs sm:text-sm font-medium leading-snug ${
                         task.completed ? 'line-through text-zinc-500' : 'text-zinc-200'
                       }`}>
-                        {task.title}
-                      </p>
+                        {renderFormattedText(task.title)}
+                      </div>
 
                       <div className="flex items-center gap-1.5 shrink-0">
                         <span className="text-[9px] uppercase font-mono px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-400">
@@ -296,7 +297,9 @@ export const TodoistTaskList: React.FC<TodoistTaskListProps> = ({
                             }`}>
                               {st.completed && <Check className="w-2.5 h-2.5 stroke-[3]" />}
                             </div>
-                            <span className={st.completed ? 'line-through text-zinc-600' : ''}>{st.text}</span>
+                            <span className={st.completed ? 'line-through text-zinc-600' : ''}>
+                              {renderFormattedText(st.text)}
+                            </span>
                           </div>
                         ))}
 
