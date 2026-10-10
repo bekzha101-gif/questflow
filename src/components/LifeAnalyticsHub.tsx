@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { TaskItem, Project, UserStats, NotificationItem } from '../types';
+import { TaskItem, Project, UserStats, NotificationItem, TimeLogEntry } from '../types';
 import { LifeCalendarView } from './LifeCalendarView';
 import { BigDataLifeTracker } from './BigDataLifeTracker';
 import { CalendarTimeBlocking } from './CalendarTimeBlocking';
@@ -19,6 +19,7 @@ interface LifeAnalyticsHubProps {
   projects: Project[];
   stats: UserStats;
   calendarConfig: any;
+  timeLogs?: TimeLogEntry[];
   onUpdateStats: (newStats: Partial<UserStats>) => void;
   onAddNotification?: (notif: NotificationItem) => void;
   onSyncCalendar: () => void;
@@ -34,6 +35,7 @@ export function LifeAnalyticsHub({
   projects,
   stats,
   calendarConfig,
+  timeLogs = [],
   onUpdateStats,
   onAddNotification,
   onSyncCalendar,
@@ -136,6 +138,7 @@ export function LifeAnalyticsHub({
           tasks={tasks}
           projects={projects}
           calendarConfig={calendarConfig}
+          timeLogs={timeLogs}
           onSyncCalendar={onSyncCalendar}
           onOpenCalendarModal={onOpenCalendarModal}
           onOpenQuickAdd={onOpenQuickAdd}

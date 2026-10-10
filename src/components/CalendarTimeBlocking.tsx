@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { TaskItem, Project, GoogleCalendarConfig, Priority } from '../types';
+import { TaskItem, Project, GoogleCalendarConfig, Priority, TimeLogEntry } from '../types';
 import { 
   Calendar as CalendarIcon, 
   ChevronLeft, 
@@ -12,7 +12,9 @@ import {
   Copy, 
   Check,
   CalendarDays,
-  X
+  X,
+  Flame,
+  Coffee
 } from 'lucide-react';
 import { downloadIcsFile } from '../utils/calendarSync';
 import { playQuestCompleteSound, playCoinSound } from '../utils/sound';
@@ -23,6 +25,7 @@ interface CalendarTimeBlockingProps {
   tasks: TaskItem[];
   projects: Project[];
   calendarConfig: GoogleCalendarConfig;
+  timeLogs?: TimeLogEntry[];
   onSyncCalendar: () => void;
   onOpenCalendarModal: () => void;
   onOpenQuickAdd: () => void;
@@ -33,6 +36,7 @@ export const CalendarTimeBlocking: React.FC<CalendarTimeBlockingProps> = ({
   tasks,
   projects,
   calendarConfig,
+  timeLogs = [],
   onSyncCalendar,
   onOpenCalendarModal,
   onOpenQuickAdd,
@@ -40,7 +44,11 @@ export const CalendarTimeBlocking: React.FC<CalendarTimeBlockingProps> = ({
 }) => {
   const [viewDate, setViewDate] = useState<Date>(() => new Date());
   const [viewMode, setViewMode] = useState<'month' | 'day_timeline' | 'life_calendar'>('month');
-  const [selectedDayTasks, setSelectedDayTasks] = useState<{ dateStr: string; tasks: TaskItem[] } | null>(null);
+  const [selectedDayTasks, setSelectedDayTasks] = useState<{ 
+    dateStr: string; 
+    tasks: TaskItem[]; 
+    timeLogs: TimeLogEntry[]; 
+  } | null>(null);
 
 
   const [copiedFeed, setCopiedFeed] = useState(false);
@@ -248,10 +256,15 @@ export const CalendarTimeBlocking: React.FC<CalendarTimeBlockingProps> = ({
                 return false;
               });
 
+              const dayTimeLogs = timeLogs.filter((tl) => tl.startedAt.startsWith(dateStr));
+              const focusMins = dayTimeLogs
+                .filter((tl) => tl.mode === 'work')
+                .reduce((sum, tl) => sum + tl.actualMinutes, 0);
+
               return (
                 <div
                   key={`day-${dayNum}`}
-                  onClick={() => setSelectedDayTasks({ dateStr, tasks: dayTasks })}
+                  onClick={() => setSelectedDayTasks({ dateStr, tasks: dayTasks, timeLogs: dayTimeLogs })}
                   className={`min-h-[85px] sm:min-h-[110px] rounded-2xl border p-2 flex flex-col justify-between cursor-pointer transition-all ${
                     isToday
                       ? 'bg-[#14141c] border-zinc-500'
@@ -277,8 +290,15 @@ export const CalendarTimeBlocking: React.FC<CalendarTimeBlockingProps> = ({
                     )}
                   </div>
 
-                  {/* Task chips inside day */}
+                  {/* Task chips & focus log badge inside day */}
                   <div className="flex-1 space-y-1 overflow-hidden">
+                    {focusMins > 0 && (
+                      <div className="px-1.5 py-0.5 rounded text-[8px] font-mono bg-amber-500/15 text-amber-300 border border-amber-500/20 truncate flex items-center gap-1">
+                        <Flame className="w-2.5 h-2.5 shrink-0 text-amber-400" />
+                        <span>{focusMins}м фокус</span>
+                      </div>
+                    )}
+
                     {dayTasks.slice(0, 2).map((t) => (
                       <div
                         key={t.id}
@@ -330,10 +350,18 @@ export const CalendarTimeBlocking: React.FC<CalendarTimeBlockingProps> = ({
           <div className="space-y-1.5">
             {Array.from({ length: 15 }, (_, i) => i + 8).map((hour) => {
               const hourStr = `${hour.toString().padStart(2, '0')}:00`;
+              const targetDayStr = viewDate.toISOString().split('T')[0];
+
               const matching = tasks.filter((t) => {
                 if (!t.dueTime) return false;
                 const taskHour = parseInt(t.dueTime.split(':')[0], 10);
                 return taskHour === hour;
+              });
+
+              const matchingLogs = timeLogs.filter((tl) => {
+                if (!tl.startedAt.startsWith(targetDayStr)) return false;
+                const logHour = new Date(tl.startedAt).getHours();
+                return logHour === hour;
               });
 
               return (
@@ -343,6 +371,34 @@ export const CalendarTimeBlocking: React.FC<CalendarTimeBlockingProps> = ({
                   </span>
 
                   <div className="flex-1 space-y-1">
+                    {matchingLogs.map((tl) => (
+                      <div
+                        key={tl.id}
+                        className={`p-2.5 rounded-xl border flex items-center justify-between text-xs transition-all ${
+                          tl.mode === 'work'
+                            ? 'bg-amber-950/25 border-amber-500/30 text-amber-200'
+                            : 'bg-emerald-950/25 border-emerald-500/30 text-emerald-200'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 truncate">
+                          {tl.mode === 'work' ? (
+                            <Flame className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                          ) : (
+                            <Coffee className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                          )}
+                          <span className="font-semibold truncate">{tl.title}</span>
+                        </div>
+                        <div className="flex items-center gap-2 font-mono text-[10px] shrink-0">
+                          <span className="text-zinc-400">
+                            {new Date(tl.startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • {tl.actualMinutes}м
+                          </span>
+                          {tl.expEarned ? (
+                            <span className="text-amber-400 font-bold">+{tl.expEarned} EXP</span>
+                          ) : null}
+                        </div>
+                      </div>
+                    ))}
+
                     {matching.map((t) => (
                       <div
                         key={t.id}
@@ -410,6 +466,40 @@ export const CalendarTimeBlocking: React.FC<CalendarTimeBlockingProps> = ({
                     </span>
                   </div>
                 ))
+              )}
+
+              {selectedDayTasks.timeLogs && selectedDayTasks.timeLogs.length > 0 && (
+                <div className="pt-3 border-t border-white/5 space-y-2 mt-2">
+                  <div className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <Flame className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Сессии таймера ({selectedDayTasks.timeLogs.length})</span>
+                  </div>
+                  {selectedDayTasks.timeLogs.map((tl) => (
+                    <div
+                      key={tl.id}
+                      className={`p-2.5 rounded-xl border flex items-center justify-between text-xs ${
+                        tl.mode === 'work'
+                          ? 'bg-amber-950/20 border-amber-500/20 text-amber-200'
+                          : 'bg-emerald-950/20 border-emerald-500/20 text-emerald-200'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 truncate">
+                        {tl.mode === 'work' ? (
+                          <Flame className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                        ) : (
+                          <Coffee className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                        )}
+                        <span className="font-medium truncate">{tl.title}</span>
+                      </div>
+                      <div className="flex items-center gap-2 font-mono text-[10px] text-zinc-400 shrink-0">
+                        <span>{new Date(tl.startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        <span>•</span>
+                        <span>{tl.actualMinutes}м</span>
+                        {tl.expEarned ? <span className="text-amber-400">+{tl.expEarned} EXP</span> : null}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
 

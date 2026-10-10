@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { UserStats, TaskItem, Project, Reward, NotificationItem, GoogleCalendarConfig, SubTask } from './types';
+import { UserStats, TaskItem, Project, Reward, NotificationItem, GoogleCalendarConfig, SubTask, TimeLogEntry } from './types';
 import { 
   loadStats, saveStats,
   loadTasks, saveTasks,
@@ -36,11 +36,12 @@ import { AiQuestMasterModal } from './components/AiQuestMasterModal';
 import { LevelUpModal } from './components/LevelUpModal';
 import { GlobalCommandPalette } from './components/GlobalCommandPalette';
 import { UndoSnackbar, SnackbarAction } from './components/UndoSnackbar';
-import { PomodoroTimerWidget } from './components/PomodoroTimerWidget';
+import { TogglTimerBar } from './components/TogglTimerBar';
 import { HealthBioTracker } from './components/HealthBioTracker';
 import { TaskEditModal } from './components/TaskEditModal';
 import { playLevelUpSound } from './utils/sound';
 import { triggerLevelUpConfetti } from './utils/confetti';
+import { createGoogleCalendarTimeLogEvent } from './utils/googleCalendarApi';
 
 
 
@@ -54,6 +55,24 @@ export function App() {
   const [notifications, setNotifications] = useState<NotificationItem[]>(loadNotifications);
   const [calendarConfig, setCalendarConfig] = useState<GoogleCalendarConfig>(loadCalendarConfig);
   const [syncConfig, setSyncConfig] = useState<CloudSyncState>(loadCloudSyncConfig);
+
+  // Time Tracking State (Toggl Track Style)
+  const [timeLogs, setTimeLogs] = useState<TimeLogEntry[]>(() => {
+    try {
+      const saved = localStorage.getItem('questflow_timelogs');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('questflow_timelogs', JSON.stringify(timeLogs));
+    } catch (e) {
+      console.error('Failed to save timelogs to localStorage', e);
+    }
+  }, [timeLogs]);
 
   // Active Navigation Tab (Defaults to Today Command Center)
   const [activeTab, setActiveTab] = useState<TabType>('today');
@@ -128,6 +147,7 @@ export function App() {
       rewards,
       notifications,
       calendarConfig,
+      timeLogs,
       localStorage: {} as Record<string, string | null>,
     };
     try {
@@ -146,7 +166,7 @@ export function App() {
     a.download = `questflow-backup-${new Date().toISOString().split('T')[0]}.json`;
     a.click();
     URL.revokeObjectURL(url);
-  }, [stats, tasks, projects, rewards, notifications, calendarConfig]);
+  }, [stats, tasks, projects, rewards, notifications, calendarConfig, timeLogs]);
 
   // ─── Safe 1-Click Import & Restore ────────────────────────────────────────
   const handleImportData = useCallback((file: File) => {
@@ -175,6 +195,12 @@ export function App() {
         if (Array.isArray(parsed.notifications)) {
           setNotifications(parsed.notifications);
           saveNotifications(parsed.notifications);
+        }
+        if (Array.isArray(parsed.timeLogs)) {
+          setTimeLogs(parsed.timeLogs);
+          try {
+            localStorage.setItem('questflow_timelogs', JSON.stringify(parsed.timeLogs));
+          } catch {}
         }
         if (parsed.calendarConfig) {
           setCalendarConfig(parsed.calendarConfig);
@@ -338,6 +364,42 @@ export function App() {
         gold: newGold,
       }));
     }
+  };
+
+  // Handle Session Logged from Toggl Timer
+  const handleLogSession = async (entry: TimeLogEntry) => {
+    setTimeLogs((prev) => [entry, ...prev]);
+
+    // Award Rewards
+    if (entry.expEarned || entry.goldEarned) {
+      awardRewards(entry.expEarned || 0, entry.goldEarned || 0);
+    }
+
+    // Direct Google Calendar Sync if connected & active
+    if (calendarConfig.connected && calendarConfig.accessToken && calendarConfig.autoSync) {
+      try {
+        const gEventId = await createGoogleCalendarTimeLogEvent(entry, calendarConfig.accessToken);
+        if (gEventId) {
+          setTimeLogs((prev) =>
+            prev.map((l) => (l.id === entry.id ? { ...l, googleCalendarEventId: gEventId } : l))
+          );
+        }
+      } catch (err) {
+        console.error('Error auto-syncing time log to Google Calendar:', err);
+      }
+    }
+
+    setNotifications((prev) => [
+      {
+        id: `timelog-${Date.now()}`,
+        title: entry.mode === 'work' ? '⚔️ Фокус-сессия записана в календарь!' : '☕ Перерыв завершён',
+        message: `${entry.title} (${entry.actualMinutes} мин)${entry.expEarned ? ` • +${entry.expEarned} EXP, +${entry.goldEarned}G` : ''}`,
+        time: new Date().toLocaleTimeString(),
+        type: 'reward',
+        read: false,
+      },
+      ...prev,
+    ]);
   };
 
   // Reset All Farmed Stats & Progress (Fresh Start)
@@ -656,6 +718,15 @@ export function App() {
         dueTodayCount={dueTodayCount}
       />
 
+      {/* 2.5 Toggl Track Style Time Tracker Bar (Focus 120m / Break 20m) */}
+      <TogglTimerBar
+        tasks={tasks}
+        projects={projects}
+        onLogSession={handleLogSession}
+        onCompleteTask={handleToggleTask}
+        isCalendarConnected={Boolean(calendarConfig.connected && calendarConfig.accessToken)}
+      />
+
       {/* 3. Main Views (5 Clean Flagship Hubs) */}
       <main className="flex-1 overflow-hidden flex flex-col">
         
@@ -738,6 +809,7 @@ export function App() {
               projects={projects}
               stats={stats}
               calendarConfig={calendarConfig}
+              timeLogs={timeLogs}
               onUpdateStats={handleUpdateStats}
               onAddNotification={(n) => setNotifications((prev) => [n, ...prev])}
               onSyncCalendar={() => {
@@ -876,11 +948,6 @@ export function App() {
       <UndoSnackbar
         action={snackbarAction}
         onClose={() => setSnackbarAction(null)}
-      />
-
-      {/* Interactive Pomodoro Focus Sprint Widget with Ambient Soundscapes */}
-      <PomodoroTimerWidget
-        onSprintComplete={awardRewards}
       />
 
 

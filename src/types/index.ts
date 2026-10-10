@@ -100,4 +100,21 @@ export interface GoogleCalendarConfig {
   lastSyncedAt?: string;
   apiKey?: string;
   clientId?: string;
+  accessToken?: string;
+  tokenExpiresAt?: number;
+}
+
+export interface TimeLogEntry {
+  id: string;
+  title: string;
+  mode: 'work' | 'break';
+  targetMinutes: number;
+  actualMinutes: number;
+  startedAt: string;
+  completedAt: string;
+  taskId?: string;
+  projectId?: string;
+  expEarned?: number;
+  goldEarned?: number;
+  googleCalendarEventId?: string;
 }
