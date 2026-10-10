@@ -521,6 +521,8 @@ export function App() {
     localStorage.removeItem('questflow_tasks_v1');
     localStorage.removeItem('questflow_rewards_v1');
     localStorage.removeItem('questflow_bigdata_entries_v1');
+    localStorage.removeItem('questflow_bigdata_v1');
+    localStorage.removeItem('questflow_bigdata_v3_cleaned');
     localStorage.removeItem('questflow_content_videos_v1');
 
     // Push fresh state to Supabase

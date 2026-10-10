@@ -4,6 +4,7 @@ import {
   DailyLogEntry, 
   MonthlyBigDataState, 
   initialBigDataMonth, 
+  createEmptyBigDataMonth,
   calculateMonthlyStats,
   SleepCycleSyncConfig
 } from '../utils/bigDataTracker';
@@ -41,7 +42,8 @@ import {
   ShieldCheck,
   AlertCircle,
   Brain,
-  FileSpreadsheet
+  FileSpreadsheet,
+  RotateCcw
 } from 'lucide-react';
 import { AiLifeAdvisorModal } from './AiLifeAdvisorModal';
 import { BigDataChart } from './BigDataChart';
@@ -57,29 +59,37 @@ interface BigDataLifeTrackerProps {
 export const BigDataLifeTracker: React.FC<BigDataLifeTrackerProps> = ({ onLogReward }) => {
   const [data, setData] = useState<MonthlyBigDataState>(() => {
     try {
+      // Force migration to empty state if previously filled with mock demo data
+      const cleanedMigration = localStorage.getItem('questflow_bigdata_v3_cleaned');
+      if (!cleanedMigration) {
+        localStorage.removeItem('questflow_bigdata_v1');
+        localStorage.setItem('questflow_bigdata_v3_cleaned', 'true');
+        return createEmptyBigDataMonth();
+      }
+
       const saved = localStorage.getItem('questflow_bigdata_v1');
       if (saved) {
         const parsed = JSON.parse(saved);
         return {
-          ...initialBigDataMonth,
+          ...createEmptyBigDataMonth(),
           ...parsed,
           sleepSync: {
-            ...initialBigDataMonth.sleepSync,
+            ...createEmptyBigDataMonth().sleepSync,
             ...(parsed.sleepSync || {}),
           },
           biometrics: {
-            ...initialBigDataMonth.biometrics,
+            ...createEmptyBigDataMonth().biometrics,
             ...(parsed.biometrics || {}),
           },
           hormones: {
-            ...initialBigDataMonth.hormones,
+            ...createEmptyBigDataMonth().hormones,
             ...(parsed.hormones || {}),
           },
         };
       }
-      return initialBigDataMonth;
+      return createEmptyBigDataMonth();
     } catch {
-      return initialBigDataMonth;
+      return createEmptyBigDataMonth();
     }
   });
 
@@ -120,6 +130,13 @@ export const BigDataLifeTracker: React.FC<BigDataLifeTrackerProps> = ({ onLogRew
     URL.revokeObjectURL(url);
   };
 
+  const handleResetAllData = () => {
+    if (window.confirm('Сбросить всю статистику за месяц? Будут полностью очищены БАДы, сон, оценки, причины баллов, сферы и заметки.')) {
+      const empty = createEmptyBigDataMonth(data.monthName, data.year);
+      saveData(empty);
+      localStorage.setItem('questflow_bigdata_v3_cleaned', 'true');
+    }
+  };
 
   // Form for day edit
   const [formSleep, setFormSleep] = useState('');
@@ -141,9 +158,9 @@ export const BigDataLifeTracker: React.FC<BigDataLifeTrackerProps> = ({ onLogRew
 
   const openDayEdit = (entry: DailyLogEntry) => {
     setEditingDay(entry);
-    setFormSleep(entry.sleep || '7ч 30м');
+    setFormSleep(entry.sleep || '');
     setFormSupplements(entry.supplements || '');
-    setFormScore(entry.score !== null ? entry.score.toString() : '7.0');
+    setFormScore(entry.score !== null && entry.score !== undefined ? entry.score.toString() : '');
     setFormWhy(entry.why || '');
     setFormTags([...entry.tags]);
   };
@@ -152,7 +169,7 @@ export const BigDataLifeTracker: React.FC<BigDataLifeTrackerProps> = ({ onLogRew
     e.preventDefault();
     if (!editingDay) return;
 
-    let minutes = 450;
+    let minutes = 0;
     const match = formSleep.match(/(\d+)\s*ч\s*(\d+)?/i);
     if (match) {
       const hours = parseInt(match[1], 10) || 0;
@@ -445,6 +462,16 @@ export const BigDataLifeTracker: React.FC<BigDataLifeTrackerProps> = ({ onLogRew
             >
               <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
               <span>CSV</span>
+            </button>
+
+            {/* Reset All Data Button */}
+            <button
+              onClick={handleResetAllData}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-zinc-900 hover:bg-rose-950/40 hover:border-rose-500/30 border border-white/10 text-zinc-300 hover:text-rose-300 font-sans font-medium transition-all"
+              title="Сбросить все данные месяца (БАДы, сон, оценки, причины баллов, сферы, заметки)"
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-rose-400" />
+              <span>Сбросить всё</span>
             </button>
 
             <div className="px-3 py-1.5 rounded-xl bg-zinc-900 border border-white/10 text-zinc-300">
@@ -870,8 +897,7 @@ export const BigDataLifeTracker: React.FC<BigDataLifeTrackerProps> = ({ onLogRew
                   <label className="text-xs text-zinc-400 font-medium block mb-1">Сон (ч/м)</label>
                   <input
                     type="text"
-                    required
-                    placeholder="7ч 40м"
+                    placeholder="например, 7ч 40м"
                     value={formSleep}
                     onChange={(e) => setFormSleep(e.target.value)}
                     className="w-full bg-zinc-900 border border-white/10 rounded-xl px-3 py-2 text-xs text-zinc-200 font-mono focus:outline-none focus:border-zinc-500"
