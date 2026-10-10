@@ -32,6 +32,16 @@ import {
   sendDesktopNotification,
   requestDesktopNotificationPermission
 } from '../utils/recoveryCycle';
+import { 
+  TimerMode, 
+  AmbientSound, 
+  PersistentTimerSession,
+  loadPersistentTimerSession, 
+  savePersistentTimerSession, 
+  clearPersistentTimerSession, 
+  calculateCurrentTimerState, 
+  subscribeTimerChannel 
+} from '../utils/timerStorage';
 
 interface TogglTimerBarProps {
   tasks: TaskItem[];
@@ -41,9 +51,6 @@ interface TogglTimerBarProps {
   onDamageHp?: (damageAmount: number, reason: string) => void;
   isCalendarConnected?: boolean;
 }
-
-type TimerMode = 'work' | 'break';
-type AmbientSound = 'none' | 'brown' | 'gamma' | 'alpha';
 
 export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({
   tasks,
@@ -60,15 +67,40 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({
   const isDetoxDay = cycleInfo.isRecoveryDay;
   const [isUnlockedForDetox, setIsUnlockedForDetox] = useState(false);
 
+  // Load initial persistent session from offline storage
+  const initialSavedSession = useRef(loadPersistentTimerSession()).current;
+  const initialCalculated = initialSavedSession ? calculateCurrentTimerState(initialSavedSession) : null;
+  const initialExpired = Boolean(initialSavedSession && initialCalculated && initialCalculated.isExpired);
+
+  // Offline expired session state for modal confirmation (User choice A1)
+  const [expiredOfflineSession, setExpiredOfflineSession] = useState<{
+    session: PersistentTimerSession;
+    state: ReturnType<typeof calculateCurrentTimerState>;
+  } | null>(() => {
+    if (initialExpired && initialSavedSession && initialCalculated) {
+      return { session: initialSavedSession, state: initialCalculated };
+    }
+    return null;
+  });
+
   // Timer Mode: work (default 120m) vs break (default 20m)
-  const [mode, setMode] = useState<TimerMode>('work');
+  const [mode, setMode] = useState<TimerMode>(() => {
+    if (initialSavedSession && !initialExpired) return initialSavedSession.mode;
+    return 'work';
+  });
   
   // Custom configurable durations in minutes
   const [workDuration, setWorkDuration] = useState<number>(() => {
+    if (initialSavedSession?.mode === 'work' && initialSavedSession.targetMinutes) {
+      return initialSavedSession.targetMinutes;
+    }
     const saved = localStorage.getItem('questflow_timer_work_duration');
     return saved ? parseInt(saved, 10) : 120;
   });
   const [breakDuration, setBreakDuration] = useState<number>(() => {
+    if (initialSavedSession?.mode === 'break' && initialSavedSession.targetMinutes) {
+      return initialSavedSession.targetMinutes;
+    }
     const saved = localStorage.getItem('questflow_timer_break_duration');
     return saved ? parseInt(saved, 10) : 20;
   });
@@ -78,9 +110,15 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({
 
   // Active activity title and selected task
   const [title, setTitle] = useState(() => {
+    if (initialSavedSession && !initialExpired && initialSavedSession.title) {
+      return initialSavedSession.title;
+    }
     return localStorage.getItem('questflow_timer_title') || 'Подчесать всю тетрадь, исправить и внедрить все идеи.';
   });
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(() => {
+    if (initialSavedSession && !initialExpired) {
+      return initialSavedSession.selectedTaskId;
+    }
     return localStorage.getItem('questflow_timer_selected_task_id') || 'task-notebook-ideas';
   });
   const [isTaskDropdownOpen, setIsTaskDropdownOpen] = useState(false);
@@ -96,19 +134,63 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({
     }
   }, [selectedTaskId]);
 
-  // Time state
-  const [timeLeft, setTimeLeft] = useState(currentTargetMinutes * 60);
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
-  const [isRunning, setIsRunning] = useState(false);
-  const [sessionStartTime, setSessionStartTime] = useState<Date | null>(null);
+  // Time state loaded from persistent session
+  const [elapsedSeconds, setElapsedSeconds] = useState(() => {
+    if (initialSavedSession && !initialExpired && initialCalculated) {
+      return initialCalculated.elapsedSeconds;
+    }
+    return 0;
+  });
+  const [timeLeft, setTimeLeft] = useState(() => {
+    if (initialSavedSession && !initialExpired && initialCalculated) {
+      return initialCalculated.timeLeft;
+    }
+    return (mode === 'work' ? workDuration : breakDuration) * 60;
+  });
+  const [isRunning, setIsRunning] = useState(() => {
+    if (initialSavedSession && !initialExpired) {
+      return initialSavedSession.isRunning;
+    }
+    return false;
+  });
+  const [sessionStartTime, setSessionStartTime] = useState<Date | null>(() => {
+    if (initialSavedSession && !initialExpired && initialSavedSession.startTime) {
+      return new Date(initialSavedSession.startTime);
+    }
+    return null;
+  });
 
   // Countdown vs Stopwatch mode
-  const [timerType, setTimerType] = useState<'countdown' | 'stopwatch'>('countdown');
+  const [timerType, setTimerType] = useState<'countdown' | 'stopwatch'>(() => {
+    if (initialSavedSession && !initialExpired && initialSavedSession.timerType) {
+      return initialSavedSession.timerType;
+    }
+    return 'countdown';
+  });
 
   // Ambient sound
-  const [ambientSound, setAmbientSound] = useState<AmbientSound>('none');
+  const [ambientSound, setAmbientSound] = useState<AmbientSound>(() => {
+    if (initialSavedSession && initialSavedSession.ambientSound) {
+      return initialSavedSession.ambientSound;
+    }
+    return 'none';
+  });
+
+  // Autoplay recovery gesture listener (User choice A2)
+  const [isAudioWaitingForGesture, setIsAudioWaitingForGesture] = useState(() => {
+    return Boolean(
+      initialSavedSession &&
+      !initialExpired &&
+      initialSavedSession.isRunning &&
+      initialSavedSession.ambientSound !== 'none'
+    );
+  });
+
   const audioCtxRef = useRef<AudioContext | null>(null);
   const soundNodeRef = useRef<{ osc?: OscillatorNode; gain?: GainNode; noise?: AudioNode } | null>(null);
+  const accumulatedSecondsRef = useRef<number>(
+    initialSavedSession && !initialExpired ? initialSavedSession.accumulatedSeconds : 0
+  );
 
   // Save durations to localStorage
   useEffect(() => {
@@ -121,11 +203,12 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({
 
   // Reset timer when target duration changes while idle
   useEffect(() => {
-    if (!isRunning) {
+    if (!isRunning && !expiredOfflineSession) {
       setTimeLeft(currentTargetMinutes * 60);
       setElapsedSeconds(0);
+      accumulatedSecondsRef.current = 0;
     }
-  }, [currentTargetMinutes, mode, isRunning]);
+  }, [currentTargetMinutes, mode, isRunning, expiredOfflineSession]);
 
   // ─── Web Audio API Soundscape Synthesizer ──────────────────────────────────
   const startAmbientSound = (type: AmbientSound) => {
@@ -210,6 +293,8 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({
   const selectedTaskIdRef = useRef(selectedTaskId);
   const sessionStartTimeRef = useRef(sessionStartTime);
   const ambientSoundRef = useRef(ambientSound);
+  const isRunningRef = useRef(isRunning);
+  const timerTypeRef = useRef(timerType);
 
   useEffect(() => { elapsedSecondsRef.current = elapsedSeconds; }, [elapsedSeconds]);
   useEffect(() => { modeRef.current = mode; }, [mode]);
@@ -219,29 +304,102 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({
   useEffect(() => { selectedTaskIdRef.current = selectedTaskId; }, [selectedTaskId]);
   useEffect(() => { sessionStartTimeRef.current = sessionStartTime; }, [sessionStartTime]);
   useEffect(() => { ambientSoundRef.current = ambientSound; }, [ambientSound]);
+  useEffect(() => { isRunningRef.current = isRunning; }, [isRunning]);
+  useEffect(() => { timerTypeRef.current = timerType; }, [timerType]);
 
-  // Timer Tick Effect
+  // Helper to persist current timer session state
+  const persistCurrentState = (overrides?: Partial<PersistentTimerSession>) => {
+    const session: PersistentTimerSession = {
+      mode: modeRef.current,
+      isRunning: isRunningRef.current,
+      startTime: sessionStartTimeRef.current ? sessionStartTimeRef.current.getTime() : null,
+      accumulatedSeconds: accumulatedSecondsRef.current,
+      targetMinutes: modeRef.current === 'work' ? workDurationRef.current : breakDurationRef.current,
+      title: titleRef.current,
+      selectedTaskId: selectedTaskIdRef.current,
+      ambientSound: ambientSoundRef.current,
+      timerType: timerTypeRef.current,
+      lastUpdated: Date.now(),
+      ...overrides,
+    };
+    savePersistentTimerSession(session);
+  };
+
+  // Multi-tab BroadcastChannel synchronization (User choice A4)
+  useEffect(() => {
+    const unsubscribe = subscribeTimerChannel((syncedSession) => {
+      if (!syncedSession) {
+        setIsRunning(false);
+        setSessionStartTime(null);
+        setElapsedSeconds(0);
+        accumulatedSecondsRef.current = 0;
+        setTimeLeft((modeRef.current === 'work' ? workDurationRef.current : breakDurationRef.current) * 60);
+        return;
+      }
+      const state = calculateCurrentTimerState(syncedSession);
+      if (state.isExpired) {
+        setExpiredOfflineSession({ session: syncedSession, state });
+        setIsRunning(false);
+        return;
+      }
+      setMode(syncedSession.mode);
+      setTitle(syncedSession.title);
+      setSelectedTaskId(syncedSession.selectedTaskId);
+      setAmbientSound(syncedSession.ambientSound);
+      setTimerType(syncedSession.timerType);
+      setIsRunning(syncedSession.isRunning);
+      setElapsedSeconds(state.elapsedSeconds);
+      setTimeLeft(state.timeLeft);
+      accumulatedSecondsRef.current = syncedSession.accumulatedSeconds;
+      setSessionStartTime(syncedSession.startTime ? new Date(syncedSession.startTime) : null);
+    });
+    return unsubscribe;
+  }, []);
+
+  // Autoplay recovery gesture listener (User choice A2)
+  useEffect(() => {
+    if (isAudioWaitingForGesture && ambientSound !== 'none') {
+      const handleGesture = () => {
+        startAmbientSound(ambientSound);
+        setIsAudioWaitingForGesture(false);
+      };
+      window.addEventListener('click', handleGesture, { once: true });
+      window.addEventListener('keydown', handleGesture, { once: true });
+      return () => {
+        window.removeEventListener('click', handleGesture);
+        window.removeEventListener('keydown', handleGesture);
+      };
+    }
+  }, [isAudioWaitingForGesture, ambientSound]);
+
+  // Timer Tick Effect with Wall-clock verification (offline-proof)
   useEffect(() => {
     let interval: any = null;
     if (isRunning) {
       interval = setInterval(() => {
-        setElapsedSeconds((prev) => {
-          const next = prev + 1;
-          elapsedSecondsRef.current = next;
-          return next;
-        });
-
-        if (timerType === 'countdown') {
-          setTimeLeft((prev) => {
-            if (prev <= 1) {
-              setTimeout(() => {
-                handleFinishSession(true);
-              }, 0);
-              return 0;
-            }
-            return prev - 1;
-          });
+        const start = sessionStartTimeRef.current ? sessionStartTimeRef.current.getTime() : null;
+        let actualElapsed = accumulatedSecondsRef.current;
+        if (start) {
+          actualElapsed += Math.max(0, Math.floor((Date.now() - start) / 1000));
         }
+
+        setElapsedSeconds(actualElapsed);
+        elapsedSecondsRef.current = actualElapsed;
+
+        const targetSec = (modeRef.current === 'work' ? workDurationRef.current : breakDurationRef.current) * 60;
+        if (timerType === 'countdown') {
+          const remaining = Math.max(0, targetSec - actualElapsed);
+          setTimeLeft(remaining);
+
+          if (remaining <= 0) {
+            setTimeout(() => {
+              handleFinishSession(true);
+            }, 0);
+          }
+        }
+
+        // Keep persistent storage updated periodically
+        persistCurrentState();
       }, 1000);
     }
 
@@ -254,16 +412,28 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({
       if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
         requestDesktopNotificationPermission();
       }
-      if (!sessionStartTime) {
-        setSessionStartTime(new Date());
-      }
+      const now = new Date();
+      setSessionStartTime(now);
       setIsRunning(true);
       if (ambientSound !== 'none') {
         startAmbientSound(ambientSound);
       }
+      persistCurrentState({
+        isRunning: true,
+        startTime: now.getTime(),
+      });
     } else {
       setIsRunning(false);
       stopAmbientSound();
+      const currentSegment = sessionStartTime ? Math.floor((Date.now() - sessionStartTime.getTime()) / 1000) : 0;
+      const totalAccum = accumulatedSecondsRef.current + currentSegment;
+      accumulatedSecondsRef.current = totalAccum;
+      setSessionStartTime(null);
+      persistCurrentState({
+        isRunning: false,
+        startTime: null,
+        accumulatedSeconds: totalAccum,
+      });
     }
   };
 
@@ -280,8 +450,116 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({
     const targetMin = newMode === 'work' ? workDuration : breakDuration;
     setTimeLeft(targetMin * 60);
     setElapsedSeconds(0);
+    accumulatedSecondsRef.current = 0;
     setIsRunning(false);
     setSessionStartTime(null);
+
+    persistCurrentState({
+      mode: newMode,
+      isRunning: false,
+      startTime: null,
+      accumulatedSeconds: 0,
+      targetMinutes: targetMin,
+    });
+  };
+
+  // Handle Offline Expired Session Confirmation (User choice A1)
+  const handleConfirmExpiredSession = () => {
+    if (!expiredOfflineSession) return;
+    const { session, state } = expiredOfflineSession;
+    const isWork = session.mode === 'work';
+    const actualMinutes = Math.min(session.targetMinutes, state.expiredMinutes);
+    const now = new Date();
+    const startTime = session.startTime
+      ? new Date(session.startTime)
+      : new Date(now.getTime() - actualMinutes * 60 * 1000);
+
+    const expEarned = isWork ? Math.round(actualMinutes * 1.5) + 50 : 0;
+    const goldEarned = isWork ? Math.round(actualMinutes * 0.8) + 25 : 0;
+
+    const entry: TimeLogEntry = {
+      id: `timelog-${Date.now()}`,
+      title: session.title.trim() || (isWork ? 'Фокус-работа' : 'Перерыв'),
+      mode: session.mode,
+      targetMinutes: session.targetMinutes,
+      actualMinutes,
+      startedAt: startTime.toISOString(),
+      completedAt: now.toISOString(),
+      taskId: session.selectedTaskId || undefined,
+      expEarned,
+      goldEarned,
+    };
+    onLogSession(entry);
+
+    if (isWork) {
+      playQuestCompleteSound();
+      playCoinSound();
+      triggerQuestConfetti();
+      playBreakBellSound();
+      sendDesktopNotification(
+        '🧘 Время фокуса завершено!',
+        'Сессия подтверждена и записана в календарь. Начинаем 20 минут активного отдыха.',
+        'questflow-timer-alert'
+      );
+
+      const targetBreakSec = breakDurationRef.current * 60;
+      setMode('break');
+      setTimeLeft(targetBreakSec);
+      setElapsedSeconds(0);
+      accumulatedSecondsRef.current = 0;
+      const breakStart = new Date();
+      setSessionStartTime(breakStart);
+      setIsRunning(true);
+      if (ambientSoundRef.current !== 'none') {
+        startAmbientSound(ambientSoundRef.current);
+      }
+      savePersistentTimerSession({
+        mode: 'break',
+        isRunning: true,
+        startTime: breakStart.getTime(),
+        accumulatedSeconds: 0,
+        targetMinutes: breakDurationRef.current,
+        title: session.title,
+        selectedTaskId: session.selectedTaskId,
+        ambientSound: ambientSoundRef.current,
+        timerType: 'countdown',
+        lastUpdated: Date.now(),
+      });
+    } else {
+      playWorkReadySound();
+      const targetWorkSec = workDurationRef.current * 60;
+      setMode('work');
+      setTimeLeft(targetWorkSec);
+      setElapsedSeconds(0);
+      accumulatedSecondsRef.current = 0;
+      setSessionStartTime(null);
+      setIsRunning(false);
+      savePersistentTimerSession({
+        mode: 'work',
+        isRunning: false,
+        startTime: null,
+        accumulatedSeconds: 0,
+        targetMinutes: workDurationRef.current,
+        title: titleRef.current,
+        selectedTaskId: selectedTaskIdRef.current,
+        ambientSound: ambientSoundRef.current,
+        timerType: 'countdown',
+        lastUpdated: Date.now(),
+      });
+    }
+
+    setExpiredOfflineSession(null);
+  };
+
+  const handleDismissExpiredSession = () => {
+    clearPersistentTimerSession();
+    setExpiredOfflineSession(null);
+    setMode('work');
+    setTimeLeft(workDurationRef.current * 60);
+    setElapsedSeconds(0);
+    accumulatedSecondsRef.current = 0;
+    setSessionStartTime(null);
+    setIsRunning(false);
   };
 
   // Finish and Log Session into Calendar with Auto-transition
@@ -348,11 +626,27 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({
       setMode('break');
       setTimeLeft(targetBreakSec);
       setElapsedSeconds(0);
-      setSessionStartTime(new Date());
+      accumulatedSecondsRef.current = 0;
+      const breakStart = new Date();
+      setSessionStartTime(breakStart);
       setIsRunning(true);
       if (ambientSoundRef.current !== 'none') {
         startAmbientSound(ambientSoundRef.current);
       }
+
+      // Save break session to persistent storage
+      savePersistentTimerSession({
+        mode: 'break',
+        isRunning: true,
+        startTime: breakStart.getTime(),
+        accumulatedSeconds: 0,
+        targetMinutes: breakDurationRef.current,
+        title: sessionTitle,
+        selectedTaskId: selectedTaskIdRef.current,
+        ambientSound: ambientSoundRef.current,
+        timerType: 'countdown',
+        lastUpdated: Date.now(),
+      });
     } else {
       // ─── 2. Finishing Break (20m or early stop) ─────────────────────────────
       if (currentElapsed >= 15) {
@@ -391,8 +685,23 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({
       setMode('work');
       setTimeLeft(targetWorkSec);
       setElapsedSeconds(0);
+      accumulatedSecondsRef.current = 0;
       setSessionStartTime(null);
       setIsRunning(false);
+
+      // Save ready work session to persistent storage
+      savePersistentTimerSession({
+        mode: 'work',
+        isRunning: false,
+        startTime: null,
+        accumulatedSeconds: 0,
+        targetMinutes: workDurationRef.current,
+        title: titleRef.current,
+        selectedTaskId: selectedTaskIdRef.current,
+        ambientSound: ambientSoundRef.current,
+        timerType: 'countdown',
+        lastUpdated: Date.now(),
+      });
     }
   };
 
@@ -567,7 +876,10 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({
                 const order: AmbientSound[] = ['none', 'brown', 'gamma', 'alpha'];
                 const next = order[(order.indexOf(ambientSound) + 1) % order.length];
                 setAmbientSound(next);
+                persistCurrentState({ ambientSound: next });
+                setIsAudioWaitingForGesture(false);
                 if (isRunning) startAmbientSound(next);
+                else stopAmbientSound();
               }}
               className={`p-1.5 rounded-xl border transition-all text-xs flex items-center gap-1 ${
                 ambientSound !== 'none'
@@ -584,6 +896,11 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({
               <span className="text-[10px] hidden sm:inline uppercase font-bold">
                 {ambientSound === 'none' ? 'Звук' : ambientSound}
               </span>
+              {ambientSound !== 'none' && isAudioWaitingForGesture && (
+                <span className="text-[8px] bg-purple-500/30 text-purple-200 px-1.5 py-0.5 rounded-full animate-pulse border border-purple-500/40" title="Кликните в любом месте экрана для включения звука">
+                  клик для звука
+                </span>
+              )}
             </button>
 
             {/* Duration Settings Dropdown */}
@@ -728,6 +1045,51 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({
           )}
         </div>
       </div>
+
+      {/* Offline Expired Session Confirmation Modal (User choice A1) */}
+      {expiredOfflineSession && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 select-none">
+          <div className="w-full max-w-md bg-[#16161d] border border-amber-500/40 rounded-3xl p-6 shadow-2xl text-center space-y-4 animate-in fade-in zoom-in-95 duration-200">
+            <div className="w-14 h-14 rounded-2xl bg-amber-500/20 border border-amber-500/40 mx-auto flex items-center justify-center text-3xl shadow-inner">
+              ⏱️
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-zinc-100">
+                Время сессии истекло, пока вкладка была закрыта
+              </h3>
+              <p className="text-xs text-zinc-400 mt-1">
+                {expiredOfflineSession.session.mode === 'work' ? 'Фокус-работа' : 'Перерыв'}:{' '}
+                <span className="text-amber-300 font-semibold">{expiredOfflineSession.session.title}</span>
+              </p>
+              <p className="text-xs text-zinc-300 mt-2 bg-zinc-900/80 p-2.5 rounded-xl border border-white/5 font-medium leading-relaxed">
+                Пока вкладка была закрыта, прошло{' '}
+                <span className="font-mono text-amber-300 font-bold">{expiredOfflineSession.state.expiredMinutes} мин</span>.
+                Вы действительно работали это время?
+              </p>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-center gap-2 pt-2">
+              <button
+                onClick={handleConfirmExpiredSession}
+                className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-zinc-950 font-bold text-xs transition-all flex items-center justify-center gap-1.5 shadow-lg active:scale-95 cursor-pointer"
+              >
+                <Check className="w-4 h-4" />
+                <span>
+                  {expiredOfflineSession.session.mode === 'work'
+                    ? 'Да, записать и начать отдых (20м)'
+                    : 'Да, записать сессию отдыха'}
+                </span>
+              </button>
+              <button
+                onClick={handleDismissExpiredSession}
+                className="w-full sm:w-auto py-2.5 px-4 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-semibold text-xs transition-all active:scale-95 cursor-pointer"
+              >
+                Сбросить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
