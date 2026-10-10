@@ -18,9 +18,20 @@ import {
   Settings2,
   Tag
 } from 'lucide-react';
-import { playQuestCompleteSound, playCoinSound } from '../utils/sound';
+import { 
+  playQuestCompleteSound, 
+  playCoinSound, 
+  playBreakBellSound, 
+  playWorkReadySound 
+} from '../utils/sound';
 import { triggerQuestConfetti } from '../utils/confetti';
-import { loadRecoveryCycleConfig, getDayCycleInfo, getTodayStr } from '../utils/recoveryCycle';
+import { 
+  loadRecoveryCycleConfig, 
+  getDayCycleInfo, 
+  getTodayStr,
+  sendDesktopNotification,
+  requestDesktopNotificationPermission
+} from '../utils/recoveryCycle';
 
 interface TogglTimerBarProps {
   tasks: TaskItem[];
@@ -190,18 +201,42 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({
     }
   };
 
+  // Refs to avoid stale closures in interval
+  const elapsedSecondsRef = useRef(elapsedSeconds);
+  const modeRef = useRef(mode);
+  const workDurationRef = useRef(workDuration);
+  const breakDurationRef = useRef(breakDuration);
+  const titleRef = useRef(title);
+  const selectedTaskIdRef = useRef(selectedTaskId);
+  const sessionStartTimeRef = useRef(sessionStartTime);
+  const ambientSoundRef = useRef(ambientSound);
+
+  useEffect(() => { elapsedSecondsRef.current = elapsedSeconds; }, [elapsedSeconds]);
+  useEffect(() => { modeRef.current = mode; }, [mode]);
+  useEffect(() => { workDurationRef.current = workDuration; }, [workDuration]);
+  useEffect(() => { breakDurationRef.current = breakDuration; }, [breakDuration]);
+  useEffect(() => { titleRef.current = title; }, [title]);
+  useEffect(() => { selectedTaskIdRef.current = selectedTaskId; }, [selectedTaskId]);
+  useEffect(() => { sessionStartTimeRef.current = sessionStartTime; }, [sessionStartTime]);
+  useEffect(() => { ambientSoundRef.current = ambientSound; }, [ambientSound]);
+
   // Timer Tick Effect
   useEffect(() => {
     let interval: any = null;
     if (isRunning) {
       interval = setInterval(() => {
-        setElapsedSeconds((prev) => prev + 1);
+        setElapsedSeconds((prev) => {
+          const next = prev + 1;
+          elapsedSecondsRef.current = next;
+          return next;
+        });
 
         if (timerType === 'countdown') {
           setTimeLeft((prev) => {
             if (prev <= 1) {
-              // Timer finished!
-              handleFinishSession(true);
+              setTimeout(() => {
+                handleFinishSession(true);
+              }, 0);
               return 0;
             }
             return prev - 1;
@@ -216,6 +251,9 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({
   // Handle Play/Pause
   const handleTogglePlay = () => {
     if (!isRunning) {
+      if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
+        requestDesktopNotificationPermission();
+      }
       if (!sessionStartTime) {
         setSessionStartTime(new Date());
       }
@@ -231,10 +269,13 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({
 
   // Handle Switch Mode (Work <-> Break)
   const handleSwitchMode = (newMode: TimerMode) => {
-    if (isRunning) {
-      // Promptly save current session before switching
+    if (newMode === mode) return;
+
+    if (isRunning || elapsedSeconds > 0) {
       handleFinishSession(false);
+      return;
     }
+
     setMode(newMode);
     const targetMin = newMode === 'work' ? workDuration : breakDuration;
     setTimeLeft(targetMin * 60);
@@ -243,47 +284,116 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({
     setSessionStartTime(null);
   };
 
-  // Finish and Log Session into Calendar
+  // Finish and Log Session into Calendar with Auto-transition
   const handleFinishSession = (isNaturalCompletion: boolean) => {
     setIsRunning(false);
     stopAmbientSound();
 
-    const actualMinutes = Math.max(1, Math.round(elapsedSeconds / 60));
+    const currentMode = modeRef.current;
+    const currentElapsed = elapsedSecondsRef.current;
+    const actualMinutes = Math.max(1, Math.round(currentElapsed / 60));
     const now = new Date();
-    const startTime = sessionStartTime || new Date(now.getTime() - actualMinutes * 60 * 1000);
+    const startTime = sessionStartTimeRef.current || new Date(now.getTime() - actualMinutes * 60 * 1000);
 
-    const isWork = mode === 'work';
-    const sessionTitle = title.trim() || (isWork ? 'Фокус-работа' : 'Перерыв');
-
-    // Calculate EXP & Gold
-    const expEarned = isWork ? Math.round(actualMinutes * 1.5) + (isNaturalCompletion ? 50 : 0) : 0;
-    const goldEarned = isWork ? Math.round(actualMinutes * 0.8) + (isNaturalCompletion ? 25 : 0) : 0;
-
-    const entry: TimeLogEntry = {
-      id: `timelog-${Date.now()}`,
-      title: sessionTitle,
-      mode,
-      targetMinutes: currentTargetMinutes,
-      actualMinutes,
-      startedAt: startTime.toISOString(),
-      completedAt: now.toISOString(),
-      taskId: selectedTaskId || undefined,
-      expEarned,
-      goldEarned,
-    };
-
-    onLogSession(entry);
+    const isWork = currentMode === 'work';
 
     if (isWork) {
-      playQuestCompleteSound();
-      playCoinSound();
-      triggerQuestConfetti();
-    }
+      // ─── 1. Finishing Work (120m or early stop/cancel) ────────────────────────
+      const sessionTitle = titleRef.current.trim() || 'Фокус-работа';
 
-    // Reset session timer
-    setElapsedSeconds(0);
-    setTimeLeft(currentTargetMinutes * 60);
-    setSessionStartTime(null);
+      // EXP & Gold calculation
+      const expEarned = Math.round(actualMinutes * 1.5) + (isNaturalCompletion ? 50 : 0);
+      const goldEarned = Math.round(actualMinutes * 0.8) + (isNaturalCompletion ? 25 : 0);
+
+      // Only write to calendar if at least 15s elapsed
+      if (currentElapsed >= 15) {
+        const entry: TimeLogEntry = {
+          id: `timelog-${Date.now()}`,
+          title: sessionTitle,
+          mode: 'work',
+          targetMinutes: workDurationRef.current,
+          actualMinutes,
+          startedAt: startTime.toISOString(),
+          completedAt: now.toISOString(),
+          taskId: selectedTaskIdRef.current || undefined,
+          expEarned,
+          goldEarned,
+        };
+        onLogSession(entry);
+      }
+
+      if (isNaturalCompletion) {
+        playQuestCompleteSound();
+        playCoinSound();
+        triggerQuestConfetti();
+        sendDesktopNotification(
+          '🧘 Время фокуса вышло!',
+          'Отличная работа! Включаем 20 минут активного отдыха. Разомнитесь, выпейте воды.',
+          'questflow-timer-alert'
+        );
+      } else {
+        playCoinSound();
+        sendDesktopNotification(
+          '☕ Фокус завершен!',
+          `Отработано ${actualMinutes} мин (+${expEarned} EXP, +${goldEarned}G). Включаем перерыв ${breakDurationRef.current} минут!`,
+          'questflow-timer-alert'
+        );
+      }
+
+      // Soothing Tibetan bell gong
+      playBreakBellSound();
+
+      // AUTOMATIC TRANSITION TO BREAK (20m) & AUTO-START
+      const targetBreakSec = breakDurationRef.current * 60;
+      setMode('break');
+      setTimeLeft(targetBreakSec);
+      setElapsedSeconds(0);
+      setSessionStartTime(new Date());
+      setIsRunning(true);
+      if (ambientSoundRef.current !== 'none') {
+        startAmbientSound(ambientSoundRef.current);
+      }
+    } else {
+      // ─── 2. Finishing Break (20m or early stop) ─────────────────────────────
+      if (currentElapsed >= 15) {
+        const entry: TimeLogEntry = {
+          id: `timelog-${Date.now()}`,
+          title: 'Перерыв и восстановление',
+          mode: 'break',
+          targetMinutes: breakDurationRef.current,
+          actualMinutes,
+          startedAt: startTime.toISOString(),
+          completedAt: now.toISOString(),
+          expEarned: 0,
+          goldEarned: 0,
+        };
+        onLogSession(entry);
+      }
+
+      if (isNaturalCompletion) {
+        playWorkReadySound();
+        sendDesktopNotification(
+          '⚡ Перерыв 20 минут завершен!',
+          'Вы отлично перезагрузились. Готовы к новому 120-минутному блоку фокуса? Нажмите «Старт».',
+          'questflow-timer-alert'
+        );
+      } else {
+        playWorkReadySound();
+        sendDesktopNotification(
+          '⚡ Отдых завершен',
+          'Возвращаемся к рабочему фокусу. Нажмите «Старт» когда будете готовы.',
+          'questflow-timer-alert'
+        );
+      }
+
+      // TRANSITION BACK TO WORK (120m) & WAIT FOR MANUAL START
+      const targetWorkSec = workDurationRef.current * 60;
+      setMode('work');
+      setTimeLeft(targetWorkSec);
+      setElapsedSeconds(0);
+      setSessionStartTime(null);
+      setIsRunning(false);
+    }
   };
 
   // Format seconds to HH:MM:SS or MM:SS
@@ -351,7 +461,9 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({
   }
 
   return (
-    <div className="w-full bg-[#111116] border-b border-white/[0.08] shadow-lg sticky top-0 z-30 transition-all">
+    <div className={`w-full border-b shadow-lg sticky top-0 z-30 transition-all ${
+      mode === 'work' ? 'bg-[#111116] border-white/[0.08]' : 'bg-[#0c1410] border-emerald-500/25 shadow-emerald-950/20'
+    }`}>
       <div className="max-w-7xl mx-auto px-3 sm:px-6 py-2.5 flex flex-col md:flex-row items-center justify-between gap-3">
         
         {/* Left: Input & Task Selector */}
@@ -573,7 +685,7 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({
             onClick={handleTogglePlay}
             className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold transition-all shadow-md active:scale-95 ${
               isRunning
-                ? 'bg-amber-500 hover:bg-amber-400 text-zinc-950'
+                ? (mode === 'work' ? 'bg-amber-500 hover:bg-amber-400 text-zinc-950' : 'bg-emerald-500 hover:bg-emerald-400 text-zinc-950')
                 : 'bg-zinc-100 hover:bg-white text-zinc-950'
             }`}
             title={isRunning ? 'Пауза' : 'Запустить таймер'}
@@ -581,15 +693,32 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({
             {isRunning ? <Pause className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current ml-0.5" />}
           </button>
 
-          {/* Stop and Save Button */}
+          {/* Action Button: Finish & Switch with Auto-Rest */}
           {(isRunning || elapsedSeconds > 0) && (
             <button
               onClick={() => handleFinishSession(false)}
-              className="p-2 rounded-xl bg-red-950/40 border border-red-500/30 hover:bg-red-900/50 text-red-300 transition-all flex items-center gap-1 text-xs active:scale-95"
-              title="Завершить сессию и записать в календарь"
+              className={`px-2.5 py-1.5 rounded-xl border transition-all flex items-center gap-1.5 text-xs active:scale-95 shadow-sm ${
+                mode === 'work'
+                  ? 'bg-emerald-950/50 border-emerald-500/40 hover:bg-emerald-900/70 text-emerald-300'
+                  : 'bg-amber-950/50 border-amber-500/40 hover:bg-amber-900/70 text-amber-300'
+              }`}
+              title={
+                mode === 'work'
+                  ? 'Завершить фокус, записать время в календарь и начать 20 минут отдыха'
+                  : 'Завершить отдых и перейти к работе (120м)'
+              }
             >
-              <Square className="w-3.5 h-3.5 fill-current" />
-              <span className="text-[11px] font-bold hidden sm:inline">Записать</span>
+              {mode === 'work' ? (
+                <>
+                  <Coffee className="w-3.5 h-3.5 text-emerald-400" />
+                  <span className="text-[11px] font-bold">Отдых ({breakDuration}м)</span>
+                </>
+              ) : (
+                <>
+                  <Flame className="w-3.5 h-3.5 text-amber-400" />
+                  <span className="text-[11px] font-bold">К фокусу</span>
+                </>
+              )}
             </button>
           )}
 

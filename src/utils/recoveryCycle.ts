@@ -195,7 +195,7 @@ export async function requestDesktopNotificationPermission(): Promise<boolean> {
 }
 
 // Отправка системного Web Push уведомления
-export function sendDesktopNotification(title: string, body: string): void {
+export function sendDesktopNotification(title: string, body: string, tag: string = 'questflow-alert'): void {
   if (typeof window === 'undefined' || !('Notification' in window)) {
     return;
   }
@@ -204,7 +204,7 @@ export function sendDesktopNotification(title: string, body: string): void {
       new Notification(title, {
         body,
         icon: '/favicon.ico',
-        tag: 'questflow-recovery-alert',
+        tag,
       });
     } catch (e) {
       console.warn('Desktop notification dispatch failed:', e);

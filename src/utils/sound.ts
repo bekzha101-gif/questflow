@@ -156,3 +156,64 @@ export function playTickSound() {
   osc.start(now);
   osc.stop(now + 0.04);
 }
+
+// Успокаивающий глубокий колокол / гонг начала отдыха
+export function playBreakBellSound() {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+
+  const now = ctx.currentTime;
+  const harmonics = [
+    { freq: 432, gain: 0.16, decay: 2.5 },
+    { freq: 864, gain: 0.09, decay: 2.0 },
+    { freq: 1296, gain: 0.05, decay: 1.5 },
+    { freq: 1728, gain: 0.02, decay: 1.0 },
+  ];
+
+  harmonics.forEach(({ freq, gain, decay }) => {
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(freq, now);
+
+    g.gain.setValueAtTime(gain, now);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + decay);
+
+    osc.connect(g);
+    g.connect(ctx.destination);
+
+    osc.start(now);
+    osc.stop(now + decay);
+  });
+}
+
+// Энергичный двойной аккорд завершения перерыва и готовности к новому фокусу
+export function playWorkReadySound() {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+
+  const now = ctx.currentTime;
+  const notes = [
+    { freq: 523.25, time: 0.0, dur: 0.18 }, // C5
+    { freq: 659.25, time: 0.12, dur: 0.18 }, // E5
+    { freq: 783.99, time: 0.24, dur: 0.35 }, // G5
+  ];
+
+  notes.forEach((note) => {
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(note.freq, now + note.time);
+
+    g.gain.setValueAtTime(0.12, now + note.time);
+    g.gain.exponentialRampToValueAtTime(0.001, now + note.time + note.dur);
+
+    osc.connect(g);
+    g.connect(ctx.destination);
+
+    osc.start(now + note.time);
+    osc.stop(now + note.time + note.dur);
+  });
+}
