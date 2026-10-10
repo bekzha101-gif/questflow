@@ -4,13 +4,15 @@ import {
   Film,
   CheckSquare, 
   Compass, 
-  ShoppingBag
+  ShoppingBag,
+  Gift
 } from 'lucide-react';
 
 export type TabType = 
   | 'today'
-  | 'studio' 
   | 'quests'
+  | 'shopping'
+  | 'studio' 
   | 'life'
   | 'tavern'
   // Backwards compatibility / deep link aliases:
@@ -30,6 +32,7 @@ interface NavigationProps {
   onSelectTab: (tab: TabType) => void;
   focusCount: number;
   dueTodayCount: number;
+  shoppingCount?: number;
 }
 
 export const Navigation: React.FC<NavigationProps> = ({
@@ -37,6 +40,7 @@ export const Navigation: React.FC<NavigationProps> = ({
   onSelectTab,
   focusCount,
   dueTodayCount,
+  shoppingCount = 0,
 }) => {
   const primaryTabs = [
     {
@@ -49,6 +53,12 @@ export const Navigation: React.FC<NavigationProps> = ({
       id: 'quests' as TabType,
       label: 'Задачи',
       icon: CheckSquare,
+    },
+    {
+      id: 'shopping' as TabType,
+      label: 'Покупки',
+      icon: ShoppingBag,
+      badge: shoppingCount > 0 ? shoppingCount : undefined,
     },
     {
       id: 'studio' as TabType,
@@ -64,12 +74,13 @@ export const Navigation: React.FC<NavigationProps> = ({
     {
       id: 'tavern' as TabType,
       label: 'Награды',
-      icon: ShoppingBag,
+      icon: Gift,
     },
   ];
 
   const isTabActive = (tabId: TabType) => {
     if (activeTab === tabId) return true;
+    if (tabId === 'shopping' && activeTab === 'shopping') return true;
     if (tabId === 'studio' && (activeTab === 'shorts' || activeTab === 'production' || activeTab === 'ideas' || activeTab === 'ai')) return true;
     if (tabId === 'quests' && (activeTab === 'tasks' || activeTab === 'habits')) return true;
     if (tabId === 'life' && (activeTab === 'bigdata' || activeTab === 'calendar' || activeTab === 'finances')) return true;

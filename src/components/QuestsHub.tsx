@@ -4,6 +4,7 @@ import { TodoistTaskList } from './TodoistTaskList';
 import { HabitsDailiesView } from './HabitsDailiesView';
 import { HeroTavern } from './HeroTavern';
 import { ShoppingListView } from './ShoppingListView';
+import { isShoppingTask } from '../utils/taskFilters';
 import { 
   CheckSquare, 
   Flame, 
@@ -57,11 +58,9 @@ export function QuestsHub({
 }: QuestsHubProps) {
   const [hubTab, setHubTab] = useState<'tasks' | 'shopping' | 'habits' | 'tavern' | 'overview'>('tasks');
 
-  // Counts
-  const activeTasksCount = tasks.filter((t) => t.type === 'todo' && !t.completed).length;
-  const shoppingCount = tasks.filter(
-    (t) => (t.projectId === '6h5FPgJ74x5g685w' || t.tags.includes('покупки') || t.tags.includes('желания')) && !t.completed
-  ).length;
+  // Counts (excluding shopping tasks from regular tasks)
+  const activeTasksCount = tasks.filter((t) => t.type === 'todo' && !t.completed && !isShoppingTask(t)).length;
+  const shoppingCount = tasks.filter((t) => isShoppingTask(t) && !t.completed).length;
   const habitsCount = tasks.filter((t) => t.type === 'habit').length;
   const uncompletedDailiesCount = tasks.filter((t) => t.type === 'daily' && !t.completed).length;
 

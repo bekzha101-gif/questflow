@@ -16,6 +16,7 @@ import {
 import { playQuestCompleteSound, playCoinSound } from '../utils/sound';
 import { triggerQuestConfetti } from '../utils/confetti';
 import { renderFormattedText } from '../utils/textFormatter';
+import { isShoppingTask } from '../utils/taskFilters';
 
 interface TodoistTaskListProps {
   tasks: TaskItem[];
@@ -71,7 +72,12 @@ export const TodoistTaskList: React.FC<TodoistTaskListProps> = ({
     }
   };
 
-  const nonHabitTasks = tasks.filter((t) => t.type !== 'habit');
+  const nonHabitTasks = tasks.filter((t) => {
+    if (t.type === 'habit') return false;
+    // Keep shopping tasks isolated in the dedicated Shopping List view
+    if (selectedProjectId === 'all' && isShoppingTask(t)) return false;
+    return true;
+  });
 
   const filteredTasks = nonHabitTasks.filter((t) => {
     if (selectedProjectId !== 'all' && t.projectId !== selectedProjectId) return false;

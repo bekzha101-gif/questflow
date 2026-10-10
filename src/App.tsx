@@ -39,9 +39,11 @@ import { UndoSnackbar, SnackbarAction } from './components/UndoSnackbar';
 import { TogglTimerBar } from './components/TogglTimerBar';
 import { HealthBioTracker } from './components/HealthBioTracker';
 import { TaskEditModal } from './components/TaskEditModal';
+import { ShoppingListView } from './components/ShoppingListView';
 import { playLevelUpSound } from './utils/sound';
 import { triggerLevelUpConfetti } from './utils/confetti';
 import { createGoogleCalendarTimeLogEvent } from './utils/googleCalendarApi';
+import { isShoppingTask } from './utils/taskFilters';
 
 
 
@@ -685,10 +687,11 @@ export function App() {
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
   };
 
-  // Focus and Due Today counts
+  // Focus, Due Today, and Shopping counts
   const focusCount = tasks.filter((t) => (t.inFocusFlow || t.priority === 'p1') && !t.completed).length;
   const todayStr = new Date().toISOString().split('T')[0];
   const dueTodayCount = tasks.filter((t) => !t.completed && (t.dueDate === todayStr || t.type === 'daily')).length;
+  const shoppingCount = tasks.filter((t) => isShoppingTask(t) && !t.completed).length;
 
   return (
     <div className="h-screen bg-[#09090c] text-white flex flex-col font-sans selection:bg-purple-500 selection:text-white overflow-hidden pb-16 md:pb-0">
@@ -716,6 +719,7 @@ export function App() {
         onSelectTab={setActiveTab}
         focusCount={focusCount}
         dueTodayCount={dueTodayCount}
+        shoppingCount={shoppingCount}
       />
 
       {/* 2.5 Toggl Track Style Time Tracker Bar (Focus 120m / Break 20m) */}
@@ -751,6 +755,7 @@ export function App() {
             onOpenHealthModal={() => setIsHealthModalOpen(true)}
             onOpenStudioTab={() => setActiveTab('studio')}
             onOpenLifeTab={() => setActiveTab('life')}
+            onOpenShoppingTab={() => setActiveTab('shopping')}
           />
         )}
 
@@ -798,6 +803,25 @@ export function App() {
               onAddReward={handleAddReward}
               onOpenQuickAdd={() => setIsQuickAddOpen(true)}
             />
+          </div>
+        )}
+
+        {/* 3.5 SHOPPING LIST (Isolated Dedicated View) */}
+        {activeTab === 'shopping' && (
+          <div className="flex-1 overflow-y-auto">
+            <div className="max-w-7xl mx-auto py-3 px-2 sm:px-4">
+              <ShoppingListView
+                tasks={tasks}
+                projects={projects}
+                stats={stats}
+                onToggleTask={handleToggleTask}
+                onToggleSubtask={handleToggleSubtask}
+                onAddSubtask={handleAddSubtask}
+                onDeleteTask={handleDeleteTask}
+                onEditTask={(task) => setEditingTask(task)}
+                onOpenQuickAdd={() => setIsQuickAddOpen(true)}
+              />
+            </div>
           </div>
         )}
 

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { TaskItem, Project, UserStats, Reward } from '../types';
+import { isShoppingTask } from '../utils/taskFilters';
 import {
   CheckCircle2,
   Circle,
@@ -24,7 +25,7 @@ interface CommandCenterTodayProps {
   stats: UserStats;
   rewards?: Reward[];
   onToggleTask: (taskId: string) => void;
-  onToggleSubtask: (taskId: string, subtaskId: string) => void;
+  onToggleSubtask?: (taskId: string, subtaskId: string) => void;
   onTriggerHabit: (taskId: string, direction: 'positive' | 'negative') => void;
   onToggleDaily: (taskId: string) => void;
   onAddTask: (task: Omit<TaskItem, 'id' | 'completed' | 'subtasks'>) => void;
@@ -37,6 +38,7 @@ interface CommandCenterTodayProps {
   onOpenHealthModal?: () => void;
   onOpenStudioTab?: () => void;
   onOpenLifeTab?: () => void;
+  onOpenShoppingTab?: () => void;
 }
 
 function todayStr(): string {
@@ -424,13 +426,17 @@ export function CommandCenterToday({
   onBuyReward,
   onOpenHealthModal,
   onOpenLifeTab,
+  onOpenShoppingTab,
 }: CommandCenterTodayProps) {
   const [todoFilter, setTodoFilter] = useState<TodoFilter>('active');
   const [boughtId, setBoughtId] = useState<string | null>(null);
 
   const habits = tasks.filter((t) => t.type === 'habit');
   const dailies = tasks.filter((t) => t.type === 'daily');
-  const allTodos = tasks.filter((t) => t.type === 'todo');
+
+  // Shopping tasks are isolated in the Shopping List and never mixed with daily goals/tasks
+  const shoppingTasksCount = tasks.filter((t) => isShoppingTask(t) && !t.completed).length;
+  const allTodos = tasks.filter((t) => t.type === 'todo' && !isShoppingTask(t));
   const activeTodos = allTodos.filter((t) => !t.completed);
   const completedTodayTodos = allTodos.filter((t) => t.completed && isCompletedToday(t.completedAt));
   const shownTodos = todoFilter === 'active' ? activeTodos : completedTodayTodos;
@@ -670,7 +676,23 @@ export function CommandCenterToday({
         </Column>
 
         {/* ── COL 3: TO-DO's (with subtasks + deadline) ───────────────── */}
-        <Column title="Задачи" count={activeTodos.length}>
+        <Column 
+          title="Задачи" 
+          count={activeTodos.length}
+          badge={
+            shoppingTasksCount > 0 && onOpenShoppingTab ? (
+              <button
+                type="button"
+                onClick={onOpenShoppingTab}
+                className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/25 text-[10px] font-medium transition-all tactile-btn"
+                title="Открыть отдельный список покупок"
+              >
+                <ShoppingBag className="w-2.5 h-2.5 text-amber-400" />
+                <span>Покупки ({shoppingTasksCount})</span>
+              </button>
+            ) : undefined
+          }
+        >
           <AddInput placeholder="Добавить задачу..." onAdd={addTodo} />
 
           {/* Filter tabs (Segmented Control) */}
@@ -704,7 +726,7 @@ export function CommandCenterToday({
                   key={task.id}
                   task={task}
                   onToggle={() => onToggleTask(task.id)}
-                  onToggleSubtask={(stId) => onToggleSubtask(task.id, stId)}
+                  onToggleSubtask={onToggleSubtask ? (stId) => onToggleSubtask(task.id, stId) : undefined}
                   onAddSubtask={onAddSubtask ? (text) => onAddSubtask(task.id, text) : undefined}
                   onUpdateTask={onUpdateTask ? (patch) => onUpdateTask(task.id, patch) : undefined}
                   onEdit={onEditTask ? () => onEditTask(task) : undefined}
