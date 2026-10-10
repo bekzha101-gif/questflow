@@ -100,14 +100,40 @@ export function App() {
   // ─── Supabase Cloud Sync ──────────────────────────────────────────────────
   const { pushStats, pushTasks, pushProjects, pushRewards, pullAll, exportAllData, syncStatus } = useSupabaseSync();
 
-  // On mount: pull from cloud if logged in (cloud data overrides localStorage)
+  // On mount: one-time migration to permanently purge zombie tasks and restore clean user state
+  useEffect(() => {
+    const SYNC_CLEAN_KEY = 'questflow_cleanup_v2_applied';
+    if (localStorage.getItem(SYNC_CLEAN_KEY) !== 'true') {
+      const cleanTasks = loadTasks();
+      const cleanStats = loadStats();
+      setTasks(cleanTasks);
+      setStats(cleanStats);
+      saveTasks(cleanTasks);
+      saveStats(cleanStats);
+      pushTasks(cleanTasks);
+      pushStats(cleanStats);
+      localStorage.setItem(SYNC_CLEAN_KEY, 'true');
+    }
+  }, [pushTasks, pushStats]);
+
+  // On mount: pull from cloud if logged in
   useEffect(() => {
     pullAll().then((cloudData) => {
-      if (cloudData.stats) setStats(cloudData.stats);
+      if (cloudData.stats && cloudData.stats.level >= 4) {
+        setStats(cloudData.stats);
+      }
       if (cloudData.tasks && cloudData.tasks.length > 0) {
-        setTasks(cloudData.tasks);
+        // Only accept cloud tasks if they don't contain old zombie tasks
+        const hasZombies = cloudData.tasks.some(t => t.id === 'todo-cadrol' || t.title === 'Cadrol');
+        if (!hasZombies) {
+          setTasks(cloudData.tasks);
+        } else {
+          // Cloud has stale zombies: overwrite cloud with clean tasks!
+          const clean = loadTasks();
+          setTasks(clean);
+          pushTasks(clean);
+        }
       } else if (tasks.length > 0) {
-        // Local tasks exist, push to cloud so cloud has them
         pushTasks(tasks);
       }
       if (cloudData.projects?.length) setProjects(cloudData.projects);

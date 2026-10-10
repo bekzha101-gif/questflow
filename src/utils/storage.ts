@@ -15,7 +15,19 @@ const KEYS = {
 export function loadStats(): UserStats {
   try {
     const data = localStorage.getItem(KEYS.STATS);
-    return data ? JSON.parse(data) : initialStats;
+    if (data) {
+      const parsed = JSON.parse(data);
+      if (parsed && typeof parsed === 'object') {
+        // If stats were reset to level 1 and 0 gold by guest mode, restore real level 4 stats from image 1
+        if (parsed.level === 1 && parsed.gold === 0 && parsed.exp === 0) {
+          saveStats(initialStats);
+          return initialStats;
+        }
+        return parsed;
+      }
+    }
+    saveStats(initialStats);
+    return initialStats;
   } catch {
     return initialStats;
   }
@@ -29,7 +41,25 @@ export function saveStats(stats: UserStats) {
   }
 }
 
-const DUMMY_TASK_IDS = new Set([
+const ZOMBIE_IDS = new Set([
+  'habit-visualization',
+  'habit-walk-floor',
+  'habit-review-day',
+  'daily-digital-detox',
+  'todo-cadrol',
+  'todo-wisdom-20-videos',
+  'todo-investor-20-videos',
+  'todo-base44-app',
+  'todo-base-youtube-system',
+  'todo-n8n-nexlev',
+  'todo-autograbber',
+  'todo-record-video-voice',
+  'todo-tg-shop',
+  'todo-recovery-calendar',
+  'todo-base44-habitica',
+  'todo-base444-gcal',
+  'todo-ad-cutters',
+  'todo-descript-upload',
   'habit-1', 'habit-2', 'habit-3',
   'daily-1', 'daily-2', 'daily-3',
   'todo-1', 'todo-2', 'todo-3'
@@ -38,28 +68,54 @@ const DUMMY_TASK_IDS = new Set([
 export function loadTasks(): TaskItem[] {
   try {
     const data = localStorage.getItem(KEYS.TASKS);
-    let tasks: TaskItem[] = data ? JSON.parse(data) : initialTasks;
-    if (!Array.isArray(tasks) || tasks.length === 0) {
-      tasks = [...initialTasks];
+    if (!data) {
+      saveTasks(initialTasks);
+      return initialTasks;
     }
-    // Strip out all unwanted sample/dummy tasks
-    tasks = tasks.filter((t: TaskItem) => !DUMMY_TASK_IDS.has(t.id));
+    const parsed = JSON.parse(data);
+    if (!Array.isArray(parsed)) {
+      saveTasks(initialTasks);
+      return initialTasks;
+    }
 
-    // Seamless auto-merge Todoist tasks if not already imported
-    const existingIds = new Set(tasks.map((t) => t.id));
-    let modified = false;
-    for (const tt of todoistTasks) {
-      if (!existingIds.has(tt.id)) {
-        tasks.push(tt);
-        existingIds.add(tt.id);
-        modified = true;
+    // Filter out unwanted legacy/zombie tasks from past test memory
+    const cleaned = parsed.filter((t: TaskItem) => !ZOMBIE_IDS.has(t.id));
+
+    // Remove legacy imported tasks from non-shopping projects (ideas, automation, youtube) that user deleted
+    const validTasks = cleaned.filter((t: TaskItem) => {
+      if (
+        t.projectId === '6h5FPv7XH99pQRH3' || 
+        t.projectId === '6h5GFmFgmm9g4f9w' || 
+        t.projectId === '6h645qv3RfM99G8h'
+      ) {
+        return false;
+      }
+      return true;
+    });
+
+    // Ensure the main active task from image 1 is present if missing
+    const hasActiveTodo = validTasks.some(t => t.type === 'todo' && t.projectId !== '6h5FPgJ74x5g685w');
+    if (!hasActiveTodo) {
+      const activeTodo = initialTasks.find(t => t.id === 'task-notebook-ideas');
+      if (activeTodo) {
+        validTasks.push(activeTodo);
       }
     }
-    if (modified) {
-      saveTasks(tasks);
+
+    // Ensure habits from image 1 are present if missing
+    const hasHabits = validTasks.some(t => t.type === 'habit');
+    if (!hasHabits) {
+      const defaultHabits = initialTasks.filter(t => t.type === 'habit');
+      validTasks.push(...defaultHabits);
     }
-    return tasks;
-  } catch {
+
+    if (validTasks.length !== parsed.length) {
+      saveTasks(validTasks);
+    }
+
+    return validTasks;
+  } catch (e) {
+    console.error('Failed to load tasks', e);
     return initialTasks;
   }
 }

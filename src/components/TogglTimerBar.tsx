@@ -66,10 +66,24 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({
   const currentTargetMinutes = mode === 'work' ? workDuration : breakDuration;
 
   // Active activity title and selected task
-  const [title, setTitle] = useState('');
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [title, setTitle] = useState(() => {
+    return localStorage.getItem('questflow_timer_title') || 'Подчесать всю тетрадь, исправить и внедрить все идеи.';
+  });
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(() => {
+    return localStorage.getItem('questflow_timer_selected_task_id') || 'task-notebook-ideas';
+  });
   const [isTaskDropdownOpen, setIsTaskDropdownOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
+  useEffect(() => {
+    localStorage.setItem('questflow_timer_title', title);
+  }, [title]);
+
+  useEffect(() => {
+    if (selectedTaskId) {
+      localStorage.setItem('questflow_timer_selected_task_id', selectedTaskId);
+    }
+  }, [selectedTaskId]);
 
   // Time state
   const [timeLeft, setTimeLeft] = useState(currentTargetMinutes * 60);

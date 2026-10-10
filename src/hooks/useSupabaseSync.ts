@@ -257,7 +257,7 @@ export function useSupabaseSync(): UseSupabaseSyncReturn {
       }
 
       if (taskRows.length) {
-        result.tasks = taskRows.map((t) => {
+        const mapped = taskRows.map((t) => {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const r = t as any;
           return {
@@ -276,6 +276,17 @@ export function useSupabaseSync(): UseSupabaseSyncReturn {
             inFocusFlow: r.in_focus_flow ?? false, stage: r.stage ?? undefined,
           } as TaskItem;
         });
+
+        // Exclude legacy zombie tasks that user had deleted
+        const clean = mapped.filter((t) => {
+          if (t.id === 'todo-cadrol' || t.id === 'todo-wisdom-20-videos' || t.id === 'todo-investor-20-videos') return false;
+          if (t.projectId === '6h5FPv7XH99pQRH3' || t.projectId === '6h5GFmFgmm9g4f9w' || t.projectId === '6h645qv3RfM99G8h') return false;
+          return true;
+        });
+
+        if (clean.length > 0) {
+          result.tasks = clean;
+        }
       }
 
       if (projectRows.length) {
