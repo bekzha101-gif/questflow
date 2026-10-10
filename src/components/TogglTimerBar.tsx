@@ -20,12 +20,14 @@ import {
 } from 'lucide-react';
 import { playQuestCompleteSound, playCoinSound } from '../utils/sound';
 import { triggerQuestConfetti } from '../utils/confetti';
+import { loadRecoveryCycleConfig, getDayCycleInfo, getTodayStr } from '../utils/recoveryCycle';
 
 interface TogglTimerBarProps {
   tasks: TaskItem[];
   projects: Project[];
   onLogSession: (entry: TimeLogEntry) => void;
   onCompleteTask?: (taskId: string) => void;
+  onDamageHp?: (damageAmount: number, reason: string) => void;
   isCalendarConnected?: boolean;
 }
 
@@ -37,8 +39,16 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({
   projects,
   onLogSession,
   onCompleteTask,
+  onDamageHp,
   isCalendarConnected = false,
 }) => {
+  // Check if today is recovery detox day (7+1 cycle)
+  const todayStr = getTodayStr();
+  const recoveryConfig = loadRecoveryCycleConfig();
+  const cycleInfo = getDayCycleInfo(todayStr, recoveryConfig);
+  const isDetoxDay = cycleInfo.isRecoveryDay;
+  const [isUnlockedForDetox, setIsUnlockedForDetox] = useState(false);
+
   // Timer Mode: work (default 120m) vs break (default 20m)
   const [mode, setMode] = useState<TimerMode>('work');
   
@@ -278,6 +288,53 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({
 
   // Active uncompleted tasks for quick linking
   const activeTasks = tasks.filter((t) => !t.completed);
+
+  // If today is active recovery detox day, lock the timer unless user intentionally overrides with HP penalty
+  if (isDetoxDay && !isUnlockedForDetox) {
+    return (
+      <div className="w-full bg-gradient-to-r from-rose-950/70 via-[#180d12] to-rose-950/70 border-b border-rose-500/40 shadow-xl sticky top-0 z-30 transition-all select-none">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 py-2.5 flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-lg shadow-sm">
+              🧖‍♂️
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-rose-200 tracking-tight">
+                  РЕЖИМ АКТИВНОГО ВОССТАНОВЛЕНИЯ (ДЕНЬ 8)
+                </span>
+                <span className="text-[9px] font-mono px-2 py-0.5 rounded bg-rose-500/25 text-rose-300 border border-rose-500/40 font-bold">
+                  ЦИФРОВОЙ ДЕТОКС
+                </span>
+              </div>
+              <p className="text-[11px] text-rose-300 font-semibold mt-0.5">
+                «Сегодня день отдыха. Уберите гаджеты и идите в баню!»
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                const confirmed = window.confirm(
+                  '⚠️ ВНИМАНИЕ: Сегодня день активного восстановления!\n\nЕсли вы сорвете детокс и включите рабочий таймер, персонаж получит -20 HP штрафа.\n\nВы действительно хотите нарушить детокс?'
+                );
+                if (confirmed) {
+                  if (onDamageHp) {
+                    onDamageHp(20, 'Нарушение дня активного восстановления (-20 HP)');
+                  }
+                  setIsUnlockedForDetox(true);
+                }
+              }}
+              className="px-3.5 py-1.5 rounded-xl bg-rose-900/50 hover:bg-rose-900/80 border border-rose-500/50 text-rose-200 text-xs font-bold transition-all tactile-btn flex items-center gap-1.5 shadow"
+            >
+              <span>⚠️ Нарушить детокс (-20 HP)</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full bg-[#111116] border-b border-white/[0.08] shadow-lg sticky top-0 z-30 transition-all">

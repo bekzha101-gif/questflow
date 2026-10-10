@@ -143,6 +143,11 @@ export function LifeAnalyticsHub({
           onOpenCalendarModal={onOpenCalendarModal}
           onOpenQuickAdd={onOpenQuickAdd}
           onToggleTask={onToggleTask}
+          onUpdateStats={onUpdateStats}
+          onAwardRewards={(exp, gold, hp) => {
+            onLogReward(exp, gold);
+            if (hp) onUpdateStats({ hp: Math.min(stats.maxHp, stats.hp + hp) });
+          }}
         />
       )}
 

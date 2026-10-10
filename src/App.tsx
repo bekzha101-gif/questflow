@@ -44,6 +44,12 @@ import { playLevelUpSound } from './utils/sound';
 import { triggerLevelUpConfetti } from './utils/confetti';
 import { createGoogleCalendarTimeLogEvent } from './utils/googleCalendarApi';
 import { isShoppingTask } from './utils/taskFilters';
+import { 
+  loadRecoveryCycleConfig, 
+  getDayCycleInfo, 
+  getTodayStr, 
+  sendDesktopNotification 
+} from './utils/recoveryCycle';
 
 
 
@@ -320,6 +326,78 @@ export function App() {
   const handleUpdateStats = (newStats: Partial<UserStats>) => {
     setStats((prev) => ({ ...prev, ...newStats }));
   };
+
+  // Handle HP damage with notification (used for detox violations)
+  const handleDamageHp = (amount: number, reason: string) => {
+    setStats((prev) => ({
+      ...prev,
+      hp: Math.max(0, prev.hp - amount),
+    }));
+    setNotifications((prev) => [
+      {
+        id: `dmg-${Date.now()}`,
+        title: '💔 Штраф по HP',
+        message: `${reason}: персонаж потерял -${amount} HP!`,
+        time: new Date().toLocaleTimeString(),
+        type: 'damage',
+        read: false,
+      },
+      ...prev,
+    ]);
+  };
+
+  // ─── 7+1 Active Recovery Cycle Notification Check ──────────────────────────
+  useEffect(() => {
+    const today = getTodayStr();
+    const config = loadRecoveryCycleConfig();
+    const cycle = getDayCycleInfo(today, config);
+
+    // 1. Advance notification (24 hours before recovery day, on day 7)
+    if (cycle.isTomorrowRecovery && !cycle.isRecoveryDay) {
+      const lastAlert = localStorage.getItem('questflow_last_recovery_24h_alert');
+      if (lastAlert !== today) {
+        localStorage.setItem('questflow_last_recovery_24h_alert', today);
+        sendDesktopNotification(
+          '🧖‍♂️ Завтра День Активного Восстановления!',
+          'Подготовьтесь к дню без интернета и гаджетов: сауна с бассейном, природа и медитация.'
+        );
+        setNotifications((prev) => [
+          {
+            id: `notif-recovery-24h-${today}`,
+            title: '🧖‍♂️ Завтра День Активного Восстановления!',
+            message: 'Завтра полный цифровой детокс без гаджетов. Завершите срочные дела и запланируйте сауну, бассейн, прогулку в парке и медитацию.',
+            time: new Date().toLocaleTimeString(),
+            type: 'reminder',
+            read: false,
+          },
+          ...prev,
+        ]);
+      }
+    }
+
+    // 2. Day 8 Active Recovery Morning Alert
+    if (cycle.isRecoveryDay) {
+      const lastAlert = localStorage.getItem('questflow_last_recovery_today_alert');
+      if (lastAlert !== today) {
+        localStorage.setItem('questflow_last_recovery_today_alert', today);
+        sendDesktopNotification(
+          '🛑 Сегодня День Активного Восстановления (Цифровой Детокс)!',
+          'Уберите гаджеты и идите в баню! Закройте экраны: только сауна, бассейн, природа и медитация.'
+        );
+        setNotifications((prev) => [
+          {
+            id: `notif-recovery-today-${today}`,
+            title: '🛑 День активного восстановления (Детокс)!',
+            message: 'Сегодня день без интернета и гаджетов. Таймер заблокирован. Уберите экраны и посвятите день здоровью, сауне, бассейну и природе.',
+            time: new Date().toLocaleTimeString(),
+            type: 'reminder',
+            read: false,
+          },
+          ...prev,
+        ]);
+      }
+    }
+  }, []);
 
   // Gamification Engine: EXP / Level / Gold award
   const awardRewards = (exp: number, gold: number) => {
@@ -728,6 +806,7 @@ export function App() {
         projects={projects}
         onLogSession={handleLogSession}
         onCompleteTask={handleToggleTask}
+        onDamageHp={handleDamageHp}
         isCalendarConnected={Boolean(calendarConfig.connected && calendarConfig.accessToken)}
       />
 
@@ -756,6 +835,11 @@ export function App() {
             onOpenStudioTab={() => setActiveTab('studio')}
             onOpenLifeTab={() => setActiveTab('life')}
             onOpenShoppingTab={() => setActiveTab('shopping')}
+            onUpdateStats={handleUpdateStats}
+            onAwardRewards={(exp, gold, hp) => {
+              awardRewards(exp, gold);
+              if (hp) handleUpdateStats({ hp: Math.min(stats.maxHp, stats.hp + hp) });
+            }}
           />
         )}
 

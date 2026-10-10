@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { TaskItem, Project, GoogleCalendarConfig, Priority, TimeLogEntry } from '../types';
+import { TaskItem, Project, GoogleCalendarConfig, Priority, TimeLogEntry, UserStats } from '../types';
 import { 
   Calendar as CalendarIcon, 
   ChevronLeft, 
@@ -14,12 +14,24 @@ import {
   CalendarDays,
   X,
   Flame,
-  Coffee
+  Coffee,
+  Bell,
+  Sparkles
 } from 'lucide-react';
 import { downloadIcsFile } from '../utils/calendarSync';
 import { playQuestCompleteSound, playCoinSound } from '../utils/sound';
 import { triggerQuestConfetti } from '../utils/confetti';
 import { LifeCalendarView } from './LifeCalendarView';
+import { 
+  loadRecoveryCycleConfig, 
+  saveRecoveryCycleConfig, 
+  getDayCycleInfo, 
+  requestDesktopNotificationPermission, 
+  loadCompletedRecoveryActivities, 
+  saveCompletedRecoveryActivities, 
+  RecoveryCycleConfig, 
+  RecoveryActivity 
+} from '../utils/recoveryCycle';
 
 interface CalendarTimeBlockingProps {
   tasks: TaskItem[];
@@ -30,6 +42,8 @@ interface CalendarTimeBlockingProps {
   onOpenCalendarModal: () => void;
   onOpenQuickAdd: () => void;
   onToggleTask?: (taskId: string) => void;
+  onUpdateStats?: (newStats: Partial<UserStats>) => void;
+  onAwardRewards?: (exp: number, gold: number, hp?: number) => void;
 }
 
 export const CalendarTimeBlocking: React.FC<CalendarTimeBlockingProps> = ({
@@ -41,6 +55,8 @@ export const CalendarTimeBlocking: React.FC<CalendarTimeBlockingProps> = ({
   onOpenCalendarModal,
   onOpenQuickAdd,
   onToggleTask,
+  onUpdateStats,
+  onAwardRewards,
 }) => {
   const [viewDate, setViewDate] = useState<Date>(() => new Date());
   const [viewMode, setViewMode] = useState<'month' | 'day_timeline' | 'life_calendar'>('month');
@@ -53,6 +69,55 @@ export const CalendarTimeBlocking: React.FC<CalendarTimeBlockingProps> = ({
 
   const [copiedFeed, setCopiedFeed] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+
+  // Recovery cycle state (7 work days + 1 recovery day)
+  const [recoveryConfig, setRecoveryConfig] = useState<RecoveryCycleConfig>(loadRecoveryCycleConfig);
+  const [completedActivitiesMap, setCompletedActivitiesMap] = useState<Record<string, string[]>>(loadCompletedRecoveryActivities);
+  const [isPushGranted, setIsPushGranted] = useState<boolean>(() => {
+    return typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted';
+  });
+
+  const handleRequestPush = async () => {
+    const granted = await requestDesktopNotificationPermission();
+    setIsPushGranted(granted);
+    if (granted) {
+      alert('🔔 Системные уведомления macOS успешно активированы! QuestFlow предупредит вас за 24 часа до дня активного восстановления.');
+    } else {
+      alert('⚠️ Разрешение на системные уведомления не получено. Проверьте настройки уведомлений браузера или macOS.');
+    }
+  };
+
+  const handleSetCycleStartDate = (dateStr: string) => {
+    const nextConfig = { ...recoveryConfig, cycleStartDate: dateStr };
+    setRecoveryConfig(nextConfig);
+    saveRecoveryCycleConfig(nextConfig);
+    playQuestCompleteSound();
+    triggerQuestConfetti();
+    alert(`✅ Дата ${dateStr} успешно установлена как начало цикла! Теперь от этой даты отсчитываются 7 рабочих дней (зеленые) и 8-й день восстановления (красный).`);
+  };
+
+  const handleToggleActivity = (dateStr: string, act: RecoveryActivity) => {
+    const currentList = completedActivitiesMap[dateStr] || [];
+    const isDone = currentList.includes(act.id);
+    const updatedList = isDone 
+      ? currentList.filter((id) => id !== act.id)
+      : [...currentList, act.id];
+
+    const nextMap = { ...completedActivitiesMap, [dateStr]: updatedList };
+    setCompletedActivitiesMap(nextMap);
+    saveCompletedRecoveryActivities(nextMap);
+
+    if (!isDone) {
+      playQuestCompleteSound();
+      playCoinSound();
+      triggerQuestConfetti();
+      if (onAwardRewards) {
+        onAwardRewards(act.expReward, act.goldReward, act.hpReward);
+      } else if (onUpdateStats) {
+        onUpdateStats({ hp: act.hpReward });
+      }
+    }
+  };
 
   const prevMonth = () => {
     setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() - 1, 1));
@@ -220,6 +285,36 @@ export const CalendarTimeBlocking: React.FC<CalendarTimeBlockingProps> = ({
             </div>
           </div>
 
+          {/* 7+1 Active Recovery Cycle Legend & Push Controls */}
+          <div className="flex flex-wrap items-center justify-between gap-2.5 mb-4 px-3.5 py-2.5 rounded-2xl bg-[#121217] border border-white/[0.07] text-xs">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-1.5 text-emerald-300">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
+                <span className="font-semibold">7 дней: Рабочий фокус</span>
+              </div>
+              <span className="text-zinc-600 hidden sm:inline">•</span>
+              <div className="flex items-center gap-1.5 text-rose-300">
+                <span className="w-2.5 h-2.5 rounded-full bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.8)] animate-pulse" />
+                <span className="font-semibold">8-й день: Активное восстановление (баня, бассейн, детокс)</span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleRequestPush}
+                className={`px-3 py-1.5 rounded-xl text-[11px] font-semibold border flex items-center gap-1.5 transition-all tactile-btn ${
+                  isPushGranted
+                    ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-300'
+                    : 'bg-zinc-900 hover:bg-zinc-800 border-white/10 text-zinc-300'
+                }`}
+                title="Включить системные оповещения macOS за 24 часа до детокса"
+              >
+                <Bell className={`w-3 h-3 ${isPushGranted ? 'text-emerald-400' : 'text-zinc-400'}`} />
+                <span>{isPushGranted ? 'Push 24ч активен' : 'Включить Push macOS'}</span>
+              </button>
+            </div>
+          </div>
+
           {/* Weekday Names */}
           <div className="grid grid-cols-7 gap-px mb-2 text-center">
             {weekDays.map((day) => (
@@ -250,6 +345,9 @@ export const CalendarTimeBlocking: React.FC<CalendarTimeBlockingProps> = ({
               const dateStr = `${viewDate.getFullYear()}-${(viewDate.getMonth() + 1).toString().padStart(2, '0')}-${dayNum.toString().padStart(2, '0')}`;
               const isToday = dateStr === todayStr;
 
+              const cycleInfo = getDayCycleInfo(dateStr, recoveryConfig);
+              const isCycleRecovery = cycleInfo.isRecoveryDay;
+
               const dayTasks = tasks.filter((t) => {
                 if (t.dueDate === dateStr) return true;
                 if (t.type === 'daily') return true;
@@ -266,25 +364,43 @@ export const CalendarTimeBlocking: React.FC<CalendarTimeBlockingProps> = ({
                   key={`day-${dayNum}`}
                   onClick={() => setSelectedDayTasks({ dateStr, tasks: dayTasks, timeLogs: dayTimeLogs })}
                   className={`min-h-[85px] sm:min-h-[110px] rounded-2xl border p-2 flex flex-col justify-between cursor-pointer transition-all ${
-                    isToday
-                      ? 'bg-[#14141c] border-zinc-500'
-                      : 'bg-[#101014] hover:bg-[#15151a] border-white/5 hover:border-white/15'
+                    isCycleRecovery
+                      ? isToday
+                        ? 'bg-rose-950/45 border-rose-400 ring-2 ring-rose-500 shadow-[inset_0_0_18px_rgba(244,63,94,0.3)]'
+                        : 'bg-rose-950/25 hover:bg-rose-950/35 border-rose-500/40 hover:border-rose-400/70 shadow-[inset_0_0_12px_rgba(244,63,94,0.12)]'
+                      : isToday
+                      ? 'bg-emerald-950/35 border-emerald-400 ring-2 ring-emerald-500 shadow-[inset_0_0_15px_rgba(16,185,129,0.25)]'
+                      : 'bg-emerald-950/15 hover:bg-emerald-950/25 border-emerald-500/25 hover:border-emerald-500/45 shadow-[inset_0_0_10px_rgba(16,185,129,0.06)]'
                   }`}
                 >
-                  {/* Top Day Number */}
+                  {/* Top Day Number & Cycle Indicator */}
                   <div className="flex items-center justify-between mb-1">
-                    {isToday ? (
-                      <span className="w-6 h-6 rounded-full bg-zinc-100 text-zinc-950 font-bold text-xs flex items-center justify-center shadow">
-                        {dayNum}
-                      </span>
-                    ) : (
-                      <span className="text-xs font-medium text-zinc-400">
-                        {dayNum}
-                      </span>
-                    )}
+                    <div className="flex items-center gap-1.5">
+                      {isToday ? (
+                        <span className={`w-6 h-6 rounded-full font-bold text-xs flex items-center justify-center shadow ${
+                          isCycleRecovery ? 'bg-rose-500 text-white' : 'bg-emerald-500 text-zinc-950'
+                        }`}>
+                          {dayNum}
+                        </span>
+                      ) : (
+                        <span className={`text-xs font-semibold ${isCycleRecovery ? 'text-rose-300' : 'text-zinc-300'}`}>
+                          {dayNum}
+                        </span>
+                      )}
+
+                      {isCycleRecovery ? (
+                        <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-rose-500/25 text-rose-300 border border-rose-500/40 flex items-center gap-0.5">
+                          🧖‍♂️ Детокс
+                        </span>
+                      ) : (
+                        <span className="text-[8px] font-mono font-medium px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">
+                          Д{cycleInfo.dayNumberInCycle}/7
+                        </span>
+                      )}
+                    </div>
 
                     {dayTasks.length > 0 && (
-                      <span className="text-[9px] text-zinc-600 font-mono hidden sm:inline">
+                      <span className="text-[9px] text-zinc-500 font-mono hidden sm:inline">
                         {dayTasks.filter(t => t.completed).length}/{dayTasks.length}
                       </span>
                     )}
@@ -292,6 +408,12 @@ export const CalendarTimeBlocking: React.FC<CalendarTimeBlockingProps> = ({
 
                   {/* Task chips & focus log badge inside day */}
                   <div className="flex-1 space-y-1 overflow-hidden">
+                    {isCycleRecovery && (
+                      <div className="px-1.5 py-0.5 rounded text-[8px] font-bold bg-rose-500/15 text-rose-300 border border-rose-500/25 truncate flex items-center gap-1">
+                        <span>🧖‍♂️ Сауна, бассейн, детокс</span>
+                      </div>
+                    )}
+
                     {focusMins > 0 && (
                       <div className="px-1.5 py-0.5 rounded text-[8px] font-mono bg-amber-500/15 text-amber-300 border border-amber-500/20 truncate flex items-center gap-1">
                         <Flame className="w-2.5 h-2.5 shrink-0 text-amber-400" />
@@ -440,6 +562,110 @@ export const CalendarTimeBlocking: React.FC<CalendarTimeBlockingProps> = ({
             </div>
 
             <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+              {/* 7+1 Cycle Status Banner & Start Date Selector */}
+              {(() => {
+                const selectedCycle = getDayCycleInfo(selectedDayTasks.dateStr, recoveryConfig);
+                const isStartDay = recoveryConfig.cycleStartDate === selectedDayTasks.dateStr;
+                const dayActs = completedActivitiesMap[selectedDayTasks.dateStr] || [];
+
+                return (
+                  <div className="space-y-3 mb-3">
+                    <div className={`p-3 rounded-2xl border flex items-center justify-between gap-2.5 ${
+                      selectedCycle.isRecoveryDay
+                        ? 'bg-rose-950/40 border-rose-500/50 text-rose-200'
+                        : 'bg-emerald-950/30 border-emerald-500/35 text-emerald-200'
+                    }`}>
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold flex items-center gap-1.5">
+                          {selectedCycle.isRecoveryDay ? (
+                            <>
+                              <span className="w-2.5 h-2.5 rounded-full bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.9)] animate-pulse" />
+                              <span>День 8: Активное восстановление</span>
+                            </>
+                          ) : (
+                            <>
+                              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.9)]" />
+                              <span>День {selectedCycle.dayNumberInCycle} из 7: Рабочий фокус</span>
+                            </>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-zinc-400 mt-0.5 truncate">
+                          {selectedCycle.isRecoveryDay
+                            ? 'Полный цифровой детокс: без гаджетов и интернета'
+                            : 'Спринт фокус-задач и тайм-блоков'}
+                        </p>
+                      </div>
+
+                      <button
+                        onClick={() => handleSetCycleStartDate(selectedDayTasks.dateStr)}
+                        className={`px-2.5 py-1.5 rounded-xl text-[10px] font-bold shrink-0 transition-all tactile-btn ${
+                          isStartDay
+                            ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                            : 'bg-white/10 hover:bg-white/20 text-white'
+                        }`}
+                        title="Сделать эту дату точкой отсчета цикла"
+                      >
+                        {isStartDay ? '★ Старт цикла' : '📍 Начать цикл отсюда'}
+                      </button>
+                    </div>
+
+                    {/* Prescribed Recovery Checklist */}
+                    {selectedCycle.isRecoveryDay && (
+                      <div className="p-3.5 rounded-2xl bg-rose-950/30 border border-rose-500/40 space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-rose-200 flex items-center gap-1.5">
+                            <span>🧖‍♂️ Практики восстановления</span>
+                          </span>
+                          <span className="text-[10px] font-mono font-bold text-rose-400">
+                            {dayActs.length}/{recoveryConfig.activities.length} выполнено
+                          </span>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          {recoveryConfig.activities.map((act) => {
+                            const isDone = dayActs.includes(act.id);
+                            return (
+                              <button
+                                key={act.id}
+                                onClick={() => handleToggleActivity(selectedDayTasks.dateStr, act)}
+                                className={`w-full p-2.5 rounded-xl border text-left flex items-start gap-2.5 transition-all tactile-btn ${
+                                  isDone
+                                    ? 'bg-rose-900/40 border-rose-500/50 text-rose-200'
+                                    : 'bg-zinc-900/90 hover:bg-zinc-800 border-white/5 text-zinc-300'
+                                }`}
+                              >
+                                <div className={`mt-0.5 w-4 h-4 rounded-md border flex items-center justify-center shrink-0 ${
+                                  isDone ? 'bg-rose-500 border-rose-400 text-white' : 'border-zinc-600'
+                                }`}>
+                                  {isDone && <Check className="w-3 h-3 stroke-[3]" />}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-xs font-bold flex items-center gap-1.5">
+                                    <span>{act.icon}</span>
+                                    <span className={isDone ? 'line-through text-rose-300/80' : 'text-zinc-200'}>{act.title}</span>
+                                  </div>
+                                  <p className="text-[10px] text-zinc-400 mt-0.5">{act.description}</p>
+                                </div>
+                                <div className="text-[10px] font-mono text-amber-400 shrink-0 font-semibold">
+                                  +{act.expReward} EXP
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {dayActs.length === recoveryConfig.activities.length && (
+                          <div className="p-2.5 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-300 text-xs flex items-center gap-2">
+                            <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+                            <span>🏆 Все практики закрыты! Получен трофей «Мастер перезагрузки» и полное восстановление HP!</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
               {selectedDayTasks.tasks.length === 0 ? (
                 <p className="text-xs text-zinc-500 text-center py-6">Нет запланированных задач</p>
               ) : (
@@ -504,15 +730,25 @@ export const CalendarTimeBlocking: React.FC<CalendarTimeBlockingProps> = ({
             </div>
 
             <div className="pt-4 border-t border-white/5 flex justify-between items-center mt-2">
-              <button
-                onClick={() => {
-                  setSelectedDayTasks(null);
-                  onOpenQuickAdd();
-                }}
-                className="px-3.5 py-1.5 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-bold text-xs flex items-center gap-1.5 shadow"
-              >
-                <Plus className="w-3.5 h-3.5" /> Добавить
-              </button>
+              {(() => {
+                const selectedCycle = getDayCycleInfo(selectedDayTasks.dateStr, recoveryConfig);
+                return selectedCycle.isRecoveryDay ? (
+                  <div className="text-[11px] font-bold text-rose-300 py-1 flex items-center gap-1.5">
+                    <X className="w-3.5 h-3.5 text-rose-400" />
+                    <span>«Сегодня день отдыха. Уберите гаджеты и идите в баню!»</span>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => {
+                      setSelectedDayTasks(null);
+                      onOpenQuickAdd();
+                    }}
+                    className="px-3.5 py-1.5 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-bold text-xs flex items-center gap-1.5 shadow"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Добавить
+                  </button>
+                );
+              })()}
 
               <button
                 onClick={() => setSelectedDayTasks(null)}
