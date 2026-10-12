@@ -23,6 +23,7 @@ MCP-сервер задач для агентов: `mcp_server.py` (хранит
 
 ## Карта кода (`src/`)
 - `App.tsx` — корневой стейт, вкладки, общий сброс профиля.
+- `components/Navigation.tsx` — список разделов (`PRIMARY_NAV`, `SECONDARY_NAV`, `getSection`) и боковая навигация для Mac; `MobileBottomNav.tsx` — нижняя навигация телефона; `MoreScreen.tsx` — экран «Ещё».
 - `components/TogglTimerBar.tsx` — таймер в стиле Toggl: фокус 120 мин / отдых 20 мин.
 - `components/CommandCenterToday.tsx` — панель «Сегодня»; `ShoppingListView.tsx` — список покупок (отдельная вкладка).
 - `components/LifeCalendarView.tsx`, `CalendarTimeBlocking.tsx`, `GoogleCalendarModal.tsx` — календарь, тайм-блокинг, Google Calendar.
@@ -44,6 +45,8 @@ MCP-сервер задач для агентов: `mcp_server.py` (хранит
 8. **Синхронизация:** Google Calendar (двусторонне), экспорт `.ICS`, Supabase-синхронизация, быстрый бэкап/восстановление JSON, режим гостя (`questflow_guest_mode`).
 9. **Bio-Health:** HP не регенерируется сам, есть будильники, журнал еды и сна, AI-советы.
 10. Интерфейс: минималистичный (Linear/Raycast), карточки с тактильными элементами. Пользователь недоволен «ерундой» в дизайне, перед редизайном показывай план.
+
+11. **Навигация (согласовано 12.10.2026):** главные разделы — Сегодня, Задачи, Календарь, Здоровье; Покупки, Награды, Медиа, Финансы — в «Ещё». Одна кнопка «+». RPG-часть приглушена (тонкая строка HP/уровень), тема только тёмная. Чистка кода идёт вместе с перерисовкой каждого экрана, не отдельным этапом.
 
 Ключи localStorage (все с префиксом `questflow_`): `tasks_v1`, `stats_v1`, `rewards_v1`, `timelogs`, `timer_*` (work_duration, break_duration, title, selected_task_id), `recovery_cycle_config`, `recovery_completed_activities`, `last_recovery_24h_alert`, `last_recovery_today_alert`, `bigdata_v1`, `bigdata_v3_cleaned`, `channels_v1`, `videos_v1`, `ideas_v1`, `finances_v1`, `team_v1`, `supabase_url`, `supabase_anon_key`, `guest_mode`.
 

@@ -22,8 +22,9 @@ import { initialStats, initialTasks, initialRewards } from './data/initialData';
 
 
 import { Header } from './components/Header';
-import { Navigation, TabType } from './components/Navigation';
+import { Navigation, TabType, getSection, SECTION_TITLES } from './components/Navigation';
 import { MobileBottomNav } from './components/MobileBottomNav';
+import { MoreScreen } from './components/MoreScreen';
 import { CommandCenterToday } from './components/CommandCenterToday';
 import { MediaStudioHub } from './components/MediaStudioHub';
 import { QuestsHub } from './components/QuestsHub';
@@ -794,16 +795,29 @@ export function App() {
   };
 
   // Focus, Due Today, and Shopping counts
-  const focusCount = tasks.filter((t) => (t.inFocusFlow || t.priority === 'p1') && !t.completed).length;
   const todayStr = new Date().toISOString().split('T')[0];
   const dueTodayCount = tasks.filter((t) => !t.completed && (t.dueDate === todayStr || t.type === 'daily')).length;
   const shoppingCount = tasks.filter((t) => isShoppingTask(t) && !t.completed).length;
 
+  const section = getSection(activeTab);
+
   return (
-    <div className="h-screen bg-[#09090c] text-white flex flex-col font-sans selection:bg-purple-500 selection:text-white overflow-hidden pb-16 md:pb-0">
-      
-      {/* 1. Header with Hero Sheet, Sync & Currencies */}
+    <div className="h-screen bg-[#09090c] text-white flex font-sans selection:bg-purple-500 selection:text-white overflow-hidden">
+
+      {/* 1. Боковая навигация (Mac / широкий экран) */}
+      <Navigation
+        activeTab={activeTab}
+        onSelectTab={setActiveTab}
+        dueTodayCount={dueTodayCount}
+        shoppingCount={shoppingCount}
+      />
+
+      <div className="flex-1 min-w-0 flex flex-col overflow-hidden pb-16 md:pb-0">
+
+      {/* 2. Шапка: название раздела, синхронизация, настройки */}
       <Header
+        title={SECTION_TITLES[section]}
+        syncStatus={syncStatus}
         stats={stats}
         onUpdateStats={handleUpdateStats}
         onOpenQuickAdd={() => setIsQuickAddOpen(true)}
@@ -818,16 +832,6 @@ export function App() {
         calendarConfig={calendarConfig}
       />
 
-
-      {/* 2. Top Navigation Tabs (Desktop) */}
-      <Navigation
-        activeTab={activeTab}
-        onSelectTab={setActiveTab}
-        focusCount={focusCount}
-        dueTodayCount={dueTodayCount}
-        shoppingCount={shoppingCount}
-      />
-
       {/* 2.5 Toggl Track Style Time Tracker Bar (Focus 120m / Break 20m) */}
       <TogglTimerBar
         tasks={tasks}
@@ -838,11 +842,11 @@ export function App() {
         isCalendarConnected={Boolean(calendarConfig.connected && calendarConfig.accessToken)}
       />
 
-      {/* 3. Main Views (5 Clean Flagship Hubs) */}
+      {/* 3. Main Views */}
       <main className="flex-1 overflow-hidden flex flex-col">
         
         {/* 1. TODAY (Command Center / Home Focus) */}
-        {activeTab === 'today' && (
+        {section === 'today' && (
           <CommandCenterToday
             tasks={tasks}
             projects={projects}
@@ -861,7 +865,7 @@ export function App() {
             onOpenQuickAdd={() => setIsQuickAddOpen(true)}
             onOpenHealthModal={() => setIsHealthModalOpen(true)}
             onOpenStudioTab={() => setActiveTab('studio')}
-            onOpenLifeTab={() => setActiveTab('life')}
+            onOpenLifeTab={() => setActiveTab('health')}
             onOpenShoppingTab={() => setActiveTab('shopping')}
             onUpdateStats={handleUpdateStats}
             onAwardRewards={(exp, gold, hp) => {
@@ -872,7 +876,7 @@ export function App() {
         )}
 
         {/* 2. MEDIA STUDIO (Shorts, Production Kanban, Ideas, AI) */}
-        {(activeTab === 'studio' || activeTab === 'production' || activeTab === 'shorts' || activeTab === 'ideas' || activeTab === 'ai') && (
+        {section === 'studio' && (
           <div className="flex-1 overflow-y-auto">
             <MediaStudioHub
               tasks={tasks}
@@ -894,7 +898,7 @@ export function App() {
         )}
 
         {/* 3. QUESTS & HABITS BACKLOG */}
-        {(activeTab === 'quests' || activeTab === 'tasks' || activeTab === 'habits') && (
+        {section === 'quests' && (
           <div className="flex-1 overflow-y-auto">
             <QuestsHub
               tasks={tasks}
@@ -919,7 +923,7 @@ export function App() {
         )}
 
         {/* 3.5 SHOPPING LIST (Isolated Dedicated View) */}
-        {activeTab === 'shopping' && (
+        {section === 'shopping' && (
           <div className="flex-1 overflow-y-auto">
             <div className="max-w-7xl mx-auto py-3 px-2 sm:px-4">
               <ShoppingListView
@@ -937,10 +941,13 @@ export function App() {
           </div>
         )}
 
-        {/* 4. LIFE OS & ANALYTICS */}
-        {(activeTab === 'life' || activeTab === 'bigdata' || activeTab === 'calendar' || activeTab === 'finances') && (
+        {/* 4. Календарь / Здоровье / Финансы */}
+        {(section === 'calendar' || section === 'health' || section === 'finances') && (
           <div className="flex-1 overflow-y-auto">
             <LifeAnalyticsHub
+              key={section}
+              view={section}
+              initialHealthTab={activeTab === 'bigdata' ? 'bigdata' : 'health'}
               tasks={tasks}
               projects={projects}
               stats={stats}
@@ -964,7 +971,7 @@ export function App() {
         )}
 
         {/* 5. TAVERN & REWARDS */}
-        {(activeTab === 'tavern' || activeTab === 'team') && (
+        {section === 'tavern' && (
           <div className="flex-1 overflow-y-auto">
             <TavernHub
               stats={stats}
@@ -975,14 +982,22 @@ export function App() {
             />
           </div>
         )}
+
+        {/* 6. «Ещё»: второстепенные разделы (телефон) */}
+        {section === 'more' && (
+          <div className="flex-1 overflow-y-auto">
+            <MoreScreen onSelectTab={setActiveTab} shoppingCount={shoppingCount} />
+          </div>
+        )}
       </main>
 
-      {/* 4. Mobile Bottom Floating Nav (TikTok/ShortsFlow style) */}
+      </div>
+
+      {/* 4. Нижняя навигация (телефон) */}
       <MobileBottomNav
         activeTab={activeTab}
         onSelectTab={setActiveTab}
         onOpenQuickAdd={() => setIsQuickAddOpen(true)}
-        focusCount={focusCount}
       />
 
       {/* 5. Modals */}
@@ -1090,42 +1105,6 @@ export function App() {
         action={snackbarAction}
         onClose={() => setSnackbarAction(null)}
       />
-
-
-
-      {/* 6. Cloud Sync Status + Export Button (floating, top-right area) */}
-      <div className="fixed top-2 right-2 z-40 flex items-center gap-2">
-        {/* Sync status dot */}
-        <div
-          className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-medium transition-all
-            ${syncStatus === 'synced' ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-800/40' :
-              syncStatus === 'syncing' ? 'bg-blue-950/80 text-blue-300 border border-blue-800/40' :
-              syncStatus === 'error' ? 'bg-red-950/80 text-red-400 border border-red-800/40' :
-              'bg-white/5 text-white/25 border border-white/10'
-            }`}
-          title={syncStatus === 'synced' ? 'Данные сохранены в облако' :
-                 syncStatus === 'syncing' ? 'Синхронизация...' :
-                 syncStatus === 'error' ? 'Ошибка синхронизации' : 'Локальный режим'}
-        >
-          <span className={`w-1.5 h-1.5 rounded-full ${
-            syncStatus === 'synced' ? 'bg-emerald-400' :
-            syncStatus === 'syncing' ? 'bg-blue-400 animate-pulse' :
-            syncStatus === 'error' ? 'bg-red-400' : 'bg-white/20'
-          }`} />
-          {syncStatus === 'synced' ? '☁️' :
-           syncStatus === 'syncing' ? 'синхр...' :
-           syncStatus === 'error' ? '⚠️ ошибка' : '💾 локально'}
-        </div>
-
-        {/* Export button */}
-        <button
-          onClick={handleExportData}
-          className="px-2 py-1 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-[10px] text-white/40 hover:text-white/70 transition-all"
-          title="Экспортировать все данные в JSON"
-        >
-          ⬇ бэкап
-        </button>
-      </div>
     </div>
   );
 }

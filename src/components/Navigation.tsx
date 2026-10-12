@@ -1,124 +1,166 @@
 import React from 'react';
-import { 
+import {
   Zap,
   Film,
-  CheckSquare, 
-  Compass, 
+  CheckSquare,
+  CalendarDays,
+  Heart,
   ShoppingBag,
-  Gift
+  Gift,
+  Wallet,
+  MoreHorizontal,
+  type LucideIcon,
 } from 'lucide-react';
 
-export type TabType = 
+export type TabType =
   | 'today'
   | 'quests'
+  | 'calendar'
+  | 'health'
+  | 'more'
   | 'shopping'
-  | 'studio' 
-  | 'life'
+  | 'studio'
+  | 'finances'
   | 'tavern'
   // Backwards compatibility / deep link aliases:
-  | 'shorts' 
-  | 'production' 
-  | 'ideas' 
+  | 'life'
+  | 'shorts'
+  | 'production'
+  | 'ideas'
   | 'bigdata'
-  | 'tasks' 
-  | 'habits' 
-  | 'finances' 
-  | 'calendar' 
-  | 'team' 
+  | 'tasks'
+  | 'habits'
+  | 'team'
   | 'ai';
+
+// Раздел приложения, к которому относится вкладка (алиасы сводятся к одному разделу)
+export type SectionType =
+  | 'today'
+  | 'quests'
+  | 'calendar'
+  | 'health'
+  | 'more'
+  | 'shopping'
+  | 'studio'
+  | 'finances'
+  | 'tavern';
+
+export function getSection(tab: TabType): SectionType {
+  switch (tab) {
+    case 'tasks':
+    case 'habits':
+      return 'quests';
+    case 'life':
+    case 'bigdata':
+      return 'health';
+    case 'shorts':
+    case 'production':
+    case 'ideas':
+    case 'ai':
+      return 'studio';
+    case 'team':
+      return 'tavern';
+    default:
+      return tab;
+  }
+}
+
+export interface NavItem {
+  id: SectionType;
+  label: string;
+  icon: LucideIcon;
+}
+
+// Главные разделы: видны всегда (снизу на телефоне, сбоку на Mac)
+export const PRIMARY_NAV: NavItem[] = [
+  { id: 'today', label: 'Сегодня', icon: Zap },
+  { id: 'quests', label: 'Задачи', icon: CheckSquare },
+  { id: 'calendar', label: 'Календарь', icon: CalendarDays },
+  { id: 'health', label: 'Здоровье', icon: Heart },
+];
+
+// Второстепенные разделы: на телефоне спрятаны в «Ещё»
+export const SECONDARY_NAV: NavItem[] = [
+  { id: 'shopping', label: 'Покупки', icon: ShoppingBag },
+  { id: 'tavern', label: 'Награды', icon: Gift },
+  { id: 'studio', label: 'Медиа', icon: Film },
+  { id: 'finances', label: 'Финансы', icon: Wallet },
+];
+
+export const MORE_NAV: NavItem = { id: 'more', label: 'Ещё', icon: MoreHorizontal };
+
+export const SECTION_TITLES: Record<SectionType, string> = {
+  today: 'Сегодня',
+  quests: 'Задачи',
+  calendar: 'Календарь',
+  health: 'Здоровье',
+  more: 'Ещё',
+  shopping: 'Покупки',
+  tavern: 'Награды',
+  studio: 'Медиа',
+  finances: 'Финансы',
+};
 
 interface NavigationProps {
   activeTab: TabType;
   onSelectTab: (tab: TabType) => void;
-  focusCount: number;
   dueTodayCount: number;
   shoppingCount?: number;
 }
 
+// Боковая навигация для Mac / широкого экрана
 export const Navigation: React.FC<NavigationProps> = ({
   activeTab,
   onSelectTab,
-  focusCount,
   dueTodayCount,
   shoppingCount = 0,
 }) => {
-  const primaryTabs = [
-    {
-      id: 'today' as TabType,
-      label: 'Сегодня',
-      icon: Zap,
-      badge: dueTodayCount > 0 ? dueTodayCount : undefined,
-    },
-    {
-      id: 'quests' as TabType,
-      label: 'Задачи',
-      icon: CheckSquare,
-    },
-    {
-      id: 'shopping' as TabType,
-      label: 'Покупки',
-      icon: ShoppingBag,
-      badge: shoppingCount > 0 ? shoppingCount : undefined,
-    },
-    {
-      id: 'studio' as TabType,
-      label: 'Медиа',
-      icon: Film,
-      badge: focusCount > 0 ? focusCount : undefined,
-    },
-    {
-      id: 'life' as TabType,
-      label: 'Аналитика',
-      icon: Compass,
-    },
-    {
-      id: 'tavern' as TabType,
-      label: 'Награды',
-      icon: Gift,
-    },
-  ];
+  const section = getSection(activeTab);
+  const badges: Partial<Record<SectionType, number>> = {
+    today: dueTodayCount,
+    shopping: shoppingCount,
+  };
 
-  const isTabActive = (tabId: TabType) => {
-    if (activeTab === tabId) return true;
-    if (tabId === 'shopping' && activeTab === 'shopping') return true;
-    if (tabId === 'studio' && (activeTab === 'shorts' || activeTab === 'production' || activeTab === 'ideas' || activeTab === 'ai')) return true;
-    if (tabId === 'quests' && (activeTab === 'tasks' || activeTab === 'habits')) return true;
-    if (tabId === 'life' && (activeTab === 'bigdata' || activeTab === 'calendar' || activeTab === 'finances')) return true;
-    if (tabId === 'tavern' && activeTab === 'team') return true;
-    return false;
+  const renderItem = (item: NavItem) => {
+    const Icon = item.icon;
+    const active = section === item.id;
+    const badge = badges[item.id];
+
+    return (
+      <button
+        key={item.id}
+        onClick={() => onSelectTab(item.id)}
+        aria-current={active ? 'page' : undefined}
+        className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-[13px] transition-colors cursor-pointer ${
+          active
+            ? 'bg-zinc-800 text-white font-semibold'
+            : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04]'
+        }`}
+      >
+        <Icon className={`w-4 h-4 shrink-0 ${active ? 'text-white' : 'text-zinc-500'}`} />
+        <span className="flex-1 text-left truncate">{item.label}</span>
+        {badge ? (
+          <span className="text-[10px] font-mono text-zinc-500">{badge}</span>
+        ) : null}
+      </button>
+    );
   };
 
   return (
-    <nav className="w-full bg-[#09090b]/80 border-b border-white/[0.06] px-3 sm:px-6 py-2 select-none sticky top-0 z-30 backdrop-blur-md">
-      <div className="max-w-4xl mx-auto flex items-center justify-start sm:justify-center gap-1 overflow-x-auto">
-        {primaryTabs.map((tab) => {
-          const Icon = tab.icon;
-          const active = isTabActive(tab.id);
-
-          return (
-            <button
-              key={tab.id}
-              onClick={() => onSelectTab(tab.id)}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-medium transition-all cursor-pointer whitespace-nowrap ${
-                active
-                  ? 'bg-zinc-800 text-white shadow-sm font-semibold'
-                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04]'
-              }`}
-            >
-              <Icon className={`w-3.5 h-3.5 ${active ? 'text-white' : 'text-zinc-500'}`} />
-              <span>{tab.label}</span>
-
-              {tab.badge !== undefined && (
-                <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-mono ${
-                  active ? 'bg-zinc-700 text-zinc-200' : 'bg-zinc-900 text-zinc-500'
-                }`}>
-                  {tab.badge}
-                </span>
-              )}
-            </button>
-          );
-        })}
+    <nav className="hidden md:flex flex-col w-52 shrink-0 bg-[#09090b] border-r border-white/[0.06] px-2.5 py-3 select-none overflow-y-auto">
+      <div className="flex items-center gap-2.5 px-2 pb-4">
+        <div className="w-7 h-7 rounded-lg bg-zinc-100 flex items-center justify-center">
+          <Zap className="w-4 h-4 text-zinc-950" />
+        </div>
+        <span className="font-bold text-white text-sm tracking-tight">QuestFlow</span>
       </div>
+
+      <div className="space-y-0.5">{PRIMARY_NAV.map(renderItem)}</div>
+
+      <div className="mt-5 mb-1.5 px-3 text-[10px] font-medium uppercase tracking-wider text-zinc-600">
+        Ещё
+      </div>
+      <div className="space-y-0.5">{SECONDARY_NAV.map(renderItem)}</div>
     </nav>
   );
 };

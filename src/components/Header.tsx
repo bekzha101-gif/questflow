@@ -26,6 +26,8 @@ interface HeaderProps {
   notifications: NotificationItem[];
   onMarkNotificationsRead: () => void;
   calendarConfig: GoogleCalendarConfig;
+  title: string;
+  syncStatus?: 'synced' | 'syncing' | 'error' | string;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -38,10 +40,21 @@ export const Header: React.FC<HeaderProps> = ({
   onImportData,
   notifications,
   onMarkNotificationsRead,
+  title,
+  syncStatus,
 }) => {
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
   const unreadNotifs = notifications.filter((n) => !n.read).length;
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+
+  const syncLabel =
+    syncStatus === 'synced' ? 'Данные сохранены в облако' :
+    syncStatus === 'syncing' ? 'Синхронизация...' :
+    syncStatus === 'error' ? 'Ошибка синхронизации' : 'Локальный режим';
+  const syncDotClass =
+    syncStatus === 'synced' ? 'bg-emerald-400' :
+    syncStatus === 'syncing' ? 'bg-blue-400 animate-pulse' :
+    syncStatus === 'error' ? 'bg-red-400' : 'bg-zinc-600';
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -51,29 +64,29 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   return (
-    <header className="sticky top-0 z-40 bg-[#09090b]/90 backdrop-blur-md border-b border-white/[0.06] px-4 sm:px-6 py-3 transition-all">
-      <div className="max-w-5xl mx-auto flex items-center justify-between gap-3">
+    <header className="sticky top-0 z-40 bg-[#09090b]/90 backdrop-blur-md border-b border-white/[0.06] px-4 sm:px-6 py-2 transition-all">
+      <div className="flex items-center justify-between gap-3">
         
-        {/* Left: Brand Logo & Title */}
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-sm shadow-md font-bold text-white">
-            ⚡
-          </div>
-          <span className="font-bold text-white text-base tracking-tight">
-            QuestFlow
-          </span>
-        </div>
-
-
-
+        {/* Left: текущий раздел */}
+        <h1 className="font-bold text-white text-base tracking-tight truncate">{title}</h1>
 
         {/* Right: Actions */}
         <div className="flex items-center gap-2">
           
-          {/* Quick Add Primary Button */}
+          {/* Статус синхронизации */}
+          <span
+            role="status"
+            title={syncLabel}
+            aria-label={syncLabel}
+            className="flex items-center justify-center w-6 h-6"
+          >
+            <span className={`w-2 h-2 rounded-full ${syncDotClass}`} />
+          </span>
+
+          {/* Quick Add Primary Button (на телефоне эту роль играет «+» в нижней навигации) */}
           <button
             onClick={onOpenQuickAdd}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-zinc-200 text-zinc-950 font-semibold text-xs transition-all active:scale-95 cursor-pointer shadow-sm"
+            className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-zinc-200 text-zinc-950 font-semibold text-xs transition-all active:scale-95 cursor-pointer shadow-sm"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>Новая задача</span>
