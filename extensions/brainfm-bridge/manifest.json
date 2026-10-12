@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "QuestFlow → Brain.fm",
+  "description": "Включает Brain.fm в фоновой вкладке, пока в QuestFlow идёт фокус, и ставит на паузу на отдыхе, паузе и стопе.",
+  "version": "0.1.0",
+  "permissions": ["tabs", "storage"],
+  "host_permissions": ["https://my.brain.fm/*"],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://bekzha101-gif.github.io/questflow/*",
+        "http://localhost:5173/*"
+      ],
+      "js": ["questflow.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://my.brain.fm/*"],
+      "js": ["brainfm-player.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["https://my.brain.fm/*"],
+      "js": ["brainfm-bridge.js"],
+      "run_at": "document_start"
+    }
+  ]
+}
