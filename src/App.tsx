@@ -867,8 +867,6 @@ export function App() {
             onOpenStudioTab={() => setActiveTab('studio')}
             onOpenLifeTab={() => setActiveTab('health')}
             onOpenShoppingTab={() => setActiveTab('shopping')}
-            onOpenRewardsTab={() => setActiveTab('tavern')}
-            timeLogs={timeLogs}
             onUpdateStats={handleUpdateStats}
             onAwardRewards={(exp, gold, hp) => {
               awardRewards(exp, gold);

@@ -25,7 +25,7 @@ MCP-сервер задач для агентов: `mcp_server.py` (хранит
 - `App.tsx` — корневой стейт, вкладки, общий сброс профиля.
 - `components/Navigation.tsx` — список разделов (`PRIMARY_NAV`, `SECONDARY_NAV`, `getSection`) и боковая навигация для Mac; `MobileBottomNav.tsx` — нижняя навигация телефона; `MoreScreen.tsx` — экран «Ещё».
 - `components/TogglTimerBar.tsx` — таймер в стиле Toggl: фокус 120 мин / отдых 20 мин.
-- `components/CommandCenterToday.tsx` — экран «Сегодня» (строка статуса, блок «Фокус сегодня», задачи, привычки); `utils/dayPlan.ts` — норма блоков (3 по 120 мин), главная задача дня, строка «ради чего»; `ShoppingListView.tsx` — список покупок (отдельная вкладка).
+- `components/CommandCenterToday.tsx` — экран «Сегодня»: четыре колонки Привычки · Ежедневные · Задачи · Награды; `ShoppingListView.tsx` — список покупок (отдельная вкладка).
 - `components/LifeCalendarView.tsx`, `CalendarTimeBlocking.tsx`, `GoogleCalendarModal.tsx` — календарь, тайм-блокинг, Google Calendar.
 - `components/BigDataLifeTracker.tsx` — таблица «Big Data самоконтроль» (31 день).
 - `components/HealthBioTracker.tsx`, `LifeAnalyticsHub.tsx` — здоровье и аналитика.
@@ -55,7 +55,9 @@ MCP-сервер задач для агентов: `mcp_server.py` (хранит
 14. **Скрытые разделы:** Медиа, Финансы, Календарь жизни и AI-помощники скрыты по умолчанию (выбор пользователя), включаются переключателями на экране «Ещё» (`utils/hiddenSections.ts`). Скрытие не удаляет данные.
 15. **Система наград** строится по плану в `docs/ROADMAP.md` («Система наград и ритуалы»): норма 3 блока фокуса в день, золото в основном за часы фокуса, штрафы смягчены, напоминание только вечернее.
 
-Ключи localStorage (все с префиксом `questflow_`): `tasks_v1`, `stats_v1`, `rewards_v1`, `timelogs`, `timer_*` (work_duration, break_duration, title, selected_task_id), `recovery_cycle_config`, `recovery_completed_activities`, `last_recovery_24h_alert`, `last_recovery_today_alert`, `bigdata_v1`, `bigdata_v3_cleaned`, `hidden_sections_v1`, `media_demo_cleaned_v1`, `main_task_v1`, `purpose_v1`, `channels_v1`, `videos_v1`, `ideas_v1`, `finances_v1`, `team_v1`, `supabase_url`, `supabase_anon_key`, `guest_mode`.
+16. **Экран «Сегодня» не перекраивать.** Четыре колонки Привычки · Ежедневные · Задачи · Награды пользователь просил сам и считает удобными. Редизайн 12.10.2026 (две колонки, блок «Фокус сегодня», без наград) он отверг словами «интерфейс был лучше», экран возвращён. Любое изменение раскладки или вида задач на «Сегодня» — только после показа макета и явного согласия; новые элементы добавлять поверх прежней раскладки, а не вместо неё.
+
+Ключи localStorage (все с префиксом `questflow_`): `tasks_v1`, `stats_v1`, `rewards_v1`, `timelogs`, `timer_*` (work_duration, break_duration, title, selected_task_id), `recovery_cycle_config`, `recovery_completed_activities`, `last_recovery_24h_alert`, `last_recovery_today_alert`, `bigdata_v1`, `bigdata_v3_cleaned`, `hidden_sections_v1`, `media_demo_cleaned_v1`, `channels_v1`, `videos_v1`, `ideas_v1`, `finances_v1`, `team_v1`, `supabase_url`, `supabase_anon_key`, `guest_mode`.
 
 ## Где лежит контекст из Antigravity
 - `docs/antigravity/user-requests.md` — все 65 запросов пользователя по порядку (начни отсюда).
