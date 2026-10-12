@@ -122,6 +122,8 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({
   });
   const [isTaskDropdownOpen, setIsTaskDropdownOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  // На телефоне название, привязка к задаче и настройки спрятаны во второй строке
+  const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [isPeekingTime, setIsPeekingTime] = useState(false);
   const [lastCompletedSessionNotice, setLastCompletedSessionNotice] = useState<string | null>(null);
 
@@ -674,35 +676,38 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({
     <div className={`w-full border-b shadow-lg sticky top-0 z-30 transition-all ${
       mode === 'work' ? 'bg-[#111116] border-white/[0.08]' : 'bg-[#0c1410] border-emerald-500/25 shadow-emerald-950/20'
     }`}>
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 py-2.5 flex flex-col md:flex-row items-center justify-between gap-3">
-        
-        {/* Left: Input & Task Selector */}
-        <div className="flex-1 w-full md:w-auto flex items-center gap-2">
-          {/* Mode Pill Switcher */}
-          <div className="flex items-center p-0.5 rounded-xl bg-zinc-900 border border-white/10 shrink-0">
+      <div className="max-w-7xl mx-auto px-2 sm:px-6 py-2 flex flex-wrap md:flex-nowrap items-center gap-2 md:gap-3">
+
+          {/* Mode Pill Switcher (на телефоне подпись только у активного режима) */}
+          <div className="order-1 flex items-center p-0.5 rounded-xl bg-zinc-900 border border-white/10 shrink-0">
             <button
               onClick={() => handleSwitchMode('work')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              aria-label="Фокус"
+              className={`${isRunning && mode !== 'work' ? 'hidden sm:flex' : 'flex'} items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                 mode === 'work'
                   ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm'
                   : 'text-zinc-400 hover:text-zinc-200'
               }`}
             >
               <Flame className="w-3.5 h-3.5 text-amber-400" />
-              <span>Фокус</span>
+              <span className={mode === 'work' ? '' : 'hidden sm:inline'}>Фокус</span>
             </button>
             <button
               onClick={() => handleSwitchMode('break')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              aria-label={`Отдых (${breakDuration}м)`}
+              className={`${isRunning && mode !== 'break' ? 'hidden sm:flex' : 'flex'} items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                 mode === 'break'
                   ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm'
                   : 'text-zinc-400 hover:text-zinc-200'
               }`}
             >
               <Coffee className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Отдых ({breakDuration}м)</span>
+              <span className={mode === 'break' ? '' : 'hidden sm:inline'}>Отдых ({breakDuration}м)</span>
             </button>
           </div>
+
+          {/* Детали: название, привязка к задаче, настройки. На телефоне раскрываются кнопкой */}
+          <div className={`${isDetailsOpen ? 'flex' : 'hidden'} md:flex order-4 md:order-2 basis-full md:basis-auto md:flex-1 min-w-0 items-center gap-2`}>
 
           {/* Activity Description Input */}
           <div className="relative flex-1">
@@ -732,7 +737,7 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({
             </button>
 
             {isTaskDropdownOpen && (
-              <div className="absolute left-0 mt-2 w-64 max-h-56 overflow-y-auto bg-[#14141a] border border-white/10 rounded-2xl shadow-2xl p-2 z-50 space-y-1">
+              <div className="absolute right-0 md:left-0 md:right-auto mt-2 w-64 max-h-56 overflow-y-auto bg-[#14141a] border border-white/10 rounded-2xl shadow-2xl p-2 z-50 space-y-1">
                 <div className="text-[10px] font-bold text-zinc-500 px-2 py-1 uppercase tracking-wider">
                   Выбрать задачу
                 </div>
@@ -764,13 +769,8 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({
               </div>
             )}
           </div>
-        </div>
-
-        {/* Center / Right: Timer Display & Controls */}
-        <div className="flex items-center gap-3 shrink-0">
-          
-          {/* Settings & Sound */}
-          <div className="flex items-center gap-1">
+          {/* Настройка длительности */}
+          <div className="flex items-center gap-1 shrink-0">
             {/* Duration Settings Dropdown */}
             <div className="relative">
               <button
@@ -854,19 +854,23 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({
               )}
             </div>
           </div>
+          </div>
 
           {/* Completed Session Result Notice */}
           {lastCompletedSessionNotice && (
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-emerald-950/70 border border-emerald-500/40 text-[11px] font-bold text-emerald-300 animate-in fade-in select-none shadow-sm">
+            <div className="order-3 basis-full md:basis-auto flex items-center justify-center gap-1.5 px-2.5 py-1 rounded-xl bg-emerald-950/70 border border-emerald-500/40 text-[11px] font-bold text-emerald-300 animate-in fade-in select-none shadow-sm">
               <Sparkles className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
               <span>{lastCompletedSessionNotice}</span>
             </div>
           )}
 
+        {/* Таймер и управление */}
+        <div className="order-2 md:order-4 ml-auto flex items-center gap-1.5 sm:gap-3 shrink-0">
+          
           {/* Time Display */}
           {mode === 'work' && isRunning && !isPeekingTime ? (
             /* Blind Deep Work Active (No stressful countdown numbers) */
-            <div className="flex items-center gap-2 bg-amber-950/30 border border-amber-500/40 rounded-xl px-3 py-1 select-none shadow-sm">
+            <div className="flex items-center gap-1.5 sm:gap-2 bg-amber-950/30 border border-amber-500/40 rounded-xl px-2.5 sm:px-3 py-1 select-none shadow-sm">
               <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" />
               <span className="text-amber-300 font-bold text-sm tracking-wide">
                 Работает
@@ -885,7 +889,7 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({
               <span className="animate-pulse">
                 {formatTime(displayedSeconds)}
               </span>
-              <span className="text-[10px] text-zinc-500 font-sans font-medium uppercase">
+              <span className="hidden sm:inline text-[10px] text-zinc-500 font-sans font-medium uppercase">
                 осталось
               </span>
               <button
@@ -900,7 +904,7 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({
             /* Paused mid-session */
             <div className="flex items-center gap-2 bg-zinc-900/90 border border-white/10 rounded-xl px-3 py-1 font-mono text-base font-bold tracking-wider text-zinc-300 select-none">
               <span>{formatTime(elapsedSeconds)}</span>
-              <span className="text-[10px] text-zinc-500 font-sans font-medium uppercase">
+              <span className="hidden sm:inline text-[10px] text-zinc-500 font-sans font-medium uppercase">
                 пауза
               </span>
             </div>
@@ -912,7 +916,7 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({
               <span className={isRunning && mode === 'break' ? 'text-emerald-400 animate-pulse' : 'text-zinc-200'}>
                 {formatTime(displayedSeconds)}
               </span>
-              <span className="text-[10px] text-zinc-500 font-sans font-medium uppercase">
+              <span className="hidden sm:inline text-[10px] text-zinc-500 font-sans font-medium uppercase">
                 {mode === 'break' ? 'отдых' : (timerType === 'countdown' ? 'план' : 'прошло')}
               </span>
             </div>
@@ -949,16 +953,26 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({
               {mode === 'work' ? (
                 <>
                   <Coffee className="w-3.5 h-3.5 text-emerald-400" />
-                  <span className="text-[11px] font-bold">Отдых ({breakDuration}м)</span>
+                  <span className="hidden sm:inline text-[11px] font-bold">Отдых ({breakDuration}м)</span>
                 </>
               ) : (
                 <>
                   <Flame className="w-3.5 h-3.5 text-amber-400" />
-                  <span className="text-[11px] font-bold">К фокусу</span>
+                  <span className="hidden sm:inline text-[11px] font-bold">К фокусу</span>
                 </>
               )}
             </button>
           )}
+
+          {/* Раскрыть название, задачу и настройки (телефон) */}
+          <button
+            onClick={() => setIsDetailsOpen(!isDetailsOpen)}
+            aria-expanded={isDetailsOpen}
+            aria-label="Название, задача и настройки таймера"
+            className="md:hidden w-8 h-8 rounded-xl bg-zinc-900 border border-white/10 text-zinc-400 flex items-center justify-center"
+          >
+            {isDetailsOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          </button>
 
           {/* Google Calendar sync indicator */}
           {isCalendarConnected && (
