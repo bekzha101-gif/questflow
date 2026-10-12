@@ -16,6 +16,8 @@ interface QuickAddModalProps {
   onClose: () => void;
   projects: Project[];
   onAddTask: (task: Omit<TaskItem, 'id' | 'completed'> & { subtasks?: SubTask[] }) => void;
+  // Если задано, вместо формы показывается это сообщение (день детокса)
+  blockedMessage?: string;
 }
 
 export const QuickAddModal: React.FC<QuickAddModalProps> = ({
@@ -23,6 +25,7 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
   onClose,
   projects,
   onAddTask,
+  blockedMessage,
 }) => {
   const [input, setInput] = useState('');
   const [selectedProjectId, setSelectedProjectId] = useState(projects[0]?.id || 'proj-inbox');
@@ -43,6 +46,31 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
   }, [isOpen]);
 
   if (!isOpen) return null;
+
+  if (blockedMessage) {
+    return (
+      <div
+        className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4"
+        onClick={onClose}
+      >
+        <div
+          role="alertdialog"
+          className="bg-[#121216] border border-white/10 rounded-3xl max-w-sm w-full p-5 sm:p-6 shadow-2xl text-center"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <h2 className="font-bold text-sm text-zinc-100">Добавление задач заблокировано</h2>
+          <p className="text-sm text-zinc-400 mt-2">{blockedMessage}</p>
+          <button
+            autoFocus
+            onClick={onClose}
+            className="mt-4 px-4 py-2 rounded-xl bg-white text-zinc-950 text-sm font-semibold cursor-pointer"
+          >
+            Понятно
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const handleAddStep = (e: React.FormEvent) => {
     e.preventDefault();

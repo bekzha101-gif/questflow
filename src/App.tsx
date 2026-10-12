@@ -991,6 +991,11 @@ export function App() {
         onClose={() => setIsQuickAddOpen(false)}
         projects={projects}
         onAddTask={handleAddTask}
+        blockedMessage={
+          isQuickAddOpen && getDayCycleInfo(getTodayStr(), loadRecoveryCycleConfig()).isRecoveryDay
+            ? 'Сегодня день отдыха. Уберите гаджеты и идите в баню!'
+            : undefined
+        }
       />
 
       <GoogleCalendarModal
