@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { TaskItem, Project, UserStats, Reward } from '../types';
+import { TaskItem, Project, UserStats, Reward, TimeLogEntry } from '../types';
 import { isShoppingTask } from '../utils/taskFilters';
 import {
   CheckCircle2,
@@ -18,6 +18,8 @@ import {
   X,
   Check,
   Sparkles,
+  Star,
+  Coins,
 } from 'lucide-react';
 import { playQuestCompleteSound, playCoinSound } from '../utils/sound';
 import { triggerQuestConfetti } from '../utils/confetti';
@@ -28,12 +30,23 @@ import {
   saveCompletedRecoveryActivities, 
   RecoveryActivity 
 } from '../utils/recoveryCycle';
+import {
+  BLOCK_MINUTES,
+  DAILY_BLOCK_GOAL,
+  getFocusMinutesToday,
+  formatFocusMinutes,
+  loadMainTaskId,
+  saveMainTaskId,
+  loadPurpose,
+  savePurpose,
+} from '../utils/dayPlan';
 
 interface CommandCenterTodayProps {
   tasks: TaskItem[];
   projects: Project[];
   stats: UserStats;
   rewards?: Reward[];
+  timeLogs?: TimeLogEntry[];
   onToggleTask: (taskId: string) => void;
   onToggleSubtask?: (taskId: string, subtaskId: string) => void;
   onTriggerHabit: (taskId: string, direction: 'positive' | 'negative') => void;
@@ -49,6 +62,7 @@ interface CommandCenterTodayProps {
   onOpenStudioTab?: () => void;
   onOpenLifeTab?: () => void;
   onOpenShoppingTab?: () => void;
+  onOpenRewardsTab?: () => void;
   onUpdateStats?: (newStats: Partial<UserStats>) => void;
   onAwardRewards?: (exp: number, gold: number, hp?: number) => void;
 }
@@ -81,34 +95,26 @@ function formatDueDate(dueDate: string): string {
 
 type TodoFilter = 'active' | 'completed';
 
-// ─── Column wrapper (Linear / Raycast Style) ──────────────────────────────────
-function Column({ title, count, badge, children }: {
+// ─── Card (высота по содержимому, без внутренней прокрутки) ──────────────────
+function Card({ title, count, badge, children }: {
   title: string;
   count?: number;
   badge?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col bg-[#0e0e13] border border-white/[0.07] hover:border-white/[0.1] rounded-2xl overflow-hidden transition-colors shadow-sm">
-      <div className="flex items-center justify-between px-3.5 py-2.5 border-b border-white/[0.06] bg-[#121218] shrink-0">
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold text-zinc-200 tracking-tight">{title}</span>
+    <section className="bg-[#0e0e13] border border-white/[0.07] rounded-2xl overflow-hidden">
+      <div className="flex items-center justify-between gap-2 px-3.5 py-2.5 border-b border-white/[0.06]">
+        <div className="flex items-center gap-2 min-w-0">
+          <h2 className="text-sm font-semibold text-zinc-100 tracking-tight">{title}</h2>
           {count !== undefined && (
-            <span className="text-[10px] font-mono font-medium px-2 py-0.5 rounded-full bg-white/[0.06] text-zinc-400">
-              {count}
-            </span>
+            <span className="text-[11px] font-mono text-zinc-500">{count}</span>
           )}
         </div>
-        {badge && (
-          <div className="text-[10px] font-medium text-zinc-400">
-            {badge}
-          </div>
-        )}
+        {badge}
       </div>
-      <div className="flex-1 overflow-y-auto p-2.5 space-y-2 min-h-0">
-        {children}
-      </div>
-    </div>
+      <div className="p-2.5 space-y-2">{children}</div>
+    </section>
   );
 }
 
@@ -171,8 +177,12 @@ function TaskRow({
   onUpdateTask,
   onEdit,
   onDelete,
+  isMain = false,
+  onToggleMain,
 }: {
   task: TaskItem;
+  isMain?: boolean;
+  onToggleMain?: () => void;
   onToggle: () => void;
   onToggleSubtask?: (subtaskId: string) => void;
   onAddSubtask?: (text: string) => void;
@@ -268,6 +278,21 @@ function TaskRow({
             </span>
           )}
 
+          {/* Главная задача дня */}
+          {onToggleMain && !task.completed && (
+            <button
+              type="button"
+              onClick={onToggleMain}
+              aria-pressed={isMain}
+              className={`shrink-0 p-1 transition-colors tactile-btn ${
+                isMain ? 'text-amber-400' : 'text-zinc-600 hover:text-amber-300'
+              }`}
+              title={isMain ? 'Убрать из главной задачи дня' : 'Сделать главной задачей дня'}
+            >
+              <Star className={`w-3.5 h-3.5 ${isMain ? 'fill-amber-400' : ''}`} />
+            </button>
+          )}
+
           {/* Edit */}
           {onEdit && (
             <button
@@ -276,7 +301,7 @@ function TaskRow({
                 e.stopPropagation();
                 onEdit();
               }}
-              className="shrink-0 p-1 text-zinc-500 hover:text-zinc-200 transition-colors tactile-btn"
+              className="hidden sm:block shrink-0 p-1 text-zinc-500 hover:text-zinc-200 transition-colors tactile-btn"
               title="Редактировать задачу, чек-лист и дедлайн"
             >
               <Pencil className="w-3 h-3" />
@@ -288,7 +313,7 @@ function TaskRow({
             <button
               type="button"
               onClick={onDelete}
-              className="shrink-0 p-1 text-zinc-600 hover:text-rose-400 transition-colors tactile-btn"
+              className="hidden sm:block shrink-0 p-1 text-zinc-600 hover:text-rose-400 transition-colors tactile-btn"
               title="Удалить"
             >
               <Trash2 className="w-3 h-3" />
@@ -445,7 +470,7 @@ export function CommandCenterToday({
   tasks,
   projects,
   stats,
-  rewards = [],
+  timeLogs = [],
   onToggleTask,
   onToggleSubtask,
   onTriggerHabit,
@@ -455,15 +480,18 @@ export function CommandCenterToday({
   onEditTask,
   onAddSubtask,
   onDeleteTask,
-  onBuyReward,
   onOpenHealthModal,
   onOpenLifeTab,
   onOpenShoppingTab,
+  onOpenRewardsTab,
   onUpdateStats,
   onAwardRewards,
 }: CommandCenterTodayProps) {
   const [todoFilter, setTodoFilter] = useState<TodoFilter>('active');
-  const [boughtId, setBoughtId] = useState<string | null>(null);
+  const [routineKind, setRoutineKind] = useState<'habit' | 'daily'>('habit');
+  const [mainTaskId, setMainTaskId] = useState<string | null>(loadMainTaskId);
+  const [purpose, setPurpose] = useState<string>(loadPurpose);
+  const [isEditingPurpose, setIsEditingPurpose] = useState(false);
 
   // Recovery cycle status (7 work days + 1 recovery day)
   const recoveryConfig = loadRecoveryCycleConfig();
@@ -503,11 +531,36 @@ export function CommandCenterToday({
   const allTodos = tasks.filter((t) => t.type === 'todo' && !isShoppingTask(t));
   const activeTodos = allTodos.filter((t) => !t.completed);
   const completedTodayTodos = allTodos.filter((t) => t.completed && isCompletedToday(t.completedAt));
-  const shownTodos = todoFilter === 'active' ? activeTodos : completedTodayTodos;
+
+  // Главная задача дня: одна задача, которой отдаётся первый блок фокуса
+  const mainTask = allTodos.find((t) => t.id === mainTaskId) ?? null;
+  // Главная задача показана в блоке «Фокус сегодня», в общем списке её не дублируем
+  const shownTodos = todoFilter === 'active'
+    ? activeTodos.filter((t) => t.id !== mainTask?.id || cycleInfo.isRecoveryDay)
+    : completedTodayTodos;
+  const handleToggleMain = (taskId: string) => {
+    const next = mainTaskId === taskId ? null : taskId;
+    setMainTaskId(next);
+    saveMainTaskId(next);
+  };
+
+  // Блоки фокуса за сегодня: точки показывают завершённые блоки, а не минуты текущего
+  const focusMinutes = getFocusMinutesToday(timeLogs);
+  const fullBlocks = Math.floor(focusMinutes / BLOCK_MINUTES);
+  const hasPartialBlock = focusMinutes % BLOCK_MINUTES > 0;
+
+  const handleSavePurpose = (e: React.FormEvent) => {
+    e.preventDefault();
+    const text = purpose.trim();
+    setPurpose(text);
+    savePurpose(text);
+    setIsEditingPurpose(false);
+  };
 
   const now = new Date();
   const dateStr = now.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' });
   const displayDate = dateStr.charAt(0).toUpperCase() + dateStr.slice(1);
+  const shortDate = now.toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'short' });
 
   const addHabit = (title: string) => onAddTask({
     title, type: 'habit', priority: 'p2',
@@ -529,80 +582,51 @@ export function CommandCenterToday({
     difficulty: 'medium', expReward: 35, goldReward: 20, tags: [],
   });
 
-  const handleBuy = (reward: Reward) => {
-    if (!onBuyReward) return;
-    const ok = onBuyReward(reward);
-    if (ok) {
-      setBoughtId(reward.id);
-      setTimeout(() => setBoughtId(null), 1200);
-    }
-  };
+  const detoxMessage = 'Сегодня день отдыха. Уберите гаджеты и идите в баню!';
 
   return (
     <div className="flex flex-col h-full select-none overflow-y-auto">
 
-      {/* ── Top Bar (Minimalist Linear Style) ─────────────────────────── */}
-      <div className="flex items-center justify-between px-4 sm:px-6 py-2.5 border-b border-white/[0.06] bg-[#09090c] shrink-0">
-        <div>
-          <p className="text-[10px] font-mono text-zinc-400 uppercase tracking-widest">{displayDate}</p>
-          <div className="flex items-center gap-2">
-            <h1 className="text-base sm:text-lg font-semibold text-zinc-100 tracking-tight leading-tight">
-              Сегодня
-            </h1>
-            {cycleInfo.isRecoveryDay ? (
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/25 text-rose-300 border border-rose-500/40 animate-pulse">
-                🧖‍♂️ День 8: Детокс
-              </span>
-            ) : (
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/25">
-                🟢 Спринт (День {cycleInfo.dayNumberInCycle}/7)
-              </span>
-            )}
-          </div>
+      {/* ── Тонкая строка статуса: дата, день цикла, HP, уровень, золото ── */}
+      <div className="flex items-center justify-between gap-3 px-4 sm:px-6 py-2 border-b border-white/[0.06] shrink-0">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="hidden sm:inline text-xs text-zinc-400 truncate">{displayDate}</span>
+          <span className="sm:hidden text-xs text-zinc-400 truncate">{shortDate}</span>
+          {cycleInfo.isRecoveryDay ? (
+            <span className="shrink-0 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-500/20 text-rose-300 border border-rose-500/40">
+              День 8 · детокс
+            </span>
+          ) : (
+            <span className="shrink-0 px-2 py-0.5 rounded-full text-[10px] font-medium bg-white/[0.05] text-zinc-400 border border-white/[0.07]">
+              День {cycleInfo.dayNumberInCycle} из 7
+            </span>
+          )}
         </div>
 
-        <div className="flex items-center gap-2 sm:gap-3">
-          {/* Health HP pill */}
+        <div className="flex items-center gap-3 shrink-0 text-xs">
           <button
             type="button"
             onClick={() => {
               if (onOpenHealthModal) onOpenHealthModal();
               else if (onOpenLifeTab) onOpenLifeTab();
             }}
-            className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-[#111116] hover:bg-rose-950/40 border border-white/[0.07] hover:border-rose-500/40 transition-all tactile-btn group"
+            className="flex items-center gap-1 text-zinc-300 hover:text-white transition-colors tactile-btn"
             title="Открыть Центр Здоровья, Биоритмы и Будильники"
           >
-            <Heart className="w-3.5 h-3.5 text-rose-500 fill-rose-500/20 group-hover:scale-110 transition-transform" />
-            <span className="text-[10px] text-rose-400 font-mono font-bold">HP</span>
-            <div className="w-14 sm:w-18 h-1.5 bg-zinc-900 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-rose-500 rounded-full transition-all duration-500"
-                style={{ width: `${Math.round((stats.hp / Math.max(1, stats.maxHp)) * 100)}%` }}
-              />
-            </div>
-            <span className="text-[10px] font-mono text-zinc-300 group-hover:text-white font-semibold">
-              {stats.hp}
-            </span>
+            <Heart className="w-3.5 h-3.5 text-rose-500" />
+            <span className="font-mono">{stats.hp}</span>
           </button>
-
-          {/* EXP Mini Bar */}
-          <div className="hidden sm:flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-[#111116] border border-white/[0.07]">
-            <span className="text-[10px] text-indigo-400 font-mono font-medium">EXP</span>
-            <div className="w-16 h-1.5 bg-zinc-900 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-indigo-500/80 rounded-full transition-all duration-500"
-                style={{ width: `${Math.round((stats.exp / Math.max(1, stats.maxExp)) * 100)}%` }}
-              />
-            </div>
-            <span className="text-[10px] font-mono text-zinc-400">{stats.exp}</span>
-          </div>
-
-          {/* Level & Gold */}
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#111116] border border-white/[0.07]">
-            <span className="text-xs text-zinc-300">Ур. <strong className="text-white">{stats.level}</strong></span>
-            <span className="text-zinc-600">·</span>
-            <span className="text-amber-400 font-mono text-xs font-semibold">{stats.gold} 🪙</span>
-          </div>
+          <span className="text-zinc-400">Ур. <span className="text-zinc-200 font-medium">{stats.level}</span></span>
+          <button
+            type="button"
+            onClick={onOpenRewardsTab}
+            disabled={!onOpenRewardsTab}
+            className="flex items-center gap-1 text-zinc-300 hover:text-white transition-colors tactile-btn"
+            title="Открыть награды"
+          >
+            <Coins className="w-3.5 h-3.5 text-amber-400" />
+            <span className="font-mono">{stats.gold}</span>
+          </button>
         </div>
       </div>
 
@@ -706,281 +730,334 @@ export function CommandCenterToday({
         </div>
       )}
 
-      {/* ── 4-Column Bento Grid ─────────────────────────────────────────── */}
-      <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 p-3 sm:p-4 overflow-hidden min-h-0">
+      {/* ── Содержимое: слева фокус и задачи, справа привычки ─────────── */}
+      <div className="w-full max-w-5xl mx-auto grid grid-cols-1 lg:grid-cols-5 gap-3 p-3 sm:p-4 items-start">
 
-        {/* ── COL 1: HABITS ───────────────────────────────────────────── */}
-        <Column title="Привычки" count={habits.length}>
-          <AddInput 
-            placeholder="Добавить привычку..." 
-            onAdd={addHabit} 
-            disabled={cycleInfo.isRecoveryDay}
-            disabledMessage="Сегодня день отдыха. Уберите гаджеты и идите в баню!"
-          />
-          {habits.length === 0 ? (
-            <div className="py-8 text-center">
-              <p className="text-xs text-zinc-500">Нет привычек</p>
-              <p className="text-[10px] text-zinc-600 mt-1">Нажмите + чтобы добавить</p>
-            </div>
-          ) : (
-            habits.map((habit) => (
-              <div
-                key={habit.id}
-                className="group flex items-center gap-2 px-2.5 py-2 rounded-xl bg-[#14141a] hover:bg-[#181822] border border-white/[0.06] hover:border-white/[0.12] transition-all"
-              >
-                <button
-                  type="button"
-                  onClick={() => onTriggerHabit(habit.id, 'positive')}
-                  className="shrink-0 w-6 h-6 rounded-lg bg-emerald-950/60 hover:bg-emerald-800/80 text-emerald-300 border border-emerald-700/40 flex items-center justify-center transition-all tactile-btn"
-                  title="Выполнить привычку (+EXP, +Золото)"
+        <div className="lg:col-span-3 space-y-3 min-w-0">
+
+          {/* ── Фокус сегодня: блоки, главная задача, «ради чего» ──────── */}
+          {!cycleInfo.isRecoveryDay && (
+            <section className="bg-[#0e0e13] border border-white/[0.07] rounded-2xl p-3.5 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-sm font-semibold text-zinc-100 tracking-tight">Фокус сегодня</h2>
+                <div
+                  className="flex items-center gap-2"
+                  role="img"
+                  aria-label={`Блоков фокуса: ${fullBlocks} из ${DAILY_BLOCK_GOAL}`}
                 >
-                  <Plus className="w-3 h-3" />
-                </button>
-
-                <span className="flex-1 text-xs text-zinc-200 truncate">{habit.title}</span>
-
-                {(habit.habitCounter ?? 0) > 0 && (
-                  <span className="shrink-0 text-[10px] font-mono text-zinc-400 px-1 rounded bg-black/40">
-                    ×{habit.habitCounter}
+                  <div className="flex items-center gap-1.5">
+                    {Array.from({ length: Math.max(DAILY_BLOCK_GOAL, fullBlocks) }, (_, i) => (
+                      <span
+                        key={i}
+                        className={`w-3 h-3 rounded-full border ${
+                          i < fullBlocks
+                            ? 'bg-emerald-400 border-emerald-400'
+                            : i === fullBlocks && hasPartialBlock
+                              ? 'bg-emerald-400/30 border-emerald-400/70'
+                              : 'border-zinc-600'
+                        }`}
+                      />
+                    ))}
+                  </div>
+                  <span className="text-xs text-zinc-400">
+                    {fullBlocks} из {DAILY_BLOCK_GOAL}
+                    {focusMinutes > 0 && <span className="text-zinc-500"> · {formatFocusMinutes(focusMinutes)}</span>}
                   </span>
-                )}
+                </div>
+              </div>
 
-                <button
-                  type="button"
-                  onClick={() => onTriggerHabit(habit.id, 'negative')}
-                  className="shrink-0 w-6 h-6 rounded-lg bg-rose-950/60 hover:bg-rose-800/80 text-rose-300 border border-rose-700/40 flex items-center justify-center transition-all tactile-btn"
-                  title="Срыв привычки (-HP)"
-                >
-                  <Minus className="w-3 h-3" />
-                </button>
-
-                {onEditTask && (
-                  <button
-                    type="button"
-                    onClick={() => onEditTask(habit)}
-                    className="shrink-0 p-1 text-zinc-500 hover:text-zinc-200 opacity-0 group-hover:opacity-100 transition-all tactile-btn"
-                    title="Редактировать привычку"
-                  >
-                    <Pencil className="w-3 h-3" />
-                  </button>
-                )}
-
-                {onDeleteTask && (
-                  <button
-                    type="button"
-                    onClick={() => onDeleteTask(habit.id)}
-                    className="shrink-0 p-1 text-zinc-600 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition-all tactile-btn"
-                    title="Удалить привычку"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                  </button>
+              <div>
+                <p className="text-[11px] text-zinc-500 mb-1.5">Главная задача дня</p>
+                {mainTask ? (
+                  <TaskRow
+                    task={mainTask}
+                    isMain
+                    onToggleMain={() => handleToggleMain(mainTask.id)}
+                    onToggle={() => onToggleTask(mainTask.id)}
+                    onToggleSubtask={onToggleSubtask ? (stId) => onToggleSubtask(mainTask.id, stId) : undefined}
+                    onAddSubtask={onAddSubtask ? (text) => onAddSubtask(mainTask.id, text) : undefined}
+                    onUpdateTask={onUpdateTask ? (patch) => onUpdateTask(mainTask.id, patch) : undefined}
+                    onEdit={onEditTask ? () => onEditTask(mainTask) : undefined}
+                  />
+                ) : (
+                  <p className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-dashed border-white/[0.1] text-xs text-zinc-400">
+                    <Star className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+                    <span>Отметьте звездой задачу, которая сегодня важнее всего</span>
+                  </p>
                 )}
               </div>
-            ))
-          )}
-        </Column>
 
-        {/* ── COL 2: DAILIES ──────────────────────────────────────────── */}
-        <Column
-          title="Ежедневные"
-          count={dailies.filter((d) => !d.completed).length}
-          badge={
-            <span className="text-[10px] font-mono text-zinc-400 bg-white/[0.05] px-2 py-0.5 rounded-full">
-              {dailies.filter((d) => d.completed).length}/{dailies.length}
-            </span>
-          }
-        >
-          <AddInput 
-            placeholder="Добавить ежедневную..." 
-            onAdd={addDaily} 
-            disabled={cycleInfo.isRecoveryDay}
-            disabledMessage="Сегодня день отдыха. Уберите гаджеты и идите в баню!"
-          />
-          {dailies.length === 0 ? (
-            <div className="py-8 text-center">
-              <p className="text-xs text-zinc-500">Нет ежедневных задач</p>
-            </div>
-          ) : (
-            dailies.map((daily) => (
-              <div
-                key={daily.id}
-                className={`group flex items-center gap-2.5 px-2.5 py-2 rounded-xl border transition-all ${
-                  daily.completed
-                    ? 'bg-[#0d0d12] border-white/[0.03] opacity-55'
-                    : 'bg-[#14141a] hover:bg-[#181822] border-white/[0.06] hover:border-white/[0.12]'
-                }`}
-              >
+              {isEditingPurpose ? (
+                <form onSubmit={handleSavePurpose} className="flex items-center gap-1.5">
+                  <input
+                    type="text"
+                    autoFocus
+                    value={purpose}
+                    onChange={(e) => setPurpose(e.target.value)}
+                    onBlur={handleSavePurpose}
+                    maxLength={140}
+                    placeholder="Ради чего я работаю?"
+                    className="flex-1 min-w-0 bg-[#15151d] border border-white/[0.08] focus:border-white/20 rounded-xl px-3 py-1.5 text-xs text-zinc-200 placeholder:text-zinc-500 focus:outline-none"
+                  />
+                </form>
+              ) : (
                 <button
                   type="button"
-                  onClick={() => onToggleDaily(daily.id)}
-                  className={`shrink-0 tactile-btn p-0.5 ${
-                    daily.completed ? 'text-emerald-400' : 'text-zinc-500 hover:text-emerald-400'
+                  onClick={() => setIsEditingPurpose(true)}
+                  className="w-full flex items-center gap-1.5 text-left text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+                  title="Изменить"
+                >
+                  {purpose ? (
+                    <span className="truncate">Ради чего: <span className="text-zinc-300">{purpose}</span></span>
+                  ) : (
+                    <span>Добавить, ради чего я работаю</span>
+                  )}
+                  <Pencil className="w-3 h-3 shrink-0" />
+                </button>
+              )}
+            </section>
+          )}
+
+          {/* ── Задачи (со шагами и дедлайном) ─────────────────────────── */}
+          <Card
+            title="Задачи"
+            count={activeTodos.length}
+            badge={
+              shoppingTasksCount > 0 && onOpenShoppingTab ? (
+                <button
+                  type="button"
+                  onClick={onOpenShoppingTab}
+                  className="flex items-center gap-1 text-[11px] text-zinc-400 hover:text-zinc-200 transition-colors tactile-btn"
+                  title="Открыть отдельный список покупок"
+                >
+                  <ShoppingBag className="w-3 h-3" />
+                  <span>Покупки ({shoppingTasksCount})</span>
+                </button>
+              ) : undefined
+            }
+          >
+            <AddInput
+              placeholder="Добавить задачу..."
+              onAdd={addTodo}
+              disabled={cycleInfo.isRecoveryDay}
+              disabledMessage={detoxMessage}
+            />
+
+            {/* Filter tabs (Segmented Control) */}
+            <div className="flex items-center gap-1 bg-[#121218] p-0.5 rounded-xl border border-white/[0.06]">
+              {(['active', 'completed'] as TodoFilter[]).map((f) => (
+                <button
+                  key={f}
+                  type="button"
+                  onClick={() => setTodoFilter(f)}
+                  className={`flex-1 py-1 rounded-lg text-[11px] font-medium transition-all tactile-btn ${
+                    todoFilter === f
+                      ? 'bg-zinc-800 text-white'
+                      : 'text-zinc-400 hover:text-zinc-200'
                   }`}
-                  title={daily.completed ? 'Отметить невыполненной' : 'Выполнить сегодня'}
                 >
-                  {daily.completed
-                    ? <CheckCircle2 className="w-4 h-4 fill-emerald-500/20" />
-                    : <Circle className="w-4 h-4" />
-                  }
+                  {f === 'active' ? 'Активные' : `Выполнено (${completedTodayTodos.length})`}
                 </button>
-
-                <span className={`flex-1 text-xs truncate ${daily.completed ? 'line-through text-zinc-500' : 'text-zinc-200'}`}>
-                  {daily.title}
-                </span>
-
-                {(daily.streakCount ?? 0) > 0 && (
-                  <span className="shrink-0 flex items-center gap-0.5 text-[10px] font-mono text-orange-400 bg-orange-950/30 border border-orange-800/30 px-1.5 py-0.2 rounded-md">
-                    <Flame className="w-2.5 h-2.5" />{daily.streakCount}
-                  </span>
-                )}
-
-                {onEditTask && (
-                  <button
-                    type="button"
-                    onClick={() => onEditTask(daily)}
-                    className="shrink-0 p-1 text-zinc-500 hover:text-zinc-200 opacity-0 group-hover:opacity-100 transition-all tactile-btn"
-                    title="Редактировать ежедневную"
-                  >
-                    <Pencil className="w-3 h-3" />
-                  </button>
-                )}
-
-                {onDeleteTask && (
-                  <button
-                    type="button"
-                    onClick={() => onDeleteTask(daily.id)}
-                    className="shrink-0 p-1 text-zinc-600 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition-all tactile-btn"
-                    title="Удалить ежедневную"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                  </button>
-                )}
-              </div>
-            ))
-          )}
-        </Column>
-
-        {/* ── COL 3: TO-DO's (with subtasks + deadline) ───────────────── */}
-        <Column 
-          title="Задачи" 
-          count={activeTodos.length}
-          badge={
-            shoppingTasksCount > 0 && onOpenShoppingTab ? (
-              <button
-                type="button"
-                onClick={onOpenShoppingTab}
-                className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/25 text-[10px] font-medium transition-all tactile-btn"
-                title="Открыть отдельный список покупок"
-              >
-                <ShoppingBag className="w-2.5 h-2.5 text-amber-400" />
-                <span>Покупки ({shoppingTasksCount})</span>
-              </button>
-            ) : undefined
-          }
-        >
-          <AddInput 
-            placeholder="Добавить задачу..." 
-            onAdd={addTodo} 
-            disabled={cycleInfo.isRecoveryDay}
-            disabledMessage="Сегодня день отдыха. Уберите гаджеты и идите в баню!"
-          />
-
-          {/* Filter tabs (Segmented Control) */}
-          <div className="flex items-center gap-1 mb-2 bg-[#121218] p-0.5 rounded-xl border border-white/[0.06]">
-            {(['active', 'completed'] as TodoFilter[]).map((f) => (
-              <button
-                key={f}
-                type="button"
-                onClick={() => setTodoFilter(f)}
-                className={`flex-1 py-1 rounded-lg text-[10px] font-semibold transition-all tactile-btn ${
-                  todoFilter === f
-                    ? 'bg-zinc-800 text-white shadow-xs'
-                    : 'text-zinc-400 hover:text-zinc-200'
-                }`}
-              >
-                {f === 'active' ? 'Активные' : `Выполнено (${completedTodayTodos.length})`}
-              </button>
-            ))}
-          </div>
-
-          {shownTodos.length === 0 ? (
-            <div className="py-8 text-center">
-              <p className="text-xs text-zinc-500">
-                {todoFilter === 'active' ? 'Все задачи выполнены' : 'Сегодня ничего не завершено'}
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-1.5">
-              {shownTodos.map((task) => (
-                <TaskRow
-                  key={task.id}
-                  task={task}
-                  onToggle={() => onToggleTask(task.id)}
-                  onToggleSubtask={onToggleSubtask ? (stId) => onToggleSubtask(task.id, stId) : undefined}
-                  onAddSubtask={onAddSubtask ? (text) => onAddSubtask(task.id, text) : undefined}
-                  onUpdateTask={onUpdateTask ? (patch) => onUpdateTask(task.id, patch) : undefined}
-                  onEdit={onEditTask ? () => onEditTask(task) : undefined}
-                  onDelete={onDeleteTask ? () => onDeleteTask(task.id) : undefined}
-                />
               ))}
             </div>
-          )}
-        </Column>
 
-        {/* ── COL 4: REWARDS ──────────────────────────────────────────── */}
-        <Column
-          title="Награды"
-          badge={
-            <span className="text-[10px] font-mono text-amber-400">
-              {stats.gold} 🪙
-            </span>
-          }
-        >
-          <div className="flex items-center gap-1.5 mb-1.5 p-2 rounded-xl bg-[#14141a] border border-white/[0.05]">
-            <ShoppingBag className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-            <span className="text-[11px] text-zinc-300">Награждай себя за закрытые квесты</span>
+            {shownTodos.length === 0 ? (
+              <p className="py-6 text-center text-xs text-zinc-500">
+                {todoFilter === 'completed'
+                  ? 'Сегодня ничего не завершено'
+                  : activeTodos.length > 0 ? 'Других задач нет' : 'Все задачи выполнены'}
+              </p>
+            ) : (
+              <div className="space-y-1.5">
+                {shownTodos.map((task) => (
+                  <TaskRow
+                    key={task.id}
+                    task={task}
+                    isMain={task.id === mainTaskId}
+                    onToggleMain={() => handleToggleMain(task.id)}
+                    onToggle={() => onToggleTask(task.id)}
+                    onToggleSubtask={onToggleSubtask ? (stId) => onToggleSubtask(task.id, stId) : undefined}
+                    onAddSubtask={onAddSubtask ? (text) => onAddSubtask(task.id, text) : undefined}
+                    onUpdateTask={onUpdateTask ? (patch) => onUpdateTask(task.id, patch) : undefined}
+                    onEdit={onEditTask ? () => onEditTask(task) : undefined}
+                    onDelete={onDeleteTask ? () => onDeleteTask(task.id) : undefined}
+                  />
+                ))}
+              </div>
+            )}
+          </Card>
+        </div>
+
+        {/* ── Привычки и ежедневные в одной карточке ───────────────────── */}
+        <div className="lg:col-span-2 min-w-0">
+          <Card
+            title="Привычки"
+            count={habits.length + dailies.length}
+            badge={
+              dailies.length > 0 ? (
+                <span className="text-[11px] font-mono text-zinc-500">
+                  ежедневные {dailies.filter((d) => d.completed).length}/{dailies.length}
+                </span>
+              ) : undefined
+            }
+          >
+            {habits.length === 0 && dailies.length === 0 && (
+              <p className="py-4 text-center text-xs text-zinc-500">Привычек пока нет</p>
+            )}
+
+        {habits.map((habit) => (
+          <div
+            key={habit.id}
+            className="group flex items-center gap-2 px-2.5 py-2 rounded-xl bg-[#14141a] hover:bg-[#181822] border border-white/[0.06] hover:border-white/[0.12] transition-all"
+          >
+            <button
+              type="button"
+              onClick={() => onTriggerHabit(habit.id, 'positive')}
+              className="shrink-0 w-6 h-6 rounded-lg bg-emerald-950/60 hover:bg-emerald-800/80 text-emerald-300 border border-emerald-700/40 flex items-center justify-center transition-all tactile-btn"
+              title="Выполнить привычку (+EXP, +Золото)"
+            >
+              <Plus className="w-3 h-3" />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => onEditTask?.(habit)}
+              className="flex-1 min-w-0 text-left text-xs text-zinc-200 truncate"
+              title="Открыть привычку"
+            >
+              {habit.title}
+            </button>
+
+            {(habit.habitCounter ?? 0) > 0 && (
+              <span className="shrink-0 text-[10px] font-mono text-zinc-400 px-1 rounded bg-black/40">
+                ×{habit.habitCounter}
+              </span>
+            )}
+
+            <button
+              type="button"
+              onClick={() => onTriggerHabit(habit.id, 'negative')}
+              className="shrink-0 w-6 h-6 rounded-lg bg-rose-950/60 hover:bg-rose-800/80 text-rose-300 border border-rose-700/40 flex items-center justify-center transition-all tactile-btn"
+              title="Срыв привычки (-HP)"
+            >
+              <Minus className="w-3 h-3" />
+            </button>
+
+            {onEditTask && (
+              <button
+                type="button"
+                onClick={() => onEditTask(habit)}
+                className="hidden sm:block shrink-0 p-1 text-zinc-500 hover:text-zinc-200 opacity-0 group-hover:opacity-100 transition-all tactile-btn"
+                title="Редактировать привычку"
+              >
+                <Pencil className="w-3 h-3" />
+              </button>
+            )}
+
+            {onDeleteTask && (
+              <button
+                type="button"
+                onClick={() => onDeleteTask(habit.id)}
+                className="hidden sm:block shrink-0 p-1 text-zinc-600 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition-all tactile-btn"
+                title="Удалить привычку"
+              >
+                <Trash2 className="w-3 h-3" />
+              </button>
+            )}
           </div>
+        ))}
 
-          {rewards.length === 0 ? (
-            <div className="py-8 text-center">
-              <p className="text-xs text-zinc-500">Нет наград</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 gap-2">
-              {rewards.map((reward) => {
-                const canAfford = stats.gold >= reward.cost;
-                const justBought = boughtId === reward.id;
+            {dailies.length > 0 && habits.length > 0 && (
+              <p className="pt-1 text-[11px] text-zinc-500">Ежедневные</p>
+            )}
 
-                return (
+            {dailies.map((daily) => (
+          <div
+            key={daily.id}
+            className={`group flex items-center gap-2.5 px-2.5 py-2 rounded-xl border transition-all ${
+              daily.completed
+                ? 'bg-[#0d0d12] border-white/[0.03] opacity-55'
+                : 'bg-[#14141a] hover:bg-[#181822] border-white/[0.06] hover:border-white/[0.12]'
+            }`}
+          >
+            <button
+              type="button"
+              onClick={() => onToggleDaily(daily.id)}
+              className={`shrink-0 tactile-btn p-0.5 ${
+                daily.completed ? 'text-emerald-400' : 'text-zinc-500 hover:text-emerald-400'
+              }`}
+              title={daily.completed ? 'Отметить невыполненной' : 'Выполнить сегодня'}
+            >
+              {daily.completed
+                ? <CheckCircle2 className="w-4 h-4 fill-emerald-500/20" />
+                : <Circle className="w-4 h-4" />
+              }
+            </button>
+
+            <button
+              type="button"
+              onClick={() => onEditTask?.(daily)}
+              className={`flex-1 min-w-0 text-left text-xs truncate ${daily.completed ? 'line-through text-zinc-500' : 'text-zinc-200'}`}
+              title="Открыть ежедневную"
+            >
+              {daily.title}
+            </button>
+
+            {(daily.streakCount ?? 0) > 0 && (
+              <span className="shrink-0 flex items-center gap-0.5 text-[10px] font-mono text-orange-400 bg-orange-950/30 border border-orange-800/30 px-1.5 py-0.2 rounded-md">
+                <Flame className="w-2.5 h-2.5" />{daily.streakCount}
+              </span>
+            )}
+
+            {onEditTask && (
+              <button
+                type="button"
+                onClick={() => onEditTask(daily)}
+                className="hidden sm:block shrink-0 p-1 text-zinc-500 hover:text-zinc-200 opacity-0 group-hover:opacity-100 transition-all tactile-btn"
+                title="Редактировать ежедневную"
+              >
+                <Pencil className="w-3 h-3" />
+              </button>
+            )}
+
+            {onDeleteTask && (
+              <button
+                type="button"
+                onClick={() => onDeleteTask(daily.id)}
+                className="hidden sm:block shrink-0 p-1 text-zinc-600 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition-all tactile-btn"
+                title="Удалить ежедневную"
+              >
+                <Trash2 className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+            ))}
+
+            <div className="pt-1">
+              <div className="flex items-center gap-1 mb-1.5 text-[11px]">
+                {(['habit', 'daily'] as const).map((kind) => (
                   <button
-                    key={reward.id}
+                    key={kind}
                     type="button"
-                    onClick={() => handleBuy(reward)}
-                    disabled={!canAfford || !onBuyReward}
-                    className={`flex flex-col items-center gap-1.5 p-2.5 rounded-xl border text-center transition-all tactile-btn disabled:cursor-not-allowed ${
-                      justBought
-                        ? 'bg-emerald-950/40 border-emerald-600/40'
-                        : canAfford
-                          ? 'bg-[#14141a] hover:bg-[#181822] border-white/[0.06] hover:border-white/[0.14]'
-                          : 'bg-[#0e0e13] border-white/[0.03] opacity-40'
+                    onClick={() => setRoutineKind(kind)}
+                    aria-pressed={routineKind === kind}
+                    className={`px-2 py-0.5 rounded-md transition-colors ${
+                      routineKind === kind ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'
                     }`}
-                    title={reward.description}
                   >
-                    <span className="text-lg leading-none">{reward.icon}</span>
-                    <span className="text-[10px] text-zinc-200 font-medium leading-tight line-clamp-2">
-                      {reward.title}
-                    </span>
-                    <span className={`text-[10px] font-mono font-bold ${
-                      justBought ? 'text-emerald-300' : canAfford ? 'text-amber-400' : 'text-zinc-500'
-                    }`}>
-                      {justBought ? '✓ куплено' : `${reward.cost} 🪙`}
-                    </span>
+                    {kind === 'habit' ? 'Привычка' : 'Ежедневная'}
                   </button>
-                );
-              })}
+                ))}
+              </div>
+              <AddInput
+                placeholder={routineKind === 'habit' ? 'Добавить привычку...' : 'Добавить ежедневную...'}
+                onAdd={routineKind === 'habit' ? addHabit : addDaily}
+                disabled={cycleInfo.isRecoveryDay}
+                disabledMessage={detoxMessage}
+              />
             </div>
-          )}
-        </Column>
+          </Card>
+        </div>
 
       </div>
     </div>

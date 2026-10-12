@@ -35,6 +35,13 @@ export function AuthGate({ children }: AuthGateProps) {
   const [checked, setChecked] = useState(true); // Default to checked so app renders immediately
   const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
   const [isSyncInfoModalOpen, setIsSyncInfoModalOpen] = useState(false);
+
+  // Окно «Хранение и синхронизация» открывается точкой статуса в шапке приложения
+  useEffect(() => {
+    const openSyncInfo = () => setIsSyncInfoModalOpen(true);
+    window.addEventListener('questflow:open-sync', openSyncInfo);
+    return () => window.removeEventListener('questflow:open-sync', openSyncInfo);
+  }, []);
   const [showAuthFormModal, setShowAuthFormModal] = useState(false);
 
   // ALWAYS default to true: User's local tasks are never held hostage!
@@ -206,33 +213,6 @@ export function AuthGate({ children }: AuthGateProps) {
   return (
     <>
       {children}
-
-      {/* Floating Status Badge (Bottom-Right) */}
-      <div className="fixed bottom-20 md:bottom-4 right-4 z-50">
-        <button
-          onClick={() => setIsSyncInfoModalOpen(true)}
-          className="flex items-center gap-2 bg-[#121218]/95 backdrop-blur-md border border-white/10 hover:border-white/20 rounded-2xl px-3 py-1.5 text-xs text-white/80 hover:text-white transition-all shadow-2xl cursor-pointer"
-          title="Статус синхронизации и резервное копирование"
-        >
-          {session ? (
-            <>
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="hidden sm:inline font-mono text-[11px] text-emerald-300">
-                {session.user.email}
-              </span>
-              <Cloud className="w-3.5 h-3.5 text-emerald-400" />
-            </>
-          ) : (
-            <>
-              <span className="w-2 h-2 rounded-full bg-amber-400" />
-              <span className="hidden sm:inline font-medium text-[11px] text-zinc-300">
-                Локальный режим (Задачи сохранены)
-              </span>
-              <Database className="w-3.5 h-3.5 text-amber-400" />
-            </>
-          )}
-        </button>
-      </div>
 
       {/* ── Modal: Sync Info & Backup Options ───────────────────────────────── */}
       {isSyncInfoModalOpen && (

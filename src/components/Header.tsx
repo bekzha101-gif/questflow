@@ -73,15 +73,16 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Right: Actions */}
         <div className="flex items-center gap-2">
           
-          {/* Статус синхронизации */}
-          <span
-            role="status"
-            title={syncLabel}
-            aria-label={syncLabel}
-            className="flex items-center justify-center w-6 h-6"
+          {/* Статус синхронизации: открывает окно «Хранение и синхронизация» */}
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new Event('questflow:open-sync'))}
+            title={`${syncLabel}. Хранение и синхронизация`}
+            aria-label={`${syncLabel}. Открыть хранение и синхронизацию`}
+            className="flex items-center justify-center w-8 h-8 rounded-xl hover:bg-white/[0.06] transition-colors cursor-pointer"
           >
             <span className={`w-2 h-2 rounded-full ${syncDotClass}`} />
-          </span>
+          </button>
 
           {/* Quick Add Primary Button (на телефоне эту роль играет «+» в нижней навигации) */}
           <button
