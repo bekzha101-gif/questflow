@@ -84,20 +84,24 @@ export function loadRecoveryCycleConfig(): RecoveryCycleConfig {
     const raw = localStorage.getItem('questflow_recovery_cycle_config');
     if (raw) {
       const parsed = JSON.parse(raw);
-      return {
-        workDaysCount: 7,
-        recoveryDaysCount: 1,
-        cycleStartDate: parsed.cycleStartDate || getDefaultCycleStartDate(),
-        notification24hEnabled: parsed.notification24hEnabled ?? true,
-        desktopPushEnabled: parsed.desktopPushEnabled ?? true,
-        activities: DEFAULT_RECOVERY_ACTIVITIES,
-      };
+      if (parsed.cycleStartDate) {
+        return {
+          workDaysCount: 7,
+          recoveryDaysCount: 1,
+          cycleStartDate: parsed.cycleStartDate,
+          notification24hEnabled: parsed.notification24hEnabled ?? true,
+          desktopPushEnabled: parsed.desktopPushEnabled ?? true,
+          activities: DEFAULT_RECOVERY_ACTIVITIES,
+        };
+      }
     }
   } catch (e) {
     console.error('Failed to load recovery cycle config:', e);
   }
 
-  return {
+  // Старт цикла ещё не задан: фиксируем сегодняшний день и сразу сохраняем,
+  // иначе каждый день считался бы «Днём 1» и детокс никогда не наступал.
+  const initialConfig: RecoveryCycleConfig = {
     workDaysCount: 7,
     recoveryDaysCount: 1,
     cycleStartDate: getDefaultCycleStartDate(),
@@ -105,6 +109,8 @@ export function loadRecoveryCycleConfig(): RecoveryCycleConfig {
     desktopPushEnabled: true,
     activities: DEFAULT_RECOVERY_ACTIVITIES,
   };
+  saveRecoveryCycleConfig(initialConfig);
+  return initialConfig;
 }
 
 export function saveRecoveryCycleConfig(config: RecoveryCycleConfig): void {
