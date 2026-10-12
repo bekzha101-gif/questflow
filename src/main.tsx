@@ -3,28 +3,15 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 import { cleanupMediaDemoData } from './utils/mediaDemoCleanup'
+import { startAppUpdateWatcher } from './utils/appUpdate'
 
 // До первого рендера: убрать старые демо-данные «Медиа» из localStorage (один раз)
 cleanupMediaDemoData()
 
-// Force clear stale Service Workers so the latest build always loads
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.getRegistrations().then((registrations) => {
-    for (const reg of registrations) {
-      reg.unregister().then(() => {
-        console.log('[SW] Unregistered stale service worker');
-      });
-    }
-  });
-  // Also clear caches
-  if ('caches' in window) {
-    caches.keys().then((names) => {
-      for (const name of names) {
-        caches.delete(name);
-      }
-    });
-  }
-}
+// Если на сервере вышла новая сборка — сбросить кеш и перезагрузиться на неё.
+// Раньше service worker удалялся при каждом запуске: это ломало офлайн-режим
+// и всё равно показывало старую версию при первом открытии после обновления.
+startAppUpdateWatcher()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

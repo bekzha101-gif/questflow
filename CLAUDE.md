@@ -57,6 +57,8 @@ MCP-сервер задач для агентов: `mcp_server.py` (хранит
 
 16. **Экран «Сегодня» не перекраивать.** Четыре колонки Привычки · Ежедневные · Задачи · Награды пользователь просил сам и считает удобными. Редизайн 12.10.2026 (две колонки, блок «Фокус сегодня», без наград) он отверг словами «интерфейс был лучше», экран возвращён. Любое изменение раскладки или вида задач на «Сегодня» — только после показа макета и явного согласия; новые элементы добавлять поверх прежней раскладки, а не вместо неё.
 
+17. **Обновление после деплоя:** `utils/appUpdate.ts` при открытии и при возвращении на вкладку сравнивает имя сборки с сервером и, если вышла новая, сбрасывает service worker и кеш и перезагружает страницу (данные в localStorage не трогает). Не возвращай удаление service worker при каждом запуске в `main.tsx`: оно ломало офлайн-режим и показывало старую версию при первом открытии после обновления. После пуша сам проверяй сайт, а не только статус деплоя.
+
 Ключи localStorage (все с префиксом `questflow_`): `tasks_v1`, `stats_v1`, `rewards_v1`, `timelogs`, `timer_*` (work_duration, break_duration, title, selected_task_id), `recovery_cycle_config`, `recovery_completed_activities`, `last_recovery_24h_alert`, `last_recovery_today_alert`, `bigdata_v1`, `bigdata_v3_cleaned`, `hidden_sections_v1`, `media_demo_cleaned_v1`, `channels_v1`, `videos_v1`, `ideas_v1`, `finances_v1`, `team_v1`, `supabase_url`, `supabase_anon_key`, `guest_mode`.
 
 ## Где лежит контекст из Antigravity
