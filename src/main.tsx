@@ -2,6 +2,10 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
+import { cleanupMediaDemoData } from './utils/mediaDemoCleanup'
+
+// До первого рендера: убрать старые демо-данные «Медиа» из localStorage (один раз)
+cleanupMediaDemoData()
 
 // Force clear stale Service Workers so the latest build always loads
 if ('serviceWorker' in navigator) {

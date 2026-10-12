@@ -48,6 +48,8 @@ MCP-сервер задач для агентов: `mcp_server.py` (хранит
 
 11. **Навигация (согласовано 12.10.2026):** главные разделы — Сегодня, Задачи, Календарь, Здоровье; Покупки, Награды, Медиа, Финансы — в «Ещё». Одна кнопка «+». RPG-часть приглушена (тонкая строка HP/уровень), тема только тёмная. Чистка кода идёт вместе с перерисовкой каждого экрана, не отдельным этапом.
 
+12. **Медиа без демо-данных:** каналов у пользователя пока нет, раздел стартует пустым. Не добавляй демо-каналы/видео/команду и не пиши логику, которая возвращает удалённые (то же правило, что для задач).
+
 Ключи localStorage (все с префиксом `questflow_`): `tasks_v1`, `stats_v1`, `rewards_v1`, `timelogs`, `timer_*` (work_duration, break_duration, title, selected_task_id), `recovery_cycle_config`, `recovery_completed_activities`, `last_recovery_24h_alert`, `last_recovery_today_alert`, `bigdata_v1`, `bigdata_v3_cleaned`, `channels_v1`, `videos_v1`, `ideas_v1`, `finances_v1`, `team_v1`, `supabase_url`, `supabase_anon_key`, `guest_mode`.
 
 ## Где лежит контекст из Antigravity

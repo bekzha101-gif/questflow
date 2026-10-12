@@ -54,7 +54,7 @@ export function GlobalCommandPalette({
   // Navigation Items
   const navItems = useMemo(() => [
     { id: 'tab-shorts', type: 'nav', title: 'ShortsFlow — Фокус спринт', tab: 'shorts' as TabType, icon: Clock },
-    { id: 'tab-prod', type: 'nav', title: 'Канбан Продакшн YouTube (Заметки бобра / Shorts)', tab: 'production' as TabType, icon: Film },
+    { id: 'tab-prod', type: 'nav', title: 'Канбан Продакшн YouTube (Shorts)', tab: 'production' as TabType, icon: Film },
     { id: 'tab-bigdata', type: 'nav', title: 'Big Data Табличка (Сон, Ноотропы, Аналитика 31)', tab: 'bigdata' as TabType, icon: Activity },
     { id: 'tab-ideas', type: 'nav', title: 'Пайплайн Идей & Сценариев', tab: 'ideas' as TabType, icon: Sparkles },
     { id: 'tab-tasks', type: 'nav', title: 'Все Задачи (Todoist стиль)', tab: 'tasks' as TabType, icon: CheckCircle },

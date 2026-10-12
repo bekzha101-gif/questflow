@@ -16,35 +16,8 @@ export interface TeamMember {
   assignedChannels: string[];
 }
 
-const initialTeam: TeamMember[] = [
-  {
-    id: 'team-1',
-    name: 'Алексей Смирнов',
-    role: 'Video Editor',
-    email: 'alex.editor@gmail.com',
-    avatar: '👨‍💻',
-    pricePerVideo: 45,
-    assignedChannels: ['chan-1', 'chan-2'],
-  },
-  {
-    id: 'team-2',
-    name: 'Дарья Кузнецова',
-    role: 'Script Writer',
-    email: 'daria.scripts@gmail.com',
-    avatar: '✍️',
-    pricePerVideo: 30,
-    assignedChannels: ['chan-1'],
-  },
-  {
-    id: 'team-3',
-    name: 'Илья Мельников',
-    role: 'Researcher',
-    email: 'ilya.research@gmail.com',
-    avatar: '🔍',
-    pricePerVideo: 25,
-    assignedChannels: ['chan-2', 'chan-3'],
-  },
-];
+// Команда стартует пустой: участников пользователь добавляет сам (демо-данных нет)
+const initialTeam: TeamMember[] = [];
 
 export const TeamChannelsManager: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'team' | 'channels'>('team');
@@ -61,19 +34,7 @@ export const TeamChannelsManager: React.FC = () => {
   const [channels, setChannels] = useState<Channel[]>(() => {
     try {
       const saved = localStorage.getItem('questflow_channels_v1');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (!parsed.some((c: Channel) => c.id === 'chan-bobr')) {
-          return [{ id: 'chan-bobr', name: 'Заметки бобра', handle: '@bobr_notes', avatar: '🦫', color: '#71717a' }, ...parsed];
-        }
-        return parsed;
-      }
-      return [
-        { id: 'chan-bobr', name: 'Заметки бобра', handle: '@bobr_notes', avatar: '🦫', color: '#71717a' },
-        { id: 'chan-1', name: 'Shorts Основной', handle: '@shorts_main', avatar: '🎬', color: '#71717a' },
-        { id: 'chan-2', name: 'AI & Бизнес', handle: '@ai_productflow', avatar: '⚡', color: '#71717a' },
-        { id: 'chan-3', name: 'Gaming Hacks', handle: '@gaming_hacks', avatar: '🎮', color: '#71717a' },
-      ];
+      return saved ? JSON.parse(saved) : [];
     } catch {
       return [];
     }

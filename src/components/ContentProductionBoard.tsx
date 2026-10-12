@@ -51,162 +51,10 @@ export interface Channel {
   description?: string;
 }
 
-const defaultChannels: Channel[] = [
-  { 
-    id: 'chan-bobr', 
-    name: 'Заметки бобра', 
-    handle: '@bobr_notes', 
-    avatar: '🦫', 
-    color: '#71717a',
-    description: 'Инженерия природы, био-хаки и продуктивность от лесных архитекторов' 
-  },
-  { 
-    id: 'chan-1', 
-    name: 'Shorts Основной', 
-    handle: '@shorts_main', 
-    avatar: '🎬', 
-    color: '#71717a',
-    description: 'Главный канал с вирусными короткими видео и лайфхаками' 
-  },
-  { 
-    id: 'chan-2', 
-    name: 'AI & Бизнес', 
-    handle: '@ai_productflow', 
-    avatar: '⚡', 
-    color: '#71717a',
-    description: 'Нейросети, автоматизация процессов и AI-инструменты' 
-  },
-  { 
-    id: 'chan-3', 
-    name: 'Gaming Hacks', 
-    handle: '@gaming_hacks', 
-    avatar: '🎮', 
-    color: '#71717a',
-    description: 'Геймификация жизни, обзоры механик и пасхалки' 
-  },
-];
+// Раздел стартует пустым: каналы и видео пользователь заводит сам (демо-данных нет)
+const defaultChannels: Channel[] = [];
 
-const defaultVideos: VideoItem[] = [
-  {
-    id: 'vid-bobr-1',
-    title: 'Почему бобры строят плотины именно так? 3 секрета природной инженерии',
-    channelId: 'chan-bobr',
-    stage: 'editing',
-    isUploaded: false,
-    assignedMemberName: 'Алексей (Монтажёр)',
-    assignedMemberRole: 'Video Editor',
-    publishDate: '2026-08-30',
-    publishTime: '19:00',
-    pricePerVideo: 45,
-    scriptSnippet: 'Хук 0-3 сек: Вы думали, бобры просто грызут деревья? Они рассчитывают гидродинамику реки лучше инженеров...',
-    referenceUrl: 'https://youtube.com/shorts/bobr-demo',
-    aspectRatio: '9:16',
-    expReward: 85,
-    goldReward: 50,
-  },
-  {
-    id: 'vid-bobr-2',
-    title: 'Топ-5 привычек ультра-фокуса: как успевать строить "плотины" в делах',
-    channelId: 'chan-bobr',
-    stage: 'scripting',
-    isUploaded: false,
-    assignedMemberName: 'Дарья (Сценарист)',
-    assignedMemberRole: 'Script Writer',
-    publishDate: '2026-08-31',
-    publishTime: '18:00',
-    pricePerVideo: 35,
-    scriptSnippet: 'План: 1. Не распыляться на ветки. 2. Закладывать монолитную базу с утра. 3. 25 минут полного погружения...',
-    referenceUrl: '',
-    aspectRatio: '9:16',
-    expReward: 65,
-    goldReward: 40,
-  },
-  {
-    id: 'vid-bobr-3',
-    title: 'Анатомия зубов бобра: железо в эмали и почему они никогда не тупятся',
-    channelId: 'chan-bobr',
-    stage: 'published',
-    isUploaded: true,
-    assignedMemberName: 'Алексей (Монтажёр)',
-    assignedMemberRole: 'Video Editor',
-    publishDate: '2026-08-27',
-    publishTime: '17:30',
-    pricePerVideo: 40,
-    scriptSnippet: 'Разбор биохимии эмали и визуальный ряд микроструктуры зуба.',
-    referenceUrl: 'https://youtube.com/shorts/bobr-published',
-    aspectRatio: '9:16',
-    expReward: 100,
-    goldReward: 70,
-  },
-  {
-    id: 'vid-1',
-    title: 'Как Todoist + Habitica взламывают дофамин (Разбор)',
-    channelId: 'chan-1',
-    stage: 'editing',
-    isUploaded: false,
-    assignedMemberName: 'Алексей (Монтажёр)',
-    assignedMemberRole: 'Video Editor',
-    publishDate: '2026-08-30',
-    publishTime: '18:00',
-    pricePerVideo: 45,
-    scriptSnippet: 'Хук 0-3 сек: Ты никогда не сможешь доделать список дел, если делаешь это как 99% людей...',
-    referenceUrl: 'https://youtube.com/shorts/ref-1',
-    aspectRatio: '9:16',
-    expReward: 80,
-    goldReward: 50,
-  },
-  {
-    id: 'vid-2',
-    title: '5 микро-привычек для быстрого фокуса за 2 минуты',
-    channelId: 'chan-1',
-    stage: 'review',
-    isUploaded: false,
-    assignedMemberName: 'Дарья (Сценарист)',
-    assignedMemberRole: 'Script Writer',
-    publishDate: '2026-08-31',
-    publishTime: '15:00',
-    pricePerVideo: 30,
-    scriptSnippet: 'План: 1. Стакан воды 2. Таймер на 25м 3. Полный дофаминовый детокс на 10 минут...',
-    referenceUrl: '',
-    aspectRatio: '9:16',
-    expReward: 60,
-    goldReward: 35,
-  },
-  {
-    id: 'vid-3',
-    title: 'Топ-3 нейросети для автоматического монтажа видео в 2026',
-    channelId: 'chan-2',
-    stage: 'scripting',
-    isUploaded: false,
-    assignedMemberName: 'Илья (Researcher)',
-    assignedMemberRole: 'Researcher',
-    publishDate: '2026-09-02',
-    publishTime: '19:00',
-    pricePerVideo: 40,
-    scriptSnippet: 'Сравнение CapCut AI, Opus Clip и Descript. Тест скорости создания субтитров.',
-    referenceUrl: '',
-    aspectRatio: '9:16',
-    expReward: 70,
-    goldReward: 40,
-  },
-  {
-    id: 'vid-4',
-    title: 'Секретная фишка Google Calendar, о которой никто не знает',
-    channelId: 'chan-2',
-    stage: 'published',
-    isUploaded: true,
-    assignedMemberName: 'Алексей (Монтажёр)',
-    assignedMemberRole: 'Video Editor',
-    publishDate: '2026-08-28',
-    publishTime: '17:00',
-    pricePerVideo: 50,
-    scriptSnippet: 'Полный обзор 2-Way Time-Boxing интеграции.',
-    referenceUrl: 'https://youtube.com/shorts/published-demo',
-    aspectRatio: '9:16',
-    expReward: 100,
-    goldReward: 70,
-  },
-];
+const defaultVideos: VideoItem[] = [];
 
 interface ContentProductionBoardProps {
   onPublishReward?: (exp: number, gold: number) => void;
@@ -218,11 +66,7 @@ export const ContentProductionBoard: React.FC<ContentProductionBoardProps> = ({ 
     try {
       const saved = localStorage.getItem('questflow_channels_v1');
       if (saved) {
-        const parsed = JSON.parse(saved);
-        if (!parsed.some((c: Channel) => c.id === 'chan-bobr')) {
-          return [{ id: 'chan-bobr', name: 'Заметки бобра', handle: '@bobr_notes', avatar: '🦫', color: '#71717a', description: 'Инженерия природы, био-хаки и продуктивность' }, ...parsed];
-        }
-        return parsed;
+        return JSON.parse(saved);
       }
       return defaultChannels;
     } catch {
@@ -230,9 +74,9 @@ export const ContentProductionBoard: React.FC<ContentProductionBoardProps> = ({ 
     }
   });
 
-  // Active Selected Channel ID (Defaults strictly to 'chan-bobr')
+  // Active Selected Channel ID (по умолчанию — все каналы)
   const [selectedChannelId, setSelectedChannelId] = useState<string>(() => {
-    return localStorage.getItem('questflow_selected_channel_id') || 'chan-bobr';
+    return localStorage.getItem('questflow_selected_channel_id') || 'all';
   });
 
   // Dropdown open state
@@ -244,11 +88,7 @@ export const ContentProductionBoard: React.FC<ContentProductionBoardProps> = ({ 
     try {
       const saved = localStorage.getItem('questflow_videos_v1');
       if (saved) {
-        const parsed = JSON.parse(saved);
-        if (!parsed.some((v: VideoItem) => v.channelId === 'chan-bobr')) {
-          return [...defaultVideos.filter(v => v.channelId === 'chan-bobr'), ...parsed];
-        }
-        return parsed;
+        return JSON.parse(saved);
       }
       return defaultVideos;
     } catch {
@@ -286,10 +126,10 @@ export const ContentProductionBoard: React.FC<ContentProductionBoardProps> = ({ 
 
   // Form Video State
   const [formTitle, setFormTitle] = useState('');
-  const [formChannelId, setFormChannelId] = useState(selectedChannelId === 'all' ? (channels[0]?.id || 'chan-bobr') : selectedChannelId);
+  const [formChannelId, setFormChannelId] = useState(selectedChannelId === 'all' ? (channels[0]?.id || '') : selectedChannelId);
   const [formStage, setFormStage] = useState<ProductionStage>('scripting');
   const [formIsUploaded, setFormIsUploaded] = useState(false);
-  const [formMemberName, setFormMemberName] = useState('Алексей (Монтажёр)');
+  const [formMemberName, setFormMemberName] = useState('');
   const [formPublishDate, setFormPublishDate] = useState(new Date().toISOString().split('T')[0]);
   const [formPublishTime, setFormPublishTime] = useState('18:00');
   const [formPrice, setFormPrice] = useState(40);
@@ -338,13 +178,18 @@ export const ContentProductionBoard: React.FC<ContentProductionBoardProps> = ({ 
   };
 
   const openCreateModal = () => {
+    // Видео привязано к каналу: без каналов сначала предлагаем создать канал
+    if (channels.length === 0) {
+      openNewChannelModal();
+      return;
+    }
     setEditingVideo(null);
     setFormTitle('');
-    const targetChannel = selectedChannelId !== 'all' ? selectedChannelId : (channels[0]?.id || 'chan-bobr');
+    const targetChannel = selectedChannelId !== 'all' ? selectedChannelId : (channels[0]?.id || '');
     setFormChannelId(targetChannel);
     setFormStage('scripting');
     setFormIsUploaded(false);
-    setFormMemberName('Алексей (Монтажёр)');
+    setFormMemberName('');
     setFormPublishDate(new Date().toISOString().split('T')[0]);
     setFormPublishTime('18:00');
     setFormPrice(40);
@@ -948,7 +793,7 @@ export const ContentProductionBoard: React.FC<ContentProductionBoardProps> = ({ 
                   <label className="text-xs text-zinc-400 font-medium block mb-1">Ответственный</label>
                   <input
                     type="text"
-                    placeholder="Алексей (Монтажёр)"
+                    placeholder="Имя исполнителя"
                     value={formMemberName}
                     onChange={(e) => setFormMemberName(e.target.value)}
                     className="w-full bg-zinc-900 border border-white/10 rounded-xl px-3 py-2 text-xs text-zinc-200 focus:outline-none focus:border-zinc-500"
@@ -1066,7 +911,7 @@ export const ContentProductionBoard: React.FC<ContentProductionBoardProps> = ({ 
                 <input
                   type="text"
                   required
-                  placeholder="Заметки бобра"
+                  placeholder="Название канала"
                   value={chanFormName}
                   onChange={(e) => setChanFormName(e.target.value)}
                   className="w-full bg-zinc-900 border border-white/10 rounded-xl px-3 py-2 text-xs text-zinc-200 focus:outline-none focus:border-zinc-500"
@@ -1078,7 +923,7 @@ export const ContentProductionBoard: React.FC<ContentProductionBoardProps> = ({ 
                   <label className="text-xs text-zinc-400 font-medium block mb-1">Хэндл</label>
                   <input
                     type="text"
-                    placeholder="@bobr_notes"
+                    placeholder="@handle"
                     value={chanFormHandle}
                     onChange={(e) => setChanFormHandle(e.target.value)}
                     className="w-full bg-zinc-900 border border-white/10 rounded-xl px-3 py-2 text-xs text-zinc-200 font-mono focus:outline-none focus:border-zinc-500"
