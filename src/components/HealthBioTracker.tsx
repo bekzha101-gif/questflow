@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useHiddenSections } from '../utils/hiddenSections';
 import { UserStats, NotificationItem } from '../types';
 import { 
   FoodLogEntry, 
@@ -66,6 +67,7 @@ export function HealthBioTracker({
   onUpdateStats,
   onAddNotification
 }: HealthBioTrackerProps) {
+  const isAiHidden = useHiddenSections().includes('ai');
   const today = getTodayDateString();
 
   // State
@@ -393,7 +395,7 @@ export function HealthBioTracker({
             { id: 'alarms', label: 'Будильники & Таймеры', icon: Bell },
             { id: 'ai_report', label: '🤖 ИИ-Отчет & Будущее', icon: Sparkles },
             { id: 'archive', label: 'Архив ресурсов', icon: History },
-          ].map((tab) => {
+          ].filter((tab) => !(tab.id === 'ai_report' && isAiHidden)).map((tab) => {
             const Icon = tab.icon;
             const active = activeTab === tab.id;
             return (

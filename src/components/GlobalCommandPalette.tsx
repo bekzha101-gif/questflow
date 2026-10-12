@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Search, CheckCircle, Clock, Calendar, Film, Sparkles, ArrowRight, X, Command, Activity, DollarSign, Users, Shield } from 'lucide-react';
 import { TaskItem, Project } from '../types';
-import { TabType } from './Navigation';
+import { TabType, getSection } from './Navigation';
+import { HideableSection, useHiddenSections } from '../utils/hiddenSections';
 
 interface CommandPaletteProps {
   isOpen: boolean;
@@ -51,6 +52,8 @@ export function GlobalCommandPalette({
     }
   }, [isOpen]);
 
+  const hidden = useHiddenSections();
+
   // Navigation Items
   const navItems = useMemo(() => [
     { id: 'tab-shorts', type: 'nav', title: 'ShortsFlow — Фокус спринт', tab: 'shorts' as TabType, icon: Clock },
@@ -62,14 +65,14 @@ export function GlobalCommandPalette({
     { id: 'tab-fin', type: 'nav', title: 'Финансы & Доходы YouTube', tab: 'finances' as TabType, icon: DollarSign },
     { id: 'tab-cal', type: 'nav', title: 'Календарь & Time Blocking', tab: 'calendar' as TabType, icon: Calendar },
     { id: 'tab-team', type: 'nav', title: 'Команда & Роли монтажеров', tab: 'team' as TabType, icon: Users },
-  ], []);
+  ].filter((item) => !hidden.includes(getSection(item.tab) as HideableSection)), [hidden]);
 
   // Quick Action Items
   const quickActions = useMemo(() => [
     { id: 'act-add', type: 'action', title: '⚡ Быстрое добавление задачи (Q)', action: onOpenQuickAdd, icon: Command },
     { id: 'act-ai', type: 'action', title: '🧙‍♂️ AI Генератор квестов и декомпозиция целей', action: onOpenAiMaster, icon: Sparkles },
     { id: 'act-export', type: 'action', title: '⬇ Экспорт всех данных в JSON бэкап', action: onExportData, icon: Activity },
-  ], [onOpenQuickAdd, onOpenAiMaster, onExportData]);
+  ].filter((item) => !(item.id === 'act-ai' && hidden.includes('ai'))), [onOpenQuickAdd, onOpenAiMaster, onExportData, hidden]);
 
   // Filtered Results
   const results = useMemo(() => {

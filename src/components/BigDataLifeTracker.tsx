@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useHiddenSections } from '../utils/hiddenSections';
 import { 
   ActivityTag, 
   DailyLogEntry, 
@@ -57,6 +58,7 @@ interface BigDataLifeTrackerProps {
 }
 
 export const BigDataLifeTracker: React.FC<BigDataLifeTrackerProps> = ({ onLogReward }) => {
+  const isAiHidden = useHiddenSections().includes('ai');
   const [data, setData] = useState<MonthlyBigDataState>(() => {
     try {
       // Force migration to empty state if previously filled with mock demo data
@@ -446,6 +448,7 @@ export const BigDataLifeTracker: React.FC<BigDataLifeTrackerProps> = ({ onLogRew
             </button>
 
             {/* AI Advisor Button */}
+            {!isAiHidden && (
             <button
               onClick={() => setIsAiAdvisorOpen(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-950/60 hover:bg-purple-900/80 border border-purple-500/30 text-purple-200 font-sans font-semibold transition-all shadow-sm group"
@@ -453,6 +456,7 @@ export const BigDataLifeTracker: React.FC<BigDataLifeTrackerProps> = ({ onLogRew
               <Brain className="w-3.5 h-3.5 text-purple-400 group-hover:text-purple-200" />
               <span>🧠 ИИ-Анализ месяца</span>
             </button>
+            )}
 
             {/* CSV Export Button */}
             <button

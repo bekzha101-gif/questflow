@@ -52,7 +52,10 @@ MCP-сервер задач для агентов: `mcp_server.py` (хранит
 
 13. **Музыка Brain.fm (Mac, Brave):** личное расширение `extensions/brainfm-bridge/` (Manifest V3, не из магазина). Таймер выставляет `<html data-questflow-focus="on|off">` и шлёт событие `questflow:focus`; расширение открывает my.brain.fm в фоновой закреплённой вкладке и нажимает Play, пока идёт фокус, и Pause на паузе, стопе и отдыхе. Пароль от Brain.fm нигде не хранится и не запрашивается: играет сессия пользователя в его браузере. Обходить плеер Brain.fm (скачивать/проксировать их аудио) нельзя.
 
-Ключи localStorage (все с префиксом `questflow_`): `tasks_v1`, `stats_v1`, `rewards_v1`, `timelogs`, `timer_*` (work_duration, break_duration, title, selected_task_id), `recovery_cycle_config`, `recovery_completed_activities`, `last_recovery_24h_alert`, `last_recovery_today_alert`, `bigdata_v1`, `bigdata_v3_cleaned`, `channels_v1`, `videos_v1`, `ideas_v1`, `finances_v1`, `team_v1`, `supabase_url`, `supabase_anon_key`, `guest_mode`.
+14. **Скрытые разделы:** Медиа, Финансы, Календарь жизни и AI-помощники скрыты по умолчанию (выбор пользователя), включаются переключателями на экране «Ещё» (`utils/hiddenSections.ts`). Скрытие не удаляет данные.
+15. **Система наград** строится по плану в `docs/ROADMAP.md` («Система наград и ритуалы»): норма 3 блока фокуса в день, золото в основном за часы фокуса, штрафы смягчены, напоминание только вечернее.
+
+Ключи localStorage (все с префиксом `questflow_`): `tasks_v1`, `stats_v1`, `rewards_v1`, `timelogs`, `timer_*` (work_duration, break_duration, title, selected_task_id), `recovery_cycle_config`, `recovery_completed_activities`, `last_recovery_24h_alert`, `last_recovery_today_alert`, `bigdata_v1`, `bigdata_v3_cleaned`, `hidden_sections_v1`, `media_demo_cleaned_v1`, `channels_v1`, `videos_v1`, `ideas_v1`, `finances_v1`, `team_v1`, `supabase_url`, `supabase_anon_key`, `guest_mode`.
 
 ## Где лежит контекст из Antigravity
 - `docs/antigravity/user-requests.md` — все 65 запросов пользователя по порядку (начни отсюда).

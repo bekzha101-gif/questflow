@@ -11,6 +11,7 @@ import {
   MoreHorizontal,
   type LucideIcon,
 } from 'lucide-react';
+import { HideableSection, useHiddenSections } from '../utils/hiddenSections';
 
 export type TabType =
   | 'today'
@@ -116,6 +117,8 @@ export const Navigation: React.FC<NavigationProps> = ({
   shoppingCount = 0,
 }) => {
   const section = getSection(activeTab);
+  const hidden = useHiddenSections();
+  const secondaryItems = SECONDARY_NAV.filter((item) => !hidden.includes(item.id as HideableSection));
   const badges: Partial<Record<SectionType, number>> = {
     today: dueTodayCount,
     shopping: shoppingCount,
@@ -157,10 +160,12 @@ export const Navigation: React.FC<NavigationProps> = ({
 
       <div className="space-y-0.5">{PRIMARY_NAV.map(renderItem)}</div>
 
-      <div className="mt-5 mb-1.5 px-3 text-[10px] font-medium uppercase tracking-wider text-zinc-600">
-        Ещё
+      <div className="mt-5 pt-3 border-t border-white/[0.06] space-y-0.5">
+        {secondaryItems.map(renderItem)}
       </div>
-      <div className="space-y-0.5">{SECONDARY_NAV.map(renderItem)}</div>
+
+      {/* «Ещё»: переключатели скрытых разделов */}
+      <div className="mt-auto pt-3">{renderItem(MORE_NAV)}</div>
     </nav>
   );
 };

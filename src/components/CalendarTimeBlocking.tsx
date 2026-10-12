@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useHiddenSections } from '../utils/hiddenSections';
 import { TaskItem, Project, GoogleCalendarConfig, Priority, TimeLogEntry, UserStats } from '../types';
 import { 
   Calendar as CalendarIcon, 
@@ -60,6 +61,7 @@ export const CalendarTimeBlocking: React.FC<CalendarTimeBlockingProps> = ({
 }) => {
   const [viewDate, setViewDate] = useState<Date>(() => new Date());
   const [viewMode, setViewMode] = useState<'month' | 'day_timeline' | 'life_calendar'>('month');
+  const isLifeCalendarHidden = useHiddenSections().includes('life_calendar');
   const [selectedDayTasks, setSelectedDayTasks] = useState<{ 
     dateStr: string; 
     tasks: TaskItem[]; 
@@ -215,6 +217,7 @@ export const CalendarTimeBlocking: React.FC<CalendarTimeBlockingProps> = ({
             >
               Тайм-Блокинг
             </button>
+            {!isLifeCalendarHidden && (
             <button
               onClick={() => setViewMode('life_calendar')}
               className={`px-3 py-1 rounded-lg font-bold transition-all flex items-center gap-1.5 ${
@@ -225,6 +228,7 @@ export const CalendarTimeBlocking: React.FC<CalendarTimeBlockingProps> = ({
             >
               <span>⏳ Календарь Жизни</span>
             </button>
+            )}
           </div>
 
 
@@ -247,7 +251,7 @@ export const CalendarTimeBlocking: React.FC<CalendarTimeBlockingProps> = ({
         </div>
       </div>
 
-      {viewMode === 'life_calendar' ? (
+      {viewMode === 'life_calendar' && !isLifeCalendarHidden ? (
         <LifeCalendarView />
       ) : viewMode === 'month' ? (
         /* Month Grid */
