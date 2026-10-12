@@ -70,7 +70,7 @@
     "questflow": {
       "command": "python3",
       "args": [
-        "/Users/bakyt/.gemini/antigravity/scratch/questflow/mcp_server.py"
+        "/Users/bakyt/Documents/QuestFlow/mcp_server.py"
       ]
     }
   }

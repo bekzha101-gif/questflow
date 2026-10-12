@@ -22,3 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Личные данные из Antigravity (чат, скриншоты, дамп Todoist) — не пушить
+docs/antigravity/
+__pycache__/
+docs/CONVERSATION-CONTEXT.md
