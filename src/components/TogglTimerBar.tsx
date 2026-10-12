@@ -16,7 +16,9 @@ import {
   Calendar, 
   Check, 
   Settings2,
-  Tag
+  Tag,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { 
   playQuestCompleteSound, 
@@ -123,6 +125,8 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({
   });
   const [isTaskDropdownOpen, setIsTaskDropdownOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isPeekingTime, setIsPeekingTime] = useState(false);
+  const [lastCompletedSessionNotice, setLastCompletedSessionNotice] = useState<string | null>(null);
 
   useEffect(() => {
     localStorage.setItem('questflow_timer_title', title);
@@ -409,6 +413,7 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({
   // Handle Play/Pause
   const handleTogglePlay = () => {
     if (!isRunning) {
+      setIsPeekingTime(false);
       if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
         requestDesktopNotificationPermission();
       }
@@ -439,6 +444,7 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({
 
   // Handle Switch Mode (Work <-> Break)
   const handleSwitchMode = (newMode: TimerMode) => {
+    setIsPeekingTime(false);
     if (newMode === mode) return;
 
     if (isRunning || elapsedSeconds > 0) {
@@ -492,6 +498,13 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({
     onLogSession(entry);
 
     if (isWork) {
+      const hoursWorked = Math.floor(actualMinutes / 60);
+      const minsWorked = actualMinutes % 60;
+      const formattedWorked = hoursWorked > 0 ? `${hoursWorked}ч ${minsWorked}м` : `${minsWorked}м`;
+      setLastCompletedSessionNotice(`Отработано: ${formattedWorked}`);
+      setTimeout(() => setLastCompletedSessionNotice(null), 10000);
+      setIsPeekingTime(false);
+
       playQuestCompleteSound();
       playCoinSound();
       triggerQuestConfetti();
@@ -599,6 +612,13 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({
         };
         onLogSession(entry);
       }
+
+      const hoursWorked = Math.floor(actualMinutes / 60);
+      const minsWorked = actualMinutes % 60;
+      const formattedWorked = hoursWorked > 0 ? `${hoursWorked}ч ${minsWorked}м` : `${minsWorked}м`;
+      setLastCompletedSessionNotice(`Отработано: ${formattedWorked}`);
+      setTimeout(() => setLastCompletedSessionNotice(null), 10000);
+      setIsPeekingTime(false);
 
       if (isNaturalCompletion) {
         playQuestCompleteSound();
@@ -788,7 +808,7 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({
               }`}
             >
               <Flame className="w-3.5 h-3.5 text-amber-400" />
-              <span>Фокус ({workDuration}м)</span>
+              <span>Фокус</span>
             </button>
             <button
               onClick={() => handleSwitchMode('break')}
@@ -987,15 +1007,68 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({
             </div>
           </div>
 
+          {/* Completed Session Result Notice */}
+          {lastCompletedSessionNotice && (
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-emerald-950/70 border border-emerald-500/40 text-[11px] font-bold text-emerald-300 animate-in fade-in select-none shadow-sm">
+              <Sparkles className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <span>{lastCompletedSessionNotice}</span>
+            </div>
+          )}
+
           {/* Time Display */}
-          <div className="flex items-center gap-2 bg-zinc-900/90 border border-white/10 rounded-xl px-3 py-1 font-mono text-base font-bold tracking-wider text-zinc-100 select-none">
-            <span className={isRunning ? (mode === 'work' ? 'text-amber-400 animate-pulse' : 'text-emerald-400 animate-pulse') : 'text-zinc-200'}>
-              {formatTime(displayedSeconds)}
-            </span>
-            <span className="text-[10px] text-zinc-500 font-sans font-medium uppercase">
-              {timerType === 'countdown' ? 'осталось' : 'прошло'}
-            </span>
-          </div>
+          {mode === 'work' && isRunning && !isPeekingTime ? (
+            /* Blind Deep Work Active (No stressful countdown numbers) */
+            <div className="flex items-center gap-2 bg-amber-950/30 border border-amber-500/40 rounded-xl px-3 py-1 select-none shadow-sm">
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" />
+              <span className="text-amber-300 font-bold text-sm tracking-wide">
+                Работает
+              </span>
+              <button
+                onClick={() => setIsPeekingTime(true)}
+                className="ml-1 p-0.5 rounded text-zinc-500 hover:text-amber-300 transition-colors"
+                title="Подсмотреть оставшееся время"
+              >
+                <Eye className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ) : mode === 'work' && isRunning && isPeekingTime ? (
+            /* Peeking Active Countdown */
+            <div className="flex items-center gap-2 bg-zinc-900/90 border border-amber-500/50 rounded-xl px-3 py-1 font-mono text-base font-bold tracking-wider text-amber-300 select-none shadow-sm">
+              <span className="animate-pulse">
+                {formatTime(displayedSeconds)}
+              </span>
+              <span className="text-[10px] text-zinc-500 font-sans font-medium uppercase">
+                осталось
+              </span>
+              <button
+                onClick={() => setIsPeekingTime(false)}
+                className="ml-1 p-0.5 rounded text-amber-400 hover:text-white transition-colors"
+                title="Скрыть время (Слепой фокус)"
+              >
+                <EyeOff className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ) : mode === 'work' && !isRunning && elapsedSeconds > 0 ? (
+            /* Paused mid-session */
+            <div className="flex items-center gap-2 bg-zinc-900/90 border border-white/10 rounded-xl px-3 py-1 font-mono text-base font-bold tracking-wider text-zinc-300 select-none">
+              <span>{formatTime(elapsedSeconds)}</span>
+              <span className="text-[10px] text-zinc-500 font-sans font-medium uppercase">
+                пауза
+              </span>
+            </div>
+          ) : (
+            /* Idle before start (shows 2:00:00) OR Break mode (shows 20:00 countdown) */
+            <div className={`flex items-center gap-2 bg-zinc-900/90 border rounded-xl px-3 py-1 font-mono text-base font-bold tracking-wider select-none ${
+              mode === 'break' ? 'border-emerald-500/30 text-emerald-300' : 'border-white/10 text-zinc-100'
+            }`}>
+              <span className={isRunning && mode === 'break' ? 'text-emerald-400 animate-pulse' : 'text-zinc-200'}>
+                {formatTime(displayedSeconds)}
+              </span>
+              <span className="text-[10px] text-zinc-500 font-sans font-medium uppercase">
+                {mode === 'break' ? 'отдых' : (timerType === 'countdown' ? 'план' : 'прошло')}
+              </span>
+            </div>
+          )}
 
           {/* Play/Pause Button */}
           <button
