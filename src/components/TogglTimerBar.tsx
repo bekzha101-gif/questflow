@@ -5,8 +5,6 @@ import {
   Pause, 
   Square, 
   RotateCcw, 
-  Volume2, 
-  VolumeX, 
   Sparkles, 
   Flame, 
   Coffee, 
@@ -36,7 +34,6 @@ import {
 } from '../utils/recoveryCycle';
 import { 
   TimerMode, 
-  AmbientSound, 
   PersistentTimerSession,
   loadPersistentTimerSession, 
   savePersistentTimerSession, 
@@ -172,26 +169,6 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({
     return 'countdown';
   });
 
-  // Ambient sound
-  const [ambientSound, setAmbientSound] = useState<AmbientSound>(() => {
-    if (initialSavedSession && initialSavedSession.ambientSound) {
-      return initialSavedSession.ambientSound;
-    }
-    return 'none';
-  });
-
-  // Autoplay recovery gesture listener (User choice A2)
-  const [isAudioWaitingForGesture, setIsAudioWaitingForGesture] = useState(() => {
-    return Boolean(
-      initialSavedSession &&
-      !initialExpired &&
-      initialSavedSession.isRunning &&
-      initialSavedSession.ambientSound !== 'none'
-    );
-  });
-
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  const soundNodeRef = useRef<{ osc?: OscillatorNode; gain?: GainNode; noise?: AudioNode } | null>(null);
   const accumulatedSecondsRef = useRef<number>(
     initialSavedSession && !initialExpired ? initialSavedSession.accumulatedSeconds : 0
   );
@@ -214,80 +191,6 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({
     }
   }, [currentTargetMinutes, mode, isRunning, expiredOfflineSession]);
 
-  // ─── Web Audio API Soundscape Synthesizer ──────────────────────────────────
-  const startAmbientSound = (type: AmbientSound) => {
-    stopAmbientSound();
-    if (type === 'none') return;
-
-    try {
-      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      audioCtxRef.current = ctx;
-
-      const masterGain = ctx.createGain();
-      masterGain.gain.setValueAtTime(0.12, ctx.currentTime);
-      masterGain.connect(ctx.destination);
-
-      if (type === 'gamma' || type === 'alpha') {
-        const offset = type === 'gamma' ? 40 : 10;
-        const oscLeft = ctx.createOscillator();
-        const oscRight = ctx.createOscillator();
-        const merger = ctx.createChannelMerger(2);
-
-        oscLeft.frequency.setValueAtTime(216, ctx.currentTime);
-        oscRight.frequency.setValueAtTime(216 + offset, ctx.currentTime);
-
-        oscLeft.type = 'sine';
-        oscRight.type = 'sine';
-
-        oscLeft.connect(merger, 0, 0);
-        oscRight.connect(merger, 0, 1);
-        merger.connect(masterGain);
-
-        oscLeft.start();
-        oscRight.start();
-
-        soundNodeRef.current = { osc: oscLeft, gain: masterGain };
-      } else if (type === 'brown') {
-        const bufferSize = ctx.sampleRate * 2;
-        const noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
-        const output = noiseBuffer.getChannelData(0);
-        let lastOut = 0.0;
-        for (let i = 0; i < bufferSize; i++) {
-          const white = Math.random() * 2 - 1;
-          output[i] = (lastOut + 0.02 * white) / 1.02;
-          lastOut = output[i];
-          output[i] *= 3.5;
-        }
-
-        const whiteNoise = ctx.createBufferSource();
-        whiteNoise.buffer = noiseBuffer;
-        whiteNoise.loop = true;
-
-        const filter = ctx.createBiquadFilter();
-        filter.type = 'lowpass';
-        filter.frequency.setValueAtTime(400, ctx.currentTime);
-
-        whiteNoise.connect(filter);
-        filter.connect(masterGain);
-        whiteNoise.start();
-
-        soundNodeRef.current = { gain: masterGain, noise: whiteNoise };
-      }
-    } catch {
-      // Audio context policy fallback
-    }
-  };
-
-  const stopAmbientSound = () => {
-    if (audioCtxRef.current) {
-      try {
-        audioCtxRef.current.close();
-      } catch {}
-      audioCtxRef.current = null;
-      soundNodeRef.current = null;
-    }
-  };
-
   // Refs to avoid stale closures in interval
   const elapsedSecondsRef = useRef(elapsedSeconds);
   const modeRef = useRef(mode);
@@ -296,7 +199,6 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({
   const titleRef = useRef(title);
   const selectedTaskIdRef = useRef(selectedTaskId);
   const sessionStartTimeRef = useRef(sessionStartTime);
-  const ambientSoundRef = useRef(ambientSound);
   const isRunningRef = useRef(isRunning);
   const timerTypeRef = useRef(timerType);
 
@@ -307,7 +209,6 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({
   useEffect(() => { titleRef.current = title; }, [title]);
   useEffect(() => { selectedTaskIdRef.current = selectedTaskId; }, [selectedTaskId]);
   useEffect(() => { sessionStartTimeRef.current = sessionStartTime; }, [sessionStartTime]);
-  useEffect(() => { ambientSoundRef.current = ambientSound; }, [ambientSound]);
   useEffect(() => { isRunningRef.current = isRunning; }, [isRunning]);
   useEffect(() => { timerTypeRef.current = timerType; }, [timerType]);
 
@@ -321,7 +222,7 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({
       targetMinutes: modeRef.current === 'work' ? workDurationRef.current : breakDurationRef.current,
       title: titleRef.current,
       selectedTaskId: selectedTaskIdRef.current,
-      ambientSound: ambientSoundRef.current,
+      ambientSound: 'none',
       timerType: timerTypeRef.current,
       lastUpdated: Date.now(),
       ...overrides,
@@ -349,7 +250,6 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({
       setMode(syncedSession.mode);
       setTitle(syncedSession.title);
       setSelectedTaskId(syncedSession.selectedTaskId);
-      setAmbientSound(syncedSession.ambientSound);
       setTimerType(syncedSession.timerType);
       setIsRunning(syncedSession.isRunning);
       setElapsedSeconds(state.elapsedSeconds);
@@ -360,21 +260,13 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({
     return unsubscribe;
   }, []);
 
-  // Autoplay recovery gesture listener (User choice A2)
+  // Сигнал для внешнего плеера (расширение Brain.fm): музыка нужна, только пока идёт фокус.
+  // Расширение читает атрибут data-questflow-focus и слушает событие questflow:focus.
+  const isFocusRunning = mode === 'work' && isRunning;
   useEffect(() => {
-    if (isAudioWaitingForGesture && ambientSound !== 'none') {
-      const handleGesture = () => {
-        startAmbientSound(ambientSound);
-        setIsAudioWaitingForGesture(false);
-      };
-      window.addEventListener('click', handleGesture, { once: true });
-      window.addEventListener('keydown', handleGesture, { once: true });
-      return () => {
-        window.removeEventListener('click', handleGesture);
-        window.removeEventListener('keydown', handleGesture);
-      };
-    }
-  }, [isAudioWaitingForGesture, ambientSound]);
+    document.documentElement.dataset.questflowFocus = isFocusRunning ? 'on' : 'off';
+    window.dispatchEvent(new CustomEvent('questflow:focus', { detail: { playing: isFocusRunning } }));
+  }, [isFocusRunning]);
 
   // Timer Tick Effect with Wall-clock verification (offline-proof)
   useEffect(() => {
@@ -420,16 +312,12 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({
       const now = new Date();
       setSessionStartTime(now);
       setIsRunning(true);
-      if (ambientSound !== 'none') {
-        startAmbientSound(ambientSound);
-      }
       persistCurrentState({
         isRunning: true,
         startTime: now.getTime(),
       });
     } else {
       setIsRunning(false);
-      stopAmbientSound();
       const currentSegment = sessionStartTime ? Math.floor((Date.now() - sessionStartTime.getTime()) / 1000) : 0;
       const totalAccum = accumulatedSecondsRef.current + currentSegment;
       accumulatedSecondsRef.current = totalAccum;
@@ -523,9 +411,6 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({
       const breakStart = new Date();
       setSessionStartTime(breakStart);
       setIsRunning(true);
-      if (ambientSoundRef.current !== 'none') {
-        startAmbientSound(ambientSoundRef.current);
-      }
       savePersistentTimerSession({
         mode: 'break',
         isRunning: true,
@@ -534,7 +419,7 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({
         targetMinutes: breakDurationRef.current,
         title: session.title,
         selectedTaskId: session.selectedTaskId,
-        ambientSound: ambientSoundRef.current,
+        ambientSound: 'none',
         timerType: 'countdown',
         lastUpdated: Date.now(),
       });
@@ -555,7 +440,7 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({
         targetMinutes: workDurationRef.current,
         title: titleRef.current,
         selectedTaskId: selectedTaskIdRef.current,
-        ambientSound: ambientSoundRef.current,
+        ambientSound: 'none',
         timerType: 'countdown',
         lastUpdated: Date.now(),
       });
@@ -578,7 +463,6 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({
   // Finish and Log Session into Calendar with Auto-transition
   const handleFinishSession = (isNaturalCompletion: boolean) => {
     setIsRunning(false);
-    stopAmbientSound();
 
     const currentMode = modeRef.current;
     const currentElapsed = elapsedSecondsRef.current;
@@ -650,9 +534,6 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({
       const breakStart = new Date();
       setSessionStartTime(breakStart);
       setIsRunning(true);
-      if (ambientSoundRef.current !== 'none') {
-        startAmbientSound(ambientSoundRef.current);
-      }
 
       // Save break session to persistent storage
       savePersistentTimerSession({
@@ -663,7 +544,7 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({
         targetMinutes: breakDurationRef.current,
         title: sessionTitle,
         selectedTaskId: selectedTaskIdRef.current,
-        ambientSound: ambientSoundRef.current,
+        ambientSound: 'none',
         timerType: 'countdown',
         lastUpdated: Date.now(),
       });
@@ -718,7 +599,7 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({
         targetMinutes: workDurationRef.current,
         title: titleRef.current,
         selectedTaskId: selectedTaskIdRef.current,
-        ambientSound: ambientSoundRef.current,
+        ambientSound: 'none',
         timerType: 'countdown',
         lastUpdated: Date.now(),
       });
@@ -890,39 +771,6 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({
           
           {/* Settings & Sound */}
           <div className="flex items-center gap-1">
-            {/* Ambient Soundscape */}
-            <button
-              onClick={() => {
-                const order: AmbientSound[] = ['none', 'brown', 'gamma', 'alpha'];
-                const next = order[(order.indexOf(ambientSound) + 1) % order.length];
-                setAmbientSound(next);
-                persistCurrentState({ ambientSound: next });
-                setIsAudioWaitingForGesture(false);
-                if (isRunning) startAmbientSound(next);
-                else stopAmbientSound();
-              }}
-              className={`p-1.5 rounded-xl border transition-all text-xs flex items-center gap-1 ${
-                ambientSound !== 'none'
-                  ? 'bg-purple-950/30 border-purple-500/30 text-purple-300'
-                  : 'bg-zinc-900 border-white/10 text-zinc-500 hover:text-zinc-300'
-              }`}
-              title={`Звуковой фон: ${
-                ambientSound === 'none' ? 'Выключен' :
-                ambientSound === 'brown' ? 'Коричневый шум' :
-                ambientSound === 'gamma' ? 'Гамма-волны 40Hz' : 'Альфа-волны 10Hz'
-              }`}
-            >
-              {ambientSound === 'none' ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
-              <span className="text-[10px] hidden sm:inline uppercase font-bold">
-                {ambientSound === 'none' ? 'Звук' : ambientSound}
-              </span>
-              {ambientSound !== 'none' && isAudioWaitingForGesture && (
-                <span className="text-[8px] bg-purple-500/30 text-purple-200 px-1.5 py-0.5 rounded-full animate-pulse border border-purple-500/40" title="Кликните в любом месте экрана для включения звука">
-                  клик для звука
-                </span>
-              )}
-            </button>
-
             {/* Duration Settings Dropdown */}
             <div className="relative">
               <button

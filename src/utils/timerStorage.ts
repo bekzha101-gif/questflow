@@ -1,6 +1,7 @@
 // Offline-First Persistent Timer Storage & Multi-tab BroadcastChannel
 
 export type TimerMode = 'work' | 'break';
+// Встроенный звук убран (музыку включает расширение Brain.fm); поле осталось для совместимости сохранённых сессий
 export type AmbientSound = 'none' | 'brown' | 'gamma' | 'alpha';
 
 export interface PersistentTimerSession {
