@@ -7,7 +7,6 @@ import {
   BLOCKS_PER_DAY,
   BREAK_MIN,
   blockRecord,
-  blockReward,
   canStartBlock,
   cancelBlock,
   computeTimer,
@@ -19,6 +18,7 @@ import {
   resumeTimer,
   startBlock,
 } from '@shared/timer';
+import { focusReward } from '@shared/gamification';
 import { useCollection } from '../store';
 import { playQuestCompleteSound, playCoinSound, playBreakBellSound, playWorkReadySound } from '../utils/sound';
 import { triggerQuestConfetti } from '../utils/confetti';
@@ -98,7 +98,8 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({ tasks, onLogSessio
     if (rec.minutes < 1 || !claimTimerEvent(`work:${rec.id}`)) return;
     if (sessions.items.some((s) => s.id === rec.id)) return;
 
-    const reward = blockReward(rec.minutes, rec.full);
+    // Подпись награды; начисляет App через правила (shared/gamification)
+    const reward = focusReward(rec.minutes, rec.full);
     const entry = {
       id: rec.id,
       title: titleOf(rec.taskId),

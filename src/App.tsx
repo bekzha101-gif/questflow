@@ -43,6 +43,9 @@ import { triggerLevelUpConfetti } from './utils/confetti';
 import { createGoogleCalendarTimeLogEvent } from './utils/googleCalendarApi';
 import { selectRegularTasks, selectShoppingTasks, makeTask, type TaskKind } from './utils/taskFilters';
 import { todayStr } from '@shared/time';
+import { WORK_MIN } from '@shared/timer';
+import { ACHIEVEMENTS, type ApplyResult } from '@shared/gamification';
+import { applyGame, syncGameFacts, logSessionOnce, GAME_EVENT } from './sections/progress/game';
 import { 
   loadRecoveryCycleConfig, 
   getDayCycleInfo, 
@@ -58,6 +61,9 @@ const taskConverter: Converter<TaskItem, TaskItem> = {
   toApp: (t) => ({ ...t, tags: t.tags ?? [], subtasks: t.subtasks ?? [] }),
   fromApp: (t) => t,
 };
+
+/** Поля статов, которые меняют только правила (shared/gamification) */
+const GAME_FIELDS = ['level', 'exp', 'maxExp', 'hp', 'maxHp', 'gold', 'streak', 'bestStreak', 'incomeUsdTotal', 'shopLocked'] as const;
 
 export function App() {
   // Core State — хранилище src/store (локальный кеш + очередь в Supabase + Realtime)
@@ -108,13 +114,13 @@ export function App() {
       setTasks((prev) =>
         prev.map((t) => (t.type === 'daily' && t.completed ? { ...t, completed: false } : t))
       );
-      setStats((prev) => ({ ...prev, streak: prev.streak + 1 }));
+      // Серию считает итог дня (shared/gamification), а не открытие сайта
       localStorage.setItem(LAST_RESET_KEY, today);
       setNotifications((prev) => [
         {
           id: `auto-reset-${Date.now()}`,
           title: '🌅 Новый День!',
-          message: `Ежедневные задачи сброшены автоматически. Стрик продолжается! 🔥`,
+          message: 'Ежедневные задачи сброшены автоматически.',
           time: new Date().toLocaleTimeString(),
           type: 'reminder',
           read: false,
@@ -267,17 +273,17 @@ export function App() {
   }, [openQuickAdd]);
 
 
-  // Update Stats Helper
+  // Настройки профиля (звук и т.п.). Игровые числа здесь не меняются: только через applyGame и правила.
   const handleUpdateStats = (newStats: Partial<UserStats>) => {
-    setStats((prev) => ({ ...prev, ...newStats }));
+    const patch: Record<string, unknown> = { ...newStats };
+    for (const k of GAME_FIELDS) delete patch[k];
+    if (Object.keys(patch).length === 0) return;
+    setStats((prev) => ({ ...prev, ...patch }));
   };
 
   // Handle HP damage with notification (used for detox violations)
   const handleDamageHp = (amount: number, reason: string) => {
-    setStats((prev) => ({
-      ...prev,
-      hp: Math.max(0, prev.hp - amount),
-    }));
+    applyGame({ kind: 'bonus', ref: `damage:${Date.now()}`, hp: -Math.abs(amount), note: reason });
     setNotifications((prev) => [
       {
         id: `dmg-${Date.now()}`,
@@ -344,60 +350,65 @@ export function App() {
     }
   }, []);
 
-  // Gamification Engine: EXP / Level / Gold award
-  const awardRewards = (exp: number, gold: number) => {
-    let finalExp = exp;
-    let finalGold = gold;
+  // Награды и штрафы считает shared/gamification через applyGame (src/sections/progress/game.ts).
+  // Классов героя с множителями больше нет. Ответ на событие (уровень, HP 0, ачивки) — здесь.
+  useEffect(() => {
+    const onGame = (e: Event) => {
+      const r = (e as CustomEvent<ApplyResult>).detail;
+      if (!r) return;
+      if (r.leveledUp > 0) {
+        if (stats.soundEnabled) playLevelUpSound();
+        triggerLevelUpConfetti();
+        setIsLevelUpModalOpen(true);
+      }
+      const notes: NotificationItem[] = [];
+      if (r.hpZero) {
+        notes.push({
+          id: `hp-zero-${Date.now()}`,
+          title: 'HP 0',
+          message: 'Сгорела часть золота, прогресс уровня обнулён, серия сброшена. Магазин закрыт до полного дня.',
+          time: new Date().toLocaleTimeString(),
+          type: 'damage',
+          read: false,
+        });
+      }
+      for (const id of r.unlocked) {
+        const a = ACHIEVEMENTS.find((x) => x.id === id);
+        notes.push({
+          id: `ach-${id}`,
+          title: `Ачивка: ${a?.title ?? id}`,
+          message: a?.description ?? '',
+          time: new Date().toLocaleTimeString(),
+          type: 'reward',
+          read: false,
+        });
+      }
+      if (notes.length) setNotifications((prev) => [...notes, ...prev]);
+    };
+    window.addEventListener(GAME_EVENT, onGame);
+    return () => window.removeEventListener(GAME_EVENT, onGame);
+  }, [stats.soundEnabled]);
 
-    if (stats.heroClass === 'Mage') finalExp = Math.round(exp * 1.25);
-    if (stats.heroClass === 'Rogue') finalGold = Math.round(gold * 1.35);
-    if (stats.heroClass === 'Warrior') {
-      finalExp = Math.round(exp * 1.35);
-      finalGold = Math.round(gold * 1.35);
-    }
-
-    let newExp = stats.exp + finalExp;
-    let newGold = stats.gold + finalGold;
-    let newLevel = stats.level;
-    let maxExp = stats.maxExp;
-    let leveledUp = false;
-
-    // Check Level Up
-    while (newExp >= maxExp) {
-      newExp -= maxExp;
-      newLevel += 1;
-      maxExp = Math.round(maxExp * 1.3);
-      leveledUp = true;
-    }
-
-    if (leveledUp) {
-      if (stats.soundEnabled) playLevelUpSound();
-      triggerLevelUpConfetti();
-      setIsLevelUpModalOpen(true);
-      setStats((prev) => ({
-        ...prev,
-        level: newLevel,
-        exp: newExp,
-        maxExp,
-        hp: prev.maxHp, // Restore HP on level up
-        gold: newGold + 50,
-      }));
-    } else {
-      setStats((prev) => ({
-        ...prev,
-        exp: newExp,
-        gold: newGold,
-      }));
-    }
-  };
+  // Итоги прошедших дней, цели, публикации, ачивки по фактам — при открытии и раз в минуту
+  useEffect(() => {
+    syncGameFacts();
+    const t = window.setInterval(() => syncGameFacts(), 60_000);
+    return () => window.clearInterval(t);
+  }, []);
 
   // Handle Session Logged from Toggl Timer
   const handleLogSession = async (entry: TimeLogEntry) => {
-    setTimeLogs((prev) => [entry, ...prev]);
+    // Тот же id (блок уже записан другой вкладкой) заменяет строку, а не добавляет дубль
+    setTimeLogs((prev) => logSessionOnce(prev, entry));
 
-    // Award Rewards
-    if (entry.expEarned || entry.goldEarned) {
-      awardRewards(entry.expEarned || 0, entry.goldEarned || 0);
+    // Награда за блок — по правилам; повтор того же блока ничего не начисляет
+    if (entry.mode === 'work' && entry.actualMinutes > 0) {
+      applyGame({
+        kind: 'focus_block',
+        ref: entry.id,
+        minutes: entry.actualMinutes,
+        full: entry.actualMinutes >= (entry.targetMinutes || WORK_MIN),
+      });
     }
 
     // Direct Google Calendar Sync if connected & active
@@ -467,9 +478,6 @@ export function App() {
     setTasks((prev) =>
       prev.map((t) => {
         if (t.id !== taskId) return t;
-        if (willComplete) {
-          awardRewards(t.expReward, t.goldReward);
-        }
         return {
           ...t,
           completed: willComplete,
@@ -479,10 +487,13 @@ export function App() {
       })
     );
 
+    // Награда вне апдейтера; одна задача награждается один раз (ref = id задачи)
+    if (willComplete && target) applyGame({ kind: 'task', ref: taskId });
+
     if (willComplete && target) {
       setSnackbarAction({
         id: `undo-comp-${Date.now()}`,
-        message: `Завершено: «${target.title.slice(0, 28)}» (+${target.expReward} EXP)`,
+        message: `Завершено: «${target.title.slice(0, 28)}»`,
         onUndo: () => {
           setTasks((prev) =>
             prev.map((t) =>
@@ -515,13 +526,11 @@ export function App() {
     if (!habit) return;
 
     if (direction === 'positive') {
-      awardRewards(habit.expReward, habit.goldReward);
+      // Привычка награждается один раз за день
+      applyGame({ kind: 'habit', ref: `${todayStr()}:${taskId}` });
     } else {
-      const damageTaken = 15;
-      setStats((prev) => ({
-        ...prev,
-        hp: Math.max(0, prev.hp - damageTaken),
-      }));
+      const r = applyGame({ kind: 'bad_habit', ref: `${taskId}:${Date.now()}` });
+      const damageTaken = -(r.events[0]?.deltaHp ?? 0);
       setNotifications((prev) => [
         {
           id: `dmg-${Date.now()}`,
@@ -538,13 +547,13 @@ export function App() {
 
   // Daily Action
   const handleToggleDaily = (taskId: string) => {
+    const target = tasks.find((t) => t.id === taskId);
+    // Ежедневное награждается один раз за день, вне апдейтера
+    if (target && !target.completed) applyGame({ kind: 'daily', ref: `${todayStr()}:${taskId}` });
     setTasks((prev) =>
       prev.map((t) => {
         if (t.id !== taskId) return t;
         const willComplete = !t.completed;
-        if (willComplete) {
-          awardRewards(t.expReward, t.goldReward);
-        }
         return {
           ...t,
           completed: willComplete,
@@ -559,12 +568,11 @@ export function App() {
     setTasks((prev) =>
       prev.map((t) => (t.type === 'daily' ? { ...t, completed: false } : t))
     );
-    setStats((prev) => ({ ...prev, streak: prev.streak + 1 }));
     setNotifications((prev) => [
       {
         id: `streak-${Date.now()}`,
         title: '🔥 Новый День!',
-        message: 'Статус ежедневных квестов обновлен. Ваш стрик продолжается!',
+        message: 'Статус ежедневных квестов обновлен.',
         time: new Date().toLocaleTimeString(),
         type: 'reminder',
         read: false,
@@ -646,23 +654,12 @@ export function App() {
 
   // Buy Reward from Shop
   const handleBuyReward = (reward: Reward): boolean => {
-    if (stats.gold < reward.cost) return false;
-
-    setStats((prev) => {
-      let hp = prev.hp;
-      if (reward.id === 'rew-item-1') {
-        const healAmt = prev.heroClass === 'Healer' ? 50 : 35;
-        hp = Math.min(prev.maxHp, prev.hp + healAmt);
-      }
-      return {
-        ...prev,
-        gold: prev.gold - reward.cost,
-        hp,
-      };
-    });
+    // Магазин закрыт после HP 0 до полного дня; золото списывают правила
+    const r = applyGame({ kind: 'purchase', ref: `${reward.id}:${Date.now()}`, cost: reward.cost });
+    if (!r.applied) return false;
 
     setRewards((prev) =>
-      prev.map((r) => (r.id === reward.id ? { ...r, timesPurchased: r.timesPurchased + 1 } : r))
+      prev.map((r) => (r.id === reward.id ? { ...r, timesPurchased: (r.timesPurchased || 0) + 1 } : r))
     );
     return true;
   };
@@ -712,11 +709,13 @@ export function App() {
     onBuyReward: handleBuyReward,
     onAddReward: handleAddReward,
     onUpdateStats: handleUpdateStats,
+    // Старые места с готовыми числами (вне таблицы правил) — через журнал как «bonus»
     onAwardRewards: (exp, gold, hp) => {
-      awardRewards(exp, gold);
-      if (hp) handleUpdateStats({ hp: Math.min(stats.maxHp, stats.hp + hp) });
+      applyGame({ kind: 'bonus', ref: `bonus:${Date.now()}:${exp}:${gold}:${hp ?? 0}`, exp, gold, hp });
     },
-    onAddGoldReward: (gold) => setStats((prev) => ({ ...prev, gold: prev.gold + gold })),
+    onAddGoldReward: (gold) => {
+      applyGame({ kind: 'bonus', ref: `gold:${Date.now()}:${gold}`, gold });
+    },
     onAddNotification: (n) => setNotifications((prev) => [n, ...prev]),
     onSyncCalendar: () => {
       setCalendarConfig((prev) => ({ ...prev, lastSyncedAt: new Date().toLocaleTimeString() }));

@@ -30,6 +30,8 @@ import {
   RecoveryActivity,
 } from '../utils/recoveryCycle';
 import { useHabitDay } from '../utils/bigDataTracker';
+import { RULES, shopLocked } from '@shared/gamification';
+import { applyGame } from '../sections/progress/game';
 
 interface CommandCenterTodayProps {
   tasks: TaskItem[];
@@ -483,11 +485,8 @@ export function CommandCenterToday({
       playQuestCompleteSound();
       playCoinSound();
       triggerQuestConfetti();
-      if (onAwardRewards) {
-        onAwardRewards(act.expReward, act.goldReward, act.hpReward);
-      } else if (onUpdateStats) {
-        onUpdateStats({ hp: Math.min(stats.maxHp, stats.hp + act.hpReward) });
-      }
+      // Награда по правилам; одна активность — один раз за день
+      applyGame({ kind: 'recovery_activity', ref: `${currentToday}:${act.id}` });
     }
   };
 
@@ -534,6 +533,9 @@ export function CommandCenterToday({
     projectId: projects[0]?.id || 'proj-inbox',
     difficulty: 'medium', expReward: 35, goldReward: 20, tags: [],
   });
+
+  // После HP 0 магазин закрыт до полного дня
+  const locked = shopLocked(stats as unknown as Parameters<typeof shopLocked>[0]);
 
   const handleBuy = (reward: Reward) => {
     if (!onBuyReward) return;
@@ -628,8 +630,8 @@ export function CommandCenterToday({
                     </div>
                     <p className="text-[10px] text-zinc-400 mt-0.5 line-clamp-2">{act.description}</p>
                     <div className="mt-1.5 flex items-center gap-2 text-[10px] font-mono">
-                      <span className="text-amber-400 font-semibold">+{act.expReward} EXP</span>
-                      <span className="text-rose-400 font-semibold">+{act.hpReward} HP</span>
+                      <span className="text-amber-400 font-semibold">+{RULES.recoveryActivity.exp} EXP</span>
+                      <span className="text-rose-400 font-semibold">+{RULES.recoveryActivity.hp} HP</span>
                     </div>
                   </div>
                 </button>
@@ -883,7 +885,9 @@ export function CommandCenterToday({
         >
           <div className="flex items-center gap-1.5 mb-1.5 p-2 rounded-xl bg-[#14141a] border border-white/[0.05]">
             <ShoppingBag className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-            <span className="text-[11px] text-zinc-300">Награждай себя за закрытые квесты</span>
+            <span className="text-[11px] text-zinc-300">
+              {locked ? 'Магазин закрыт до полного дня (HP 0)' : 'Золото — в основном за часы фокуса'}
+            </span>
           </div>
 
           {rewards.length === 0 ? (
@@ -893,7 +897,7 @@ export function CommandCenterToday({
           ) : (
             <div className="grid grid-cols-2 gap-2">
               {rewards.map((reward) => {
-                const canAfford = stats.gold >= reward.cost;
+                const canAfford = !locked && stats.gold >= reward.cost;
                 const justBought = boughtId === reward.id;
 
                 return (
@@ -911,7 +915,9 @@ export function CommandCenterToday({
                     }`}
                     title={reward.description}
                   >
-                    <span className="text-lg leading-none">{reward.icon}</span>
+                    {reward.icon && !/^[A-Za-z]+$/.test(reward.icon) && (
+                      <span className="text-lg leading-none">{reward.icon}</span>
+                    )}
                     <span className="text-[10px] text-zinc-200 font-medium leading-tight line-clamp-2">
                       {reward.title}
                     </span>

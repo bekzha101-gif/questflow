@@ -1,312 +1,238 @@
 import React, { useState } from 'react';
-import { UserStats, Reward, HeroClass } from '../types';
-import { 
-  ShoppingBag, 
-  Coins, 
-  Heart, 
-  Shield, 
-  Gamepad2, 
-  Coffee, 
-  Gift, 
-  Plus, 
-  Check, 
-  X
-} from 'lucide-react';
+import { UserStats, Reward } from '../types';
+import { Coins, Lock, Pencil, Plus, Trash2, X } from 'lucide-react';
+import type { RewardTier } from '@shared/types';
+import { RULES, shopLocked } from '@shared/gamification';
+import { useCollection } from '../store';
 import { playCoinSound } from '../utils/sound';
 import { triggerQuestConfetti } from '../utils/confetti';
+
+// Магазин наград: маленькие (еда, соки, серии) и большие (поездки) — за золото.
+// Награды редактируемые: название, цена, тип. Классов героя больше нет — все награды по правилам shared/gamification.
 
 interface HeroTavernProps {
   stats: UserStats;
   rewards: Reward[];
-  onUpdateStats: (newStats: Partial<UserStats>) => void;
+  /** Не используется (раньше — смена класса героя) */
+  onUpdateStats?: (newStats: Partial<UserStats>) => void;
   onBuyReward: (reward: Reward) => boolean;
   onAddReward: (reward: Omit<Reward, 'id' | 'timesPurchased'>) => void;
 }
 
-export const HeroTavern: React.FC<HeroTavernProps> = ({
-  stats,
-  rewards,
-  onUpdateStats,
-  onBuyReward,
-  onAddReward,
-}) => {
-  const [activeTab, setActiveTab] = useState<'shop' | 'profile'>('shop');
-  const [showAddRewardModal, setShowAddRewardModal] = useState(false);
-  const [newTitle, setNewTitle] = useState('');
-  const [newCost, setNewCost] = useState(30);
-  const [newDesc, setNewDesc] = useState('');
-  const [newType, setNewType] = useState<'real' | 'game'>('real');
-  const [shopMessage, setShopMessage] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
+type ShopReward = Reward & { tier?: RewardTier; seed?: boolean };
 
-  const classes: { id: HeroClass; name: string; icon: string; perk: string }[] = [
-    { id: 'Mage', name: 'Маг Знаний', icon: '🧙‍♂️', perk: '+25% к опыту (EXP) за любые задачи' },
-    { id: 'Warrior', name: 'Воин Дисциплины', icon: '⚔️', perk: '+35% к Опыту и Золоту за срочные P1 квесты' },
-    { id: 'Rogue', name: 'Тайный Ловкач', icon: '🗡️', perk: '+35% к золоту с каждого закрытого квеста' },
-    { id: 'Healer', name: 'Целитель Баланса', icon: '🌿', perk: '+50% к эффективности Зелий Здоровья' },
-  ];
+interface Draft {
+  id: string | null;
+  title: string;
+  cost: number;
+  tier: RewardTier;
+  description: string;
+}
 
-  const handlePurchase = (reward: Reward) => {
-    if (stats.gold < reward.cost) {
-      setShopMessage({
-        type: 'error',
-        text: `Недостаточно золота! Нужно ${reward.cost} 🪙, а у вас ${stats.gold} 🪙. Закрывайте квесты для фарма золота!`,
-      });
-      setTimeout(() => setShopMessage(null), 4000);
-      return;
-    }
-    const success = onBuyReward(reward);
-    if (success) {
+const EMPTY: Draft = { id: null, title: '', cost: 50, tier: 'small', description: '' };
+
+const TIERS: { id: RewardTier; label: string; hint: string }[] = [
+  { id: 'small', label: 'Маленькие', hint: 'на каждый день — за часы фокуса' },
+  { id: 'big', label: 'Большие', hint: 'копятся неделями — за цели недели и месяца' },
+];
+
+export const HeroTavern: React.FC<HeroTavernProps> = ({ stats, rewards, onBuyReward, onAddReward }) => {
+  const { upsert, remove } = useCollection<ShopReward>('rewards2');
+  const [draft, setDraft] = useState<Draft | null>(null);
+  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const locked = shopLocked(stats as unknown as Parameters<typeof shopLocked>[0]);
+
+  const flash = (ok: boolean, text: string) => {
+    setMessage({ ok, text });
+    window.setTimeout(() => setMessage(null), 4000);
+  };
+
+  const buy = (reward: ShopReward) => {
+    if (locked) return flash(false, 'Магазин закрыт после HP 0 — откроется после полного дня (3 блока и все привычки).');
+    if (stats.gold < reward.cost) return flash(false, `Не хватает золота: нужно ${reward.cost}, есть ${stats.gold}.`);
+    if (onBuyReward(reward)) {
       if (stats.soundEnabled) playCoinSound();
       triggerQuestConfetti();
-      setShopMessage({
-        type: 'success',
-        text: `✨ Вы успешно приобрели «${reward.title}» за ${reward.cost} 🪙!`,
-      });
-      setTimeout(() => setShopMessage(null), 4000);
+      flash(true, `Куплено: «${reward.title}» за ${reward.cost} золота.`);
     }
   };
 
-
-  const handleCreateReward = (e: React.FormEvent) => {
+  const save = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTitle.trim()) return;
-    onAddReward({
-      title: newTitle.trim(),
-      cost: Number(newCost) || 20,
-      description: newDesc.trim() || 'Пользовательская награда',
-      type: newType,
-      icon: newType === 'game' ? 'Sparkles' : 'Gift',
-    });
-    setNewTitle('');
-    setNewDesc('');
-    setShowAddRewardModal(false);
+    if (!draft || !draft.title.trim()) return;
+    const cost = Math.max(1, Math.round(Number(draft.cost) || 1));
+    if (draft.id) {
+      const cur = rewards.find((r) => r.id === draft.id) as ShopReward | undefined;
+      if (cur) upsert({ ...cur, title: draft.title.trim(), cost, tier: draft.tier, description: draft.description.trim(), seed: false });
+    } else {
+      onAddReward({ title: draft.title.trim(), cost, tier: draft.tier, description: draft.description.trim(), type: 'real', icon: 'Gift' } as Omit<Reward, 'id' | 'timesPurchased'>);
+    }
+    setDraft(null);
   };
 
-  const getRewardIcon = (iconName: string) => {
-    switch (iconName) {
-      case 'Gamepad2': return <Gamepad2 className="w-5 h-5 text-zinc-400" />;
-      case 'Coffee': return <Coffee className="w-5 h-5 text-zinc-400" />;
-      case 'Gift': return <Gift className="w-5 h-5 text-zinc-400" />;
-      case 'Heart': return <Heart className="w-5 h-5 text-zinc-400" />;
-      case 'Shield': return <Shield className="w-5 h-5 text-zinc-400" />;
-      default: return <ShoppingBag className="w-5 h-5 text-zinc-400" />;
-    }
-  };
+  const list = rewards as ShopReward[];
 
   return (
-    <div className="max-w-5xl mx-auto py-5 px-3 sm:px-6 space-y-6">
-      
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-[#111115] border border-white/[0.08] rounded-3xl p-4 sm:p-5">
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-[#101014] border border-white/[0.07] rounded-2xl p-4">
         <div>
-          <h1 className="text-xl font-bold text-zinc-100 tracking-tight flex items-center gap-2">
-            <span>Магазин Наград & Профиль</span>
-          </h1>
-          <p className="text-xs text-zinc-500 mt-0.5">
-            Обменивайте накопленное золото на реальные и игровые награды
+          <h2 className="text-sm font-semibold text-zinc-100">Магазин наград</h2>
+          <p className="text-[11px] text-zinc-500 mt-0.5">
+            Полный блок фокуса — около {Math.round(120 * RULES.focus.goldPerMin) + RULES.focus.fullBlockGold} золота. Цены правятся.
           </p>
         </div>
-
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-900 border border-white/10 text-xs font-semibold text-zinc-200">
-            <span>🪙</span>
-            <span className="font-mono">{stats.gold} Золота</span>
-          </div>
-
+          <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-900 border border-white/10 text-xs font-mono text-amber-300">
+            <Coins className="w-3.5 h-3.5" />
+            {stats.gold}
+          </span>
           <button
-            onClick={() => setShowAddRewardModal(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-bold text-xs shadow transition-all active:scale-95"
+            onClick={() => setDraft({ ...EMPTY })}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-semibold text-xs transition-all active:scale-95"
           >
             <Plus className="w-3.5 h-3.5" />
-            <span>Добавить награду</span>
+            Награда
           </button>
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex items-center gap-1.5 border-b border-white/5 pb-2.5">
-        <button
-          onClick={() => setActiveTab('shop')}
-          className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all ${
-            activeTab === 'shop'
-              ? 'bg-zinc-800 text-white border border-zinc-700 shadow-sm'
-              : 'text-zinc-500 hover:text-zinc-300'
-          }`}
-        >
-          Магазин ({rewards.length})
-        </button>
-        <button
-          onClick={() => setActiveTab('profile')}
-          className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all ${
-            activeTab === 'profile'
-              ? 'bg-zinc-800 text-white border border-zinc-700 shadow-sm'
-              : 'text-zinc-500 hover:text-zinc-300'
-          }`}
-        >
-          Класс Героя: {stats.heroClass}
-        </button>
-      </div>
-
-      {/* In-app Shop Message Toast */}
-      {shopMessage && (
-        <div
-          className={`p-3.5 rounded-2xl text-xs font-medium border flex items-center justify-between animate-fade-in ${
-            shopMessage.type === 'error'
-              ? 'bg-rose-950/80 border-rose-800/60 text-rose-300 shadow-lg shadow-rose-950/40'
-              : 'bg-emerald-950/80 border-emerald-800/60 text-emerald-300 shadow-lg shadow-emerald-950/40'
-          }`}
-        >
-          <span>{shopMessage.text}</span>
-          <button
-            onClick={() => setShopMessage(null)}
-            className="text-white/40 hover:text-white ml-2 text-sm cursor-pointer"
-          >
-            ✕
-          </button>
+      {locked && (
+        <div className="flex items-center gap-2 p-3 rounded-2xl border border-rose-500/30 bg-rose-950/30 text-xs text-rose-200">
+          <Lock className="w-4 h-4 shrink-0" />
+          Магазин закрыт: HP дошло до 0. Откроется после первого полного дня — 3 блока фокуса и все привычки.
         </div>
       )}
 
-      {activeTab === 'shop' ? (
+      {message && (
+        <div className={`p-3 rounded-2xl text-xs border ${message.ok ? 'bg-emerald-950/50 border-emerald-700/40 text-emerald-200' : 'bg-rose-950/50 border-rose-700/40 text-rose-200'}`}>
+          {message.text}
+        </div>
+      )}
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
-          {rewards.map((reward) => (
-            <div
-              key={reward.id}
-              className="bg-[#111115] hover:bg-[#15151a] border border-white/[0.08] rounded-2xl p-4 flex flex-col justify-between space-y-3 transition-all"
-            >
-              <div className="flex items-start gap-3">
-                <div className="w-10 h-10 rounded-xl bg-zinc-900 border border-white/5 flex items-center justify-center shrink-0">
-                  {getRewardIcon(reward.icon)}
-                </div>
-
-                <div className="min-w-0">
-                  <h3 className="font-bold text-xs text-zinc-200 truncate">{reward.title}</h3>
-                  <p className="text-[11px] text-zinc-500 line-clamp-2 mt-0.5">{reward.description}</p>
-                </div>
-              </div>
-
-              <div className="pt-2 border-t border-white/5 flex items-center justify-between">
-                <span className="font-mono text-xs font-bold text-zinc-200">
-                  {reward.cost} 🪙
-                </span>
-
-                <button
-                  onClick={() => handlePurchase(reward)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all active:scale-95 ${
-                    stats.gold >= reward.cost
-                      ? 'bg-zinc-100 hover:bg-white text-zinc-950 shadow'
-                      : 'bg-zinc-900 text-zinc-600 cursor-not-allowed'
-                  }`}
-                >
-                  Купить
-                </button>
-              </div>
+      {TIERS.map((tier) => {
+        const items = list.filter((r) => (r.tier ?? 'small') === tier.id);
+        return (
+          <section key={tier.id} className="space-y-2">
+            <div className="flex items-baseline gap-2 px-1">
+              <h3 className="text-xs font-semibold text-zinc-200">{tier.label}</h3>
+              <span className="text-[11px] text-zinc-500">{tier.hint}</span>
             </div>
-          ))}
-        </div>
-      ) : (
-        /* Hero Class Profile */
-        <div className="space-y-4">
-          <h2 className="font-bold text-sm text-zinc-200">Специализация Героя</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-            {classes.map((cls) => {
-              const isSelected = stats.heroClass === cls.id;
-
-              return (
-                <div
-                  key={cls.id}
-                  onClick={() => onUpdateStats({ heroClass: cls.id })}
-                  className={`p-4 rounded-2xl border cursor-pointer transition-all ${
-                    isSelected
-                      ? 'bg-zinc-800/60 border-zinc-500 shadow-sm'
-                      : 'bg-[#111115] hover:bg-[#15151a] border-white/[0.08]'
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xl">{cls.icon}</span>
-                      <span className="font-bold text-xs text-zinc-200">{cls.name}</span>
+            {items.length === 0 ? (
+              <p className="text-[11px] text-zinc-600 px-1">Пока пусто</p>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                {items.map((reward) => {
+                  const can = !locked && stats.gold >= reward.cost;
+                  const pct = Math.min(100, Math.round((stats.gold / Math.max(1, reward.cost)) * 100));
+                  return (
+                    <div key={reward.id} className="bg-[#0e0e13] border border-white/[0.07] rounded-2xl p-3.5 flex flex-col gap-2.5">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="text-xs font-semibold text-zinc-100 truncate">{reward.title}</div>
+                          {reward.description && <div className="text-[11px] text-zinc-500 line-clamp-2 mt-0.5">{reward.description}</div>}
+                          {!!reward.timesPurchased && <div className="text-[10px] text-zinc-600 mt-0.5 font-mono">куплено: {reward.timesPurchased}</div>}
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            title="Изменить"
+                            onClick={() => setDraft({ id: reward.id, title: reward.title, cost: reward.cost, tier: reward.tier ?? 'small', description: reward.description ?? '' })}
+                            className="p-1 rounded-lg text-zinc-500 hover:text-zinc-200 hover:bg-white/5"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            title="Удалить"
+                            onClick={() => {
+                              if (window.confirm(`Удалить награду «${reward.title}»?`)) remove(reward.id);
+                            }}
+                            className="p-1 rounded-lg text-zinc-500 hover:text-rose-300 hover:bg-white/5"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                      {tier.id === 'big' && (
+                        <div className="h-1 rounded-full bg-white/[0.06] overflow-hidden">
+                          <div className="h-full bg-amber-400/70" style={{ width: `${pct}%` }} />
+                        </div>
+                      )}
+                      <div className="flex items-center justify-between pt-1 border-t border-white/5">
+                        <span className="font-mono text-xs text-amber-300">{reward.cost}</span>
+                        <button
+                          onClick={() => buy(reward)}
+                          className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all active:scale-95 ${
+                            can ? 'bg-zinc-100 hover:bg-white text-zinc-950' : 'bg-zinc-900 text-zinc-600'
+                          }`}
+                        >
+                          Купить
+                        </button>
+                      </div>
                     </div>
-                    {isSelected && (
-                      <span className="text-[10px] uppercase font-bold text-zinc-200 bg-zinc-700 px-2 py-0.5 rounded">
-                        Активен
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-[11px] text-zinc-400 leading-relaxed">{cls.perk}</p>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        );
+      })}
 
-      {/* Modal */}
-      {showAddRewardModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-[#121216] border border-white/10 rounded-3xl max-w-md w-full p-6 shadow-2xl">
-            <div className="flex items-center justify-between pb-3 border-b border-white/10 mb-4">
-              <h2 className="font-bold text-sm text-zinc-100">Новая награда</h2>
-              <button
-                onClick={() => setShowAddRewardModal(false)}
-                className="p-1 rounded-lg text-zinc-500 hover:text-white"
-              >
+      {draft && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[9999] flex items-center justify-center p-4">
+          <form onSubmit={save} className="bg-[#121216] border border-white/10 rounded-3xl max-w-md w-full p-5 space-y-3">
+            <div className="flex items-center justify-between pb-2 border-b border-white/10">
+              <h2 className="font-semibold text-sm text-zinc-100">{draft.id ? 'Изменить награду' : 'Новая награда'}</h2>
+              <button type="button" onClick={() => setDraft(null)} className="p-1 rounded-lg text-zinc-500 hover:text-white">
                 <X className="w-4 h-4" />
               </button>
             </div>
-
-            <form onSubmit={handleCreateReward} className="space-y-3.5">
-              <div>
-                <label className="text-xs text-zinc-400 font-medium block mb-1">Название награды</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Серия сериала, прогулка, кофе..."
-                  value={newTitle}
-                  onChange={(e) => setNewTitle(e.target.value)}
-                  className="w-full bg-zinc-900 border border-white/10 rounded-xl px-3 py-2 text-xs text-zinc-200 focus:outline-none focus:border-zinc-500"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs text-zinc-400 font-medium block mb-1">Стоимость (Золото 🪙)</label>
-                <input
-                  type="number"
-                  min="1"
-                  value={newCost}
-                  onChange={(e) => setNewCost(Number(e.target.value))}
-                  className="w-full bg-zinc-900 border border-white/10 rounded-xl px-3 py-2 text-xs text-zinc-200 font-mono focus:outline-none focus:border-zinc-500"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs text-zinc-400 font-medium block mb-1">Описание</label>
-                <input
-                  type="text"
-                  placeholder="Условия разблокировки..."
-                  value={newDesc}
-                  onChange={(e) => setNewDesc(e.target.value)}
-                  className="w-full bg-zinc-900 border border-white/10 rounded-xl px-3 py-2 text-xs text-zinc-200 focus:outline-none focus:border-zinc-500"
-                />
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2 border-t border-white/5">
+            <label className="block text-xs text-zinc-400">
+              Название
+              <input
+                required
+                value={draft.title}
+                onChange={(e) => setDraft({ ...draft, title: e.target.value })}
+                className="mt-1 w-full bg-zinc-900 border border-white/10 rounded-xl px-3 py-2 text-xs text-zinc-200 focus:outline-none focus:border-zinc-500"
+              />
+            </label>
+            <label className="block text-xs text-zinc-400">
+              Цена в золоте
+              <input
+                type="number"
+                min={1}
+                value={draft.cost}
+                onChange={(e) => setDraft({ ...draft, cost: Number(e.target.value) })}
+                className="mt-1 w-full bg-zinc-900 border border-white/10 rounded-xl px-3 py-2 text-xs font-mono text-zinc-200 focus:outline-none focus:border-zinc-500"
+              />
+            </label>
+            <div className="flex gap-1.5">
+              {TIERS.map((t) => (
                 <button
+                  key={t.id}
                   type="button"
-                  onClick={() => setShowAddRewardModal(false)}
-                  className="px-3.5 py-1.5 rounded-xl bg-zinc-900 text-xs text-zinc-400 hover:text-white"
+                  onClick={() => setDraft({ ...draft, tier: t.id })}
+                  className={`flex-1 px-3 py-1.5 rounded-xl text-xs border ${draft.tier === t.id ? 'bg-zinc-800 border-zinc-600 text-white' : 'border-white/10 text-zinc-500'}`}
                 >
-                  Отмена
+                  {t.label}
                 </button>
-                <button
-                  type="submit"
-                  className="px-4 py-1.5 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-bold text-xs"
-                >
-                  Сохранить
-                </button>
-              </div>
-            </form>
-          </div>
+              ))}
+            </div>
+            <label className="block text-xs text-zinc-400">
+              Описание
+              <input
+                value={draft.description}
+                onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+                className="mt-1 w-full bg-zinc-900 border border-white/10 rounded-xl px-3 py-2 text-xs text-zinc-200 focus:outline-none focus:border-zinc-500"
+              />
+            </label>
+            <div className="flex justify-end gap-2 pt-2 border-t border-white/5">
+              <button type="button" onClick={() => setDraft(null)} className="px-3.5 py-1.5 rounded-xl bg-zinc-900 text-xs text-zinc-400 hover:text-white">
+                Отмена
+              </button>
+              <button type="submit" className="px-4 py-1.5 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-semibold text-xs">
+                Сохранить
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </div>

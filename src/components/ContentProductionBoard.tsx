@@ -6,10 +6,8 @@ import { todayStr } from '@shared/time';
 import { useCollection } from '../store';
 import { playCoinSound, playQuestCompleteSound } from '../utils/sound';
 import { triggerQuestConfetti } from '../utils/confetti';
+import { applyGame } from '../sections/progress/game';
 
-// Награда за публикацию видео (как была в старом канбане)
-const PUBLISH_EXP = 75;
-const PUBLISH_GOLD = 50;
 
 const LANE_DOT: Record<VideoStage, string> = {
   editing: 'bg-purple-500',
@@ -18,13 +16,14 @@ const LANE_DOT: Record<VideoStage, string> = {
 };
 
 interface ContentProductionBoardProps {
+  /** Не используется: награду за публикацию начисляют правила (shared/gamification, RULES.videoPublished) */
   onPublishReward?: (exp: number, gold: number) => void;
   /** Показывать видео только одного канала */
   channelId?: string | null;
 }
 
 /** Канбан видео: Монтаж → Проверка → Опубликовано, в карточке чек-лист из 5 пунктов */
-export const ContentProductionBoard: React.FC<ContentProductionBoardProps> = ({ onPublishReward, channelId = null }) => {
+export const ContentProductionBoard: React.FC<ContentProductionBoardProps> = ({ channelId = null }) => {
   const { items: channels } = useCollection<Channel>('channels2');
   const { items: rawVideos, upsert, remove } = useCollection<Video>('videos2');
   const [newTitle, setNewTitle] = useState('');
@@ -66,7 +65,8 @@ export const ContentProductionBoard: React.FC<ContentProductionBoardProps> = ({ 
       playQuestCompleteSound();
       playCoinSound();
       triggerQuestConfetti();
-      onPublishReward?.(PUBLISH_EXP, PUBLISH_GOLD);
+      // Одно видео награждается один раз (ref = id видео)
+      applyGame({ kind: 'video_published', ref: video.id });
       return;
     }
     const { publishedAt: _drop, ...rest } = video;

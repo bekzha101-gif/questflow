@@ -9,6 +9,7 @@ import {
   X
 } from 'lucide-react';
 import { playCoinSound } from '../utils/sound';
+import { todayStr } from '@shared/time';
 
 export interface Transaction {
   id: string;
@@ -60,10 +61,11 @@ const initialTransactions: Transaction[] = [
 ];
 
 interface FinancesTrackerProps {
+  /** Не используется: золото за финансы не начисляется. Доход каналов (USD → EXP) — «Прогресс» → «Доход» */
   onAddGoldReward?: (gold: number) => void;
 }
 
-export const FinancesTracker: React.FC<FinancesTrackerProps> = ({ onAddGoldReward }) => {
+export const FinancesTracker: React.FC<FinancesTrackerProps> = () => {
   const [transactions, setTransactions] = useState<Transaction[]>(() => {
     try {
       const saved = localStorage.getItem('questflow_finances_v1');
@@ -81,7 +83,7 @@ export const FinancesTracker: React.FC<FinancesTrackerProps> = ({ onAddGoldRewar
   const [formAmount, setFormAmount] = useState<number>(100);
   const [formCategory, setFormCategory] = useState<Transaction['category']>('sponsorship');
   const [formDesc, setFormDesc] = useState('');
-  const [formDate, setFormDate] = useState(new Date().toISOString().split('T')[0]);
+  const [formDate, setFormDate] = useState(todayStr());
   const [formChannel, setFormChannel] = useState('Shorts Основной');
 
   const saveTxState = (items: Transaction[]) => {
@@ -110,10 +112,6 @@ export const FinancesTracker: React.FC<FinancesTrackerProps> = ({ onAddGoldRewar
     saveTxState([newTx, ...transactions]);
 
     if (formType === 'income') {
-      const goldBonus = Math.round(formAmount * 0.1);
-      if (onAddGoldReward) {
-        onAddGoldReward(goldBonus);
-      }
       playCoinSound();
     }
 

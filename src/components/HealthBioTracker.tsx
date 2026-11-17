@@ -61,6 +61,8 @@ import {
   Info
 } from 'lucide-react';
 
+import { applyGame } from '../sections/progress/game';
+
 interface HealthBioTrackerProps {
   stats: UserStats;
   onUpdateStats: (newStats: Partial<UserStats>) => void;
@@ -204,8 +206,10 @@ export function HealthBioTracker({
 
   // Damage Application (-HP)
   const applyDamage = (amount: number, type: DamageIncident['type'], reason: string) => {
-    const newHp = Math.max(0, stats.hp - amount);
-    onUpdateStats({ hp: newHp });
+    // Штраф по правилам (RULES.healthPenalty); один пункт — один раз за день
+    const r = applyGame({ kind: 'health_penalty', ref: `${today}:${type}:${reason}` });
+    if (!r.applied) return;
+    amount = -(r.events[0]?.deltaHp ?? 0);
 
     const incident: DamageIncident = {
       id: `dmg-${Date.now()}`,
@@ -235,8 +239,11 @@ export function HealthBioTracker({
 
   // Active Recovery (+HP)
   const handleActiveRecovery = (type: RecoveryLogEntry['type'], title: string, hpGained: number) => {
+    // Восстановление по правилам: один протокол — один раз за день, не больше RULES.healthRecoveryMaxHp
+    const r = applyGame({ kind: 'health_recovery', ref: `${today}:${type}`, hp: hpGained });
+    if (!r.applied) return;
+    hpGained = r.events[0]?.deltaHp ?? 0;
     const newHp = Math.min(stats.maxHp, stats.hp + hpGained);
-    onUpdateStats({ hp: newHp });
 
     const recovery: RecoveryLogEntry = {
       id: `rec-${Date.now()}`,
