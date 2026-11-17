@@ -11,6 +11,8 @@ param(
 )
 
 $ErrorActionPreference = "Continue"
+# Вывод node — UTF-8; без этого PowerShell 5.1 читает его как OEM (cp866) и русский текст в логах ломается
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ServerDir = Split-Path -Parent $PSScriptRoot
 Set-Location $ServerDir
 
