@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canPublish, channelSchedule, channelTodo, effectiveStatus, lastPublishedDate, nextDueDates, normalizeVideo, remindersFor } from './channels';
+import { canPublish, channelSchedule, channelTodo, effectiveStatus, lastPublishedDate, nextDueDates, normalizeVideo, remindersFor, toggleChannelFilter } from './channels';
 import type { Channel, Video } from './types';
 
 const ch = (over: Partial<Channel> = {}): Channel => ({
@@ -195,5 +195,20 @@ describe('видео: этапы и чек-лист', () => {
     expect(canPublish(undefined)).toBe(false);
     expect(canPublish({ plan: true, title: true, thumbnail: true, edit: true, upload: false })).toBe(false);
     expect(canPublish({ plan: true, title: true, thumbnail: true, edit: true, upload: true })).toBe(true);
+  });
+});
+
+describe('toggleChannelFilter', () => {
+  const all = ['a', 'b', 'c'];
+  it('первый клик из «Все» оставляет один канал', () => {
+    expect(toggleChannelFilter([], 'b', all)).toEqual(['b']);
+  });
+  it('второй канал добавляется, повторный клик убирает', () => {
+    expect(toggleChannelFilter(['b'], 'c', all)).toEqual(['b', 'c']);
+    expect(toggleChannelFilter(['b', 'c'], 'b', all)).toEqual(['c']);
+    expect(toggleChannelFilter(['c'], 'c', all)).toEqual([]);
+  });
+  it('удалённые каналы выпадают из фильтра', () => {
+    expect(toggleChannelFilter(['x', 'a'], 'b', all)).toEqual(['a', 'b']);
   });
 });

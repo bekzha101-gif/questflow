@@ -267,3 +267,14 @@ export function remindersFor(channels: Channel[], videos: Video[], today: string
   items.sort((a, b) => URGENCY_ORDER[a.urgency] - URGENCY_ORDER[b.urgency] || a.dueDate.localeCompare(b.dueDate));
   return items.slice(0, Math.max(0, limit)).map(({ channelId, text }) => ({ channelId, text }));
 }
+
+// ─── Фильтр каналов в разделе ────────────────────────────────────────────────
+
+/**
+ * Клик по кнопке канала: добавить канал в фильтр или убрать его.
+ * Пустой список — «Все каналы». Каналы, которых уже нет, выбрасываются.
+ */
+export function toggleChannelFilter(selected: string[], id: string, existing: string[]): string[] {
+  const alive = selected.filter((s) => existing.includes(s));
+  return alive.includes(id) ? alive.filter((s) => s !== id) : [...alive, id];
+}

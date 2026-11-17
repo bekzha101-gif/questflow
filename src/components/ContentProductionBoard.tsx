@@ -16,12 +16,12 @@ const LANE_DOT: Record<VideoStage, string> = {
 };
 
 interface ContentProductionBoardProps {
-  /** Показывать видео только одного канала */
-  channelId?: string | null;
+  /** Показывать видео только этих каналов; пусто — все каналы */
+  channelIds?: string[];
 }
 
 /** Канбан видео: Монтаж → Проверка → Опубликовано, в карточке чек-лист из 5 пунктов */
-export const ContentProductionBoard: React.FC<ContentProductionBoardProps> = ({ channelId = null }) => {
+export const ContentProductionBoard: React.FC<ContentProductionBoardProps> = ({ channelIds = [] }) => {
   const { items: channels } = useCollection<Channel>('channels2');
   const { items: rawVideos, upsert, remove } = useCollection<Video>('videos2');
   const [newTitle, setNewTitle] = useState('');
@@ -29,12 +29,20 @@ export const ContentProductionBoard: React.FC<ContentProductionBoardProps> = ({ 
 
   // Старые этапы (Сценарий/Озвучка/Запланировано) сводятся к трём, видео не пропадают
   const videos = useMemo(
-    () => rawVideos.map(normalizeVideo).filter((v) => !channelId || v.channelId === channelId),
-    [rawVideos, channelId],
+    () =>
+      rawVideos
+        .map(normalizeVideo)
+        .filter((v) => channelIds.length === 0 || channelIds.includes(v.channelId)),
+    [rawVideos, channelIds],
   );
-  const activeChannels = channels.filter((c) => c.status !== 'archived');
+  // Новое видео — только в каналы из фильтра (или во все, если фильтра нет)
+  const activeChannels = channels.filter(
+    (c) => c.status !== 'archived' && (channelIds.length === 0 || channelIds.includes(c.id)),
+  );
   const channelName = (id: string) => channels.find((c) => c.id === id)?.name ?? 'Без канала';
-  const targetChannel = channelId ?? (newChannelId || activeChannels[0]?.id || '');
+  const targetChannel = activeChannels.some((c) => c.id === newChannelId)
+    ? newChannelId
+    : activeChannels[0]?.id || '';
 
   const addVideo = (e: React.FormEvent) => {
     e.preventDefault();
@@ -81,7 +89,7 @@ export const ContentProductionBoard: React.FC<ContentProductionBoardProps> = ({ 
           placeholder="Новое видео: рабочее название"
           className="flex-1 min-w-[200px] bg-zinc-900 border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-white/25"
         />
-        {!channelId && (
+        {activeChannels.length > 1 && (
           <select
             value={targetChannel}
             onChange={(e) => setNewChannelId(e.target.value)}
