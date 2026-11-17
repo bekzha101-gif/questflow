@@ -66,8 +66,14 @@ export async function runSetup(deps: SetupDeps): Promise<{ ok: boolean }> {
   ): Promise<boolean> {
     const prev = old[name]?.trim() ?? '';
     for (let i = 0; i < ATTEMPTS; i++) {
-      const hint = prev ? ' (Enter — оставить прежнее)' : opts.optional ? ' (Enter — пропустить)' : '';
+      const hint = prev
+        ? opts.optional ? ' (Enter — оставить прежнее, «-» — стереть)' : ' (Enter — оставить прежнее)'
+        : opts.optional ? ' (Enter — пропустить)' : '';
       const raw = (await io.ask(`${question}${hint}: `, { secret: opts.secret })).trim();
+      if (raw === '-' && opts.optional) {
+        values[name] = '';
+        return true;
+      }
       const v = raw || prev;
       if (!v) {
         if (opts.optional) {
@@ -185,13 +191,7 @@ export async function runSetup(deps: SetupDeps): Promise<{ ok: boolean }> {
     }))
   ) return { ok: false };
 
-  deps.writeEnv(
-    [
-      '# QuestFlow сервер — создано npm run setup. Не коммитить, не пересылать.',
-      ...Object.values(ENV_NAMES).map((n) => `${n}=${values[n] ?? ''}`),
-      '',
-    ].join('\n'),
-  );
+  deps.writeEnv(mergeEnv(deps.readEnv(), values));
   io.print('\nКлючи сохранены в server/.env.');
 
   // Привязка чата владельца
@@ -358,4 +358,25 @@ if (require.main === module) {
       console.error(`Настройка прервана: ${short(e)}`);
       process.exit(1);
     });
+}
+
+/**
+ * Новый текст server/.env: свои переменные заменяются на месте, все прочие строки
+ * (голос WHISPER_*, ANTHROPIC_MODEL, комментарии) остаются как были.
+ */
+export function mergeEnv(existing: string | null, values: Record<string, string>): string {
+  const own = Object.values(ENV_NAMES) as string[];
+  const done = new Set<string>();
+  const lines = existing
+    ? existing.replace(/\r\n/g, '\n').replace(/\n+$/, '').split('\n')
+    : ['# QuestFlow сервер — создано npm run setup. Не коммитить, не пересылать.'];
+  const out = lines.flatMap((line) => {
+    const m = /^\s*([A-Z0-9_]+)\s*=/.exec(line);
+    if (!m || !own.includes(m[1])) return [line];
+    if (done.has(m[1])) return [];
+    done.add(m[1]);
+    return [`${m[1]}=${values[m[1]] ?? ''}`];
+  });
+  for (const n of own) if (!done.has(n)) out.push(`${n}=${values[n] ?? ''}`);
+  return out.join('\n') + '\n';
 }

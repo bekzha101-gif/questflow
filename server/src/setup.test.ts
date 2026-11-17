@@ -95,6 +95,33 @@ describe('npm run setup', () => {
     expect(t.written()).toContain(`SUPABASE_SERVICE_ROLE_KEY=${SERVICE}`);
   });
 
+  it('повторная настройка сохраняет чужие строки .env (голос, модель AI) и комментарии', async () => {
+    const existing = [
+      '# мой комментарий',
+      `TELEGRAM_BOT_TOKEN=${TOKEN}`, `SUPABASE_URL=${URL}`, `SUPABASE_SERVICE_ROLE_KEY=${SERVICE}`,
+      `OWNER_USER_ID=${OWNER}`, 'ANTHROPIC_API_KEY=', 'ANTHROPIC_MODEL=claude-test-model',
+      'WHISPER_MODEL=small', 'WHISPER_DEVICE=cpu',
+    ].join('\n');
+    const t = makeDeps(['', '', '', '', '', 'да'], { existingEnv: existing });
+    expect((await runSetup(t.deps)).ok).toBe(true);
+    const w = t.written()!;
+    expect(w).toContain('ANTHROPIC_MODEL=claude-test-model');
+    expect(w).toContain('WHISPER_MODEL=small');
+    expect(w).toContain('WHISPER_DEVICE=cpu');
+    expect(w).toContain('# мой комментарий');
+    expect(w.match(/^TELEGRAM_BOT_TOKEN=/gm)).toHaveLength(1);
+  });
+
+  it('пустое значение в .env можно стереть: ключ Claude API, если ответить «-»', async () => {
+    const existing = [
+      `TELEGRAM_BOT_TOKEN=${TOKEN}`, `SUPABASE_URL=${URL}`, `SUPABASE_SERVICE_ROLE_KEY=${SERVICE}`,
+      `OWNER_USER_ID=${OWNER}`, 'ANTHROPIC_API_KEY=sk-ant-old-test-key',
+    ].join('\n');
+    const t = makeDeps(['', '', '', '', '-', 'да'], { existingEnv: existing });
+    expect((await runSetup(t.deps)).ok).toBe(true);
+    expect(t.written()).toMatch(/^ANTHROPIC_API_KEY=$/m);
+  });
+
   it('если /start нажал не владелец — не привязывает его и ждёт дальше', async () => {
     const t = makeDeps([TOKEN, URL, SERVICE, OWNER, '', 'нет', 'да'], {
       updates: [
