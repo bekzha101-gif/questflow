@@ -21,6 +21,62 @@ import { renderFormattedText } from "../utils/textFormatter";
 import { playQuestCompleteSound, playCoinSound } from "../utils/sound";
 import { triggerQuestConfetti } from "../utils/confetti";
 
+export type ShoppingCategory = "all" | "nootropics" | "study" | "tech" | "health" | "completed";
+
+/** Попадает ли покупка в категорию (по словам в названии и составе) */
+export function matchesShoppingCategory(task: TaskItem, selectedCategory: ShoppingCategory): boolean {
+  const titleLower = task.title.toLowerCase();
+  if (selectedCategory === "completed") return !!task.completed;
+  if (task.completed) return false;
+
+  if (selectedCategory === "nootropics") {
+    return (
+      titleLower.includes("мухомор") ||
+      titleLower.includes("бад") ||
+      titleLower.includes("ксимедон") ||
+      titleLower.includes("миноксидил") ||
+      task.subtasks.some((st) => st.text.toLowerCase().includes("capsules") || st.text.toLowerCase().includes("powder"))
+    );
+  }
+  if (selectedCategory === "study") {
+    return (
+      titleLower.includes("учеба") ||
+      titleLower.includes("курс") ||
+      titleLower.includes("бусти") ||
+      titleLower.includes("арсен")
+    );
+  }
+  if (selectedCategory === "tech") {
+    return (
+      titleLower.includes("iphone") ||
+      titleLower.includes("dolphin") ||
+      titleLower.includes("obsidian") ||
+      titleLower.includes("mod") ||
+      titleLower.includes("sandcastle")
+    );
+  }
+  if (selectedCategory === "health") {
+    return (
+      titleLower.includes("barefoot") ||
+      titleLower.includes("анализ") ||
+      titleLower.includes("мрт") ||
+      titleLower.includes("обувь")
+    );
+  }
+
+  return true;
+}
+
+const SHOPPING_CATEGORIES: ShoppingCategory[] = ["all", "nootropics", "study", "tech", "health", "completed"];
+
+/** Счётчики вкладок: только покупки (kind: 'shopping'), по тем же правилам, что и фильтр списка */
+export function shoppingCategoryCounts(tasks: TaskItem[]): Record<ShoppingCategory, number> {
+  const shopping = selectShoppingTasks(tasks);
+  const counts = {} as Record<ShoppingCategory, number>;
+  for (const c of SHOPPING_CATEGORIES) counts[c] = shopping.filter((t) => matchesShoppingCategory(t, c)).length;
+  return counts;
+}
+
 interface ShoppingListViewProps {
   tasks: TaskItem[];
   projects: Project[];
@@ -45,7 +101,7 @@ export const ShoppingListView: React.FC<ShoppingListViewProps> = ({
   onEditTask,
   onOpenQuickAdd,
 }) => {
-  const [selectedCategory, setSelectedCategory] = useState<"all" | "nootropics" | "study" | "tech" | "health" | "completed">("all");
+  const [selectedCategory, setSelectedCategory] = useState<ShoppingCategory>("all");
   const [expandedTasks, setExpandedTasks] = useState<Record<string, boolean>>({
     // Auto-expand items that have many subtasks for instant convenience
     "td-6h5FWpg787V9C32w": true,
@@ -80,51 +136,10 @@ export const ShoppingListView: React.FC<ShoppingListViewProps> = ({
     }
   };
 
-  // Category classifier
-  const filterByCategory = (task: TaskItem) => {
-    const titleLower = task.title.toLowerCase();
-    if (selectedCategory === "completed") return task.completed;
-    if (task.completed) return false;
-
-    if (selectedCategory === "nootropics") {
-      return (
-        titleLower.includes("мухомор") ||
-        titleLower.includes("бад") ||
-        titleLower.includes("ксимедон") ||
-        titleLower.includes("миноксидил") ||
-        task.subtasks.some((st) => st.text.toLowerCase().includes("capsules") || st.text.toLowerCase().includes("powder"))
-      );
-    }
-    if (selectedCategory === "study") {
-      return (
-        titleLower.includes("учеба") ||
-        titleLower.includes("курс") ||
-        titleLower.includes("бусти") ||
-        titleLower.includes("арсен")
-      );
-    }
-    if (selectedCategory === "tech") {
-      return (
-        titleLower.includes("iphone") ||
-        titleLower.includes("dolphin") ||
-        titleLower.includes("obsidian") ||
-        titleLower.includes("mod") ||
-        titleLower.includes("sandcastle")
-      );
-    }
-    if (selectedCategory === "health") {
-      return (
-        titleLower.includes("barefoot") ||
-        titleLower.includes("анализ") ||
-        titleLower.includes("мрт") ||
-        titleLower.includes("обувь")
-      );
-    }
-
-    return true;
-  };
+  const filterByCategory = (task: TaskItem) => matchesShoppingCategory(task, selectedCategory);
 
   const filteredTasks = shoppingTasks.filter(filterByCategory);
+  const categoryCounts = shoppingCategoryCounts(tasks);
   const totalItemsCount = shoppingTasks.length;
   const completedItemsCount = shoppingTasks.filter((t) => t.completed).length;
   const totalSubtasksCount = shoppingTasks.reduce((acc, t) => acc + t.subtasks.length, 0);
@@ -197,12 +212,12 @@ export const ShoppingListView: React.FC<ShoppingListViewProps> = ({
       {/* 2. Category Filter Pills */}
       <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar border-b border-white/5">
         {[
-          { id: "all", label: "Все покупки", icon: "🛒", count: shoppingTasks.filter((t) => !t.completed).length },
-          { id: "nootropics", label: "🍄 Ноотропы & БАДы", count: 3 },
-          { id: "study", label: "🎓 Учеба & Курсы", count: 1 },
-          { id: "tech", label: "💻 Гаджеты & Софт", count: 5 },
-          { id: "health", label: "🌿 Здоровье & Тело", count: 2 },
-          { id: "completed", label: "✅ Куплено", count: completedItemsCount },
+          { id: "all", label: "Все покупки", count: categoryCounts.all },
+          { id: "nootropics", label: "Ноотропы & БАДы", count: categoryCounts.nootropics },
+          { id: "study", label: "Учеба & Курсы", count: categoryCounts.study },
+          { id: "tech", label: "Гаджеты & Софт", count: categoryCounts.tech },
+          { id: "health", label: "Здоровье & Тело", count: categoryCounts.health },
+          { id: "completed", label: "Куплено", count: categoryCounts.completed },
         ].map((tab) => (
           <button
             key={tab.id}

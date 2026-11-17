@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { CalendarDays, Check, Pencil } from 'lucide-react';
 import type { Channel, ChannelStatus, Video } from '@shared/types';
-import { CADENCES, cadenceLabel, channelTodo, effectiveStatus, lastPublishedOf, nextDueDates } from '@shared/channels';
+import { CADENCES, cadenceLabel, channelTodo, effectiveStatus, lastPublishedDate, nextDueDates } from '@shared/channels';
 import type { Urgency } from '@shared/channels';
 import { addDays } from '@shared/time';
 
@@ -41,7 +41,7 @@ export const ChannelCard: React.FC<ChannelCardProps> = ({ channel, videos, today
   const status = effectiveStatus(channel, today);
   const view = STATUS_VIEW[status];
   const todo = channelTodo(channel, videos, today);
-  const last = lastPublishedOf(channel.id, videos);
+  const last = lastPublishedDate(channel, videos);
   const [editingName, setEditingName] = useState(false);
   const [name, setName] = useState(channel.name);
   const [showSchedule, setShowSchedule] = useState(false);

@@ -3,7 +3,7 @@ import { Store } from '../../store/core';
 import { FakeCloud, MemoryStorage } from '../../store/testing';
 import type { GameEvent, GameStats } from '@shared/types';
 import { RULES } from '@shared/gamification';
-import { applyGame, logSessionOnce, resetGameStats, rewardBigDataFill, rewardRecoveryActivity, syncGameFacts } from './game';
+import { applyGame, logSessionOnce, resetGameStats, rewardBigDataFill, rewardRecoveryActivity, shownStreak, syncGameFacts } from './game';
 
 const NOW = new Date('2026-11-17T06:00:00Z'); // вторник, 12:00 по Бишкеку
 
@@ -48,7 +48,7 @@ describe('syncGameFacts: итоги дней, цели, публикации', (
   });
 
   it('закрывает пропущенные дни: норма — серия +1, пропуск — штраф', () => {
-    const s = makeStore({ gold: 200, streak: 2, rulesSince: '2026-11-15' });
+    const s = makeStore({ gold: 200, streak: 2, rulesSince: '2026-11-14', lastClosedDate: '2026-11-14' });
     // 15-е (вс): 3 полных блока, привычек нет → полный день (+ачивка «6 часов»); 16-е (пн): ничего → пропуск
     for (const b of [1, 2, 3]) {
       s.upsert('focus_sessions', { id: `focus-2026-11-15-b${b}`, date: '2026-11-15', startedAt: '2026-11-15T03:00:00Z', minutes: 120, mode: 'work', targetMinutes: 120 });
@@ -162,5 +162,24 @@ describe('logSessionOnce (App.handleLogSession)', () => {
     expect(next.map((x) => x.id)).toEqual(['focus-2', 'focus-1']);
     expect(next.find((x) => x.id === 'focus-1')?.actualMinutes).toBe(120);
     expect(logSessionOnce([b], a).map((x) => x.id)).toEqual(['focus-1', 'focus-2']);
+  });
+});
+
+describe('серия до первого полного дня', () => {
+  it('до первого закрытого дня серия показывает 0, даже если в статах старая единица', () => {
+    expect(shownStreak({ streak: 1 } as unknown as GameStats)).toBe(0);
+    expect(shownStreak({ streak: 3, lastClosedDate: '2026-11-16' } as unknown as GameStats)).toBe(3);
+  });
+
+  it('первый запуск правил обнуляет старую серию; первый полный день даёт 1, а не 2', () => {
+    const s = makeStore({ streak: 1 });
+    syncGameFacts({ store: s, now: new Date('2026-11-15T06:00:00Z') });
+    expect(statsOf(s).streak).toBe(0);
+    for (const b of [1, 2, 3]) {
+      s.upsert('focus_sessions', { id: `focus-2026-11-15-b${b}`, date: '2026-11-15', startedAt: '2026-11-15T03:00:00Z', minutes: 120, mode: 'work', targetMinutes: 120 });
+    }
+    syncGameFacts({ store: s, now: new Date('2026-11-16T06:00:00Z') });
+    expect(statsOf(s).lastClosedDate).toBe('2026-11-15');
+    expect(statsOf(s).streak).toBe(1);
   });
 });

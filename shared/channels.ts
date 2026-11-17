@@ -151,6 +151,20 @@ export function lastPublishedOf(channelId: string, videos: Video[]): string | nu
   return last;
 }
 
+/** Дата последней публикации, записанная в карточке канала (extra.lastPublished), если видео в базе нет */
+function cardLastPublished(channel: Channel): string | null {
+  const v = channel.lastPublished;
+  return typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v) ? v.slice(0, 10) : null;
+}
+
+/** Последняя публикация канала: по видео или по дате из карточки — что позже */
+export function lastPublishedDate(channel: Channel, videos: Video[]): string | null {
+  const byVideos = lastPublishedOf(channel.id, videos);
+  const byCard = cardLastPublished(channel);
+  if (!byCard) return byVideos;
+  return !byVideos || byCard > byVideos ? byCard : byVideos;
+}
+
 function publishedOn(channelId: string, videos: Video[], day: string): number {
   return videos.filter(
     (v) => v.channelId === channelId && normalizeStage(v.stage as string) === 'published' && dayOf(v.publishedAt) === day,
@@ -188,9 +202,11 @@ export function channelTodo(channel: Channel, videos: Video[], today: string): C
     return { step: 'none', label: status === 'abandoned' ? 'Канал заброшен' : 'Канал в архиве', dueDate: null, urgency: 'none' };
   }
 
-  const last = lastPublishedOf(channel.id, videos);
+  const last = lastPublishedDate(channel, videos);
   const current = videoInWork(channel.id, videos);
-  const scheduled = rawNextDue(channel, last, today, publishedOn(channel.id, videos, today));
+  // Дата из карточки «сегодня выложено» означает: видео дня готовы (сколько именно — неизвестно)
+  const publishedToday = cardLastPublished(channel) === today ? slotsPerDay(channel) : publishedOn(channel.id, videos, today);
+  const scheduled = rawNextDue(channel, last, today, publishedToday);
   const dueDate = current?.publishDate ?? scheduled;
   const urgency = urgencyFor(channel, dueDate, today);
 

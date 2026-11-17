@@ -42,6 +42,17 @@ function writeStats(s: Store, next: GameStats, auto: boolean) {
   s.writeRecord<GameStats>('game_stats', FALLBACK, () => next, 'me', (v) => v, { auto });
 }
 
+/** Ни один день ещё не закрыт по правилам: серии ещё нет (старая цифра из статов не считается) */
+function noDayClosed(stats: GameStats): boolean {
+  return typeof stats.lastClosedDate !== 'string' || !stats.lastClosedDate;
+}
+
+/** Серия для показа: до первого закрытого дня — 0 */
+export function shownStreak(stats: GameStats): number {
+  if (noDayClosed(stats)) return 0;
+  return typeof stats.streak === 'number' && Number.isFinite(stats.streak) ? Math.max(0, stats.streak) : 0;
+}
+
 /** Применить событие по правилам и записать результат: статы, строки game_events, achievements */
 export function applyGame(input: GameEventInput, opts: GameOptions = {}): ApplyResult {
   const s = opts.store ?? defaultStore;
@@ -129,7 +140,9 @@ export function syncGameFacts(opts: GameOptions = {}) {
   const o = { store: s, now, auto: true };
 
   const cur = readStats(s);
-  const started = withRulesStart(cur, today);
+  let started = withRulesStart(cur, today);
+  // До первого закрытого дня серия — 0: иначе стартовая единица из старых статов дала бы «2» после первого полного дня
+  if (noDayClosed(started) && started.streak !== 0) started = { ...started, streak: 0 };
   if (started !== cur) writeStats(s, started, true);
   const since = String(started.rulesSince);
 

@@ -3,6 +3,8 @@ import { Store } from './core';
 import { FakeCloud, MemoryStorage } from './testing';
 import { ensureSeeds } from './seeds';
 import { TABLE_NAMES } from './tables';
+import { channelTodo, lastPublishedDate, nextDueDates } from '@shared/channels';
+import type { Channel } from '@shared/types';
 
 const mk = () => new Store({ storage: new MemoryStorage(), isOnline: () => true, flushDelayMs: -1 });
 const snap = (s: Store) => JSON.stringify(TABLE_NAMES.map((t) => s.items(t)));
@@ -24,9 +26,10 @@ describe('ensureSeeds: стартовые данные из брифинга', (
     expect(channels[1]).toMatchObject({ editHoursMin: 3, editHoursMax: 5 });
 
     const tasks = store.items<Record<string, unknown>>('tasks2');
-    expect(tasks).toHaveLength(1);
-    expect(String(tasks[0].title)).toContain('2 превью');
-    expect(tasks[0]).toMatchObject({ seed: true, kind: 'task' });
+    const todos = tasks.filter((t) => t.type === 'todo');
+    expect(todos).toHaveLength(1);
+    expect(String(todos[0].title)).toContain('2 превью');
+    expect(todos[0]).toMatchObject({ seed: true, kind: 'task' });
 
     const cfg = store.get<Record<string, unknown>>('bigdata_config', 'me');
     expect((cfg?.spheres as { label: string }[]).map((s) => s.label)).toEqual(['Work', 'Work+', 'Tr', 'Tr+', 'Soc', 'Soc+']);
@@ -57,7 +60,7 @@ describe('ensureSeeds: стартовые данные из брифинга', (
     await ensureSeeds(store);
     expect(store.items<Record<string, unknown>>('channels2').map((c) => c.id)).toEqual(['ch-mine']);
     expect(store.items('goals')).toHaveLength(1);
-    expect(store.items('tasks2')).toHaveLength(0);
+    expect(store.items<Record<string, unknown>>('tasks2').filter((t) => t.type !== 'habit')).toHaveLength(0);
     expect((store.get<Record<string, unknown>>('bigdata_config', 'me')?.spheres as unknown[]).length).toBe(1);
 
     // награду из сидов удалили — повторный запуск её не возвращает
@@ -81,5 +84,39 @@ describe('ensureSeeds: стартовые данные из брифинга', (
     await s2.connect(offline.factory);
     await ensureSeeds(s2);
     expect(s2.items('goals')).toHaveLength(0);
+  });
+
+  it('привычки из брифинга: на пустой базе один раз заводит воду, медитацию и восстановление', async () => {
+    const store = mk();
+    await ensureSeeds(store);
+    const habits = store.items<Record<string, unknown>>('tasks2').filter((t) => t.type === 'habit');
+    expect(habits.map((h) => h.title)).toEqual(['2 литра воды', 'Медитация', 'Активное восстановление']);
+    expect(habits.every((h) => h.seed === true && h.kind === 'task')).toBe(true);
+    await ensureSeeds(store);
+    expect(store.items<Record<string, unknown>>('tasks2').filter((t) => t.type === 'habit')).toHaveLength(3);
+  });
+
+  it('привычки: свои привычки не трогает, удалённую привычку из сидов не воскрешает', async () => {
+    const own = mk();
+    own.upsert('tasks2', { id: 'h-mine', title: 'Своя привычка', type: 'habit' });
+    await ensureSeeds(own);
+    expect(own.items<Record<string, unknown>>('tasks2').filter((t) => t.type === 'habit').map((h) => h.id)).toEqual(['h-mine']);
+
+    const store = mk();
+    await ensureSeeds(store);
+    for (const h of store.items<{ id: string; type: string }>('tasks2').filter((t) => t.type === 'habit')) store.remove('tasks2', h.id);
+    await ensureSeeds(store);
+    expect(store.items<Record<string, unknown>>('tasks2').filter((t) => t.type === 'habit')).toHaveLength(0);
+  });
+
+  it('каналы: AKKDLASA выложено в день сида, ARMY ANALITICS выкладка завтра — у обоих «Следующее видео» завтра', async () => {
+    const store = mk();
+    await ensureSeeds(store);
+    const byName = (n: string) => store.items<Channel>('channels2').find((c) => c.name === n) as Channel;
+    const day = '2026-11-17';
+    for (const c of [byName('AKKDLASA'), byName('ARMY ANALITICS')]) {
+      expect(nextDueDates(c, lastPublishedDate(c, []), day, 1)).toEqual(['2026-11-18']);
+      expect(channelTodo(c, [], day).dueDate).toBe('2026-11-18');
+    }
   });
 });

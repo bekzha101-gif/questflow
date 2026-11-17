@@ -1,6 +1,7 @@
 // Стартовые данные из брифинга (2026-11-17, раунды 3–6). Создаются один раз и помечены seed: true.
 // Правило проекта: данные пользователя — единственный источник правды. Поэтому:
 //  - цели, каналы, настройки Big Data сеются только в пустые таблицы (удалённые строки тоже считаются);
+//  - привычки сеются, только если своих привычек нет и ни одной привычки из сидов ещё не было;
 //  - награды сеются, только если ни одной награды из сидов ещё не было (удалённую не возвращаем);
 //  - при подключённом облаке сначала дочитываем его; не прочитали — не сеем (повтор при следующем входе).
 // Метка времени сидов старше любых правок: облако и правки пользователя всегда выигрывают.
@@ -13,6 +14,10 @@ export const SEED_TS = '2000-01-01T00:00:01.000Z';
 
 const SEED_MONTH = '2026-11';
 
+// День ответа раунда 5: «AKKDLASA… сегодня уже выложил видео», «ARMY ANALITICS… раз в 2 дня, завтра выложу»
+const SEED_DAY = '2026-11-17';
+const SEED_DAY_BEFORE = '2026-11-16';
+
 export const SEED_GOALS: Goal[] = [
   { id: 'seed-goal-2026-11-channels', month: SEED_MONTH, title: 'Запустить 40 YouTube-каналов и качественно их автоматизировать', kind: 'numeric', target: 40, unit: 'каналов', current: 0, status: 'active', seed: true },
   { id: 'seed-goal-2026-11-niche-tool', month: SEED_MONTH, title: 'Настроить инструмент глубокого анализа любой ниши по ссылке', kind: 'percent', target: 100, unit: '%', current: 0, status: 'active', seed: true },
@@ -23,10 +28,10 @@ export const SEED_GOALS: Goal[] = [
 ];
 
 export const SEED_CHANNELS: Channel[] = [
-  { id: 'seed-ch-akkdlasa', name: 'AKKDLASA', niche: 'Шахматы', status: 'active', cadencePerDay: 1, editHoursMin: 2, editHoursMax: 3, color: '#10b981', seed: true },
+  { id: 'seed-ch-akkdlasa', name: 'AKKDLASA', niche: 'Шахматы', status: 'active', cadencePerDay: 1, editHoursMin: 2, editHoursMax: 3, color: '#10b981', lastPublished: SEED_DAY, seed: true },
   { id: 'seed-ch-beatiful-man', name: 'BEATIFUL MAN', niche: 'Выборы США, демократы — хайп-ниша', status: 'active', cadencePerDay: 2, editHoursMin: 3, editHoursMax: 5, color: '#8b5cf6', seed: true },
   { id: 'seed-ch-agent-code', name: 'AGENT CODE', niche: 'Трамп и его покупки: недвижимость, вещи, что с ними случилось', status: 'active', cadencePerDay: 1, color: '#f59e0b', seed: true },
-  { id: 'seed-ch-army-analitics', name: 'ARMY ANALITICS', niche: 'Как работает вооружение: танки и т.п.', status: 'active', cadencePerDay: 0.5, color: '#f43f5e', seed: true },
+  { id: 'seed-ch-army-analitics', name: 'ARMY ANALITICS', niche: 'Как работает вооружение: танки и т.п.', status: 'active', cadencePerDay: 0.5, color: '#f43f5e', lastPublished: SEED_DAY_BEFORE, seed: true },
   { id: 'seed-ch-trihgok', name: 'TRIHGOK', niche: 'Звёздные войны: разбор по частям', status: 'active', cadencePerDay: 0.5, color: '#38bdf8', seed: true },
 ];
 
@@ -44,6 +49,29 @@ export const SEED_CHANNEL_TASKS = [
     channelId: 'seed-ch-agent-code',
     seed: true,
   },
+];
+
+// Привычки из брифинга: «2 литра воды, медитация, активное восстановление» — отмечаются касанием на «Сегодня»
+const habit = (id: string, title: string) => ({
+  id,
+  title,
+  type: 'habit',
+  kind: 'task',
+  priority: 'p2',
+  projectId: 'proj-inbox',
+  tags: [],
+  difficulty: 'easy',
+  completed: false,
+  subtasks: [],
+  habitDirection: 'both',
+  habitCounter: 0,
+  seed: true,
+});
+
+export const SEED_HABITS = [
+  habit('seed-habit-water', '2 литра воды'),
+  habit('seed-habit-meditation', 'Медитация'),
+  habit('seed-habit-recovery', 'Активное восстановление'),
 ];
 
 export const SEED_BIGDATA_CONFIG: BigDataConfig = {
@@ -89,6 +117,12 @@ export async function ensureSeeds(storeArg?: Store): Promise<void> {
   if (!store.hasAnyRow('channels2')) {
     for (const c of SEED_CHANNELS) store.upsert('channels2', c, opts);
     for (const t of SEED_CHANNEL_TASKS) if (!store.hasKey('tasks2', t.id)) store.upsert('tasks2', t, opts);
+  }
+
+  // Привычки — только если своих привычек нет и привычки из сидов ещё не заводились (удалённую не возвращаем)
+  const hasHabits = store.items<{ type?: string }>('tasks2').some((t) => t.type === 'habit');
+  if (!hasHabits && !SEED_HABITS.some((h) => store.hasKey('tasks2', h.id))) {
+    for (const h of SEED_HABITS) store.upsert('tasks2', h, opts);
   }
 
   if (!store.hasKey('bigdata_config', SINGLE_KEY)) {

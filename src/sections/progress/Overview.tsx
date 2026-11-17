@@ -5,6 +5,7 @@ import { ACHIEVEMENTS, RULES, levelProgress, shopLocked } from '@shared/gamifica
 import { todayStr } from '@shared/time';
 import { useCollection } from '../../store';
 import { focusSeries, lastDates, scoreSeries } from './series';
+import { shownStreak } from './game';
 
 // «Прогресс» → «Обзор»: уровень, серия, графики фокуса и оценки дня, ачивки, правила штрафов, журнал.
 
@@ -106,8 +107,8 @@ export function ProgressOverview({ stats }: { stats: GameStats }) {
           <div className="flex items-center gap-1.5 text-[11px] text-zinc-500">
             <Flame className="w-3.5 h-3.5 text-amber-400" /> Серия
           </div>
-          <div className="text-2xl font-semibold font-mono text-zinc-100 mt-1">{stats.streak}</div>
-          <div className="text-[11px] text-zinc-500">лучшая: {Number(stats.bestStreak ?? stats.streak)}</div>
+          <div className="text-2xl font-semibold font-mono text-zinc-100 mt-1">{shownStreak(stats)}</div>
+          <div className="text-[11px] text-zinc-500">лучшая: {Number(stats.bestStreak ?? shownStreak(stats))}</div>
         </div>
         <div className="bg-[#0e0e13] border border-white/[0.07] rounded-2xl p-4 space-y-1.5">
           <div className="flex items-center justify-between text-xs">

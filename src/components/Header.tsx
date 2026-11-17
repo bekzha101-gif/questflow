@@ -16,6 +16,8 @@ import {
   Coins,
 } from 'lucide-react';
 import { HIDEABLE_SECTIONS, setSectionHidden, useHiddenSections } from '../utils/hiddenSections';
+import { shownStreak } from '../sections/progress/game';
+import type { GameStats } from '@shared/types';
 
 interface HeaderProps {
   stats: UserStats;
@@ -283,7 +285,7 @@ export const Header: React.FC<HeaderProps> = ({
         </span>
         <span className="flex items-center gap-1 text-orange-400">
           <Flame className="w-3 h-3" />
-          <strong>{stats.streak}</strong>
+          <strong>{shownStreak(stats as unknown as GameStats)}</strong>
           <span className="text-zinc-500">дн.</span>
         </span>
       </div>

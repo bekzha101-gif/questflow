@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canPublish, channelTodo, effectiveStatus, nextDueDates, normalizeVideo, remindersFor } from './channels';
+import { canPublish, channelTodo, effectiveStatus, lastPublishedDate, nextDueDates, normalizeVideo, remindersFor } from './channels';
 import type { Channel, Video } from './types';
 
 const ch = (over: Partial<Channel> = {}): Channel => ({
@@ -106,6 +106,26 @@ describe('channelTodo', () => {
     const c = ch({ cadencePerDay: 0.5, editHoursMin: 3, editHoursMax: 5 });
     expect(channelTodo(c, [done], TODAY)).toMatchObject({ dueDate: '2026-11-19', urgency: 'soon' });
     expect(channelTodo(ch({ cadencePerDay: 0.5 }), [done], TODAY).urgency).toBe('later');
+  });
+});
+
+describe('последняя публикация из карточки канала (без видео в базе)', () => {
+  it('1 в день, выложено сегодня: следующее видео завтра', () => {
+    const c = ch({ lastPublished: TODAY });
+    expect(lastPublishedDate(c, [])).toBe(TODAY);
+    expect(nextDueDates(c, lastPublishedDate(c, []), TODAY, 1)).toEqual(['2026-11-18']);
+    expect(channelTodo(c, [], TODAY)).toMatchObject({ dueDate: '2026-11-18', urgency: 'soon' });
+  });
+  it('раз в 2 дня, выложено вчера: следующее видео завтра', () => {
+    const c = ch({ cadencePerDay: 0.5, lastPublished: '2026-11-16' });
+    expect(nextDueDates(c, lastPublishedDate(c, []), TODAY, 1)).toEqual(['2026-11-18']);
+    expect(channelTodo(c, [], TODAY).dueDate).toBe('2026-11-18');
+  });
+  it('видео опубликовано позже даты из карточки — считается по видео', () => {
+    const c = ch({ lastPublished: '2026-11-10' });
+    const done = vid({ id: 'p', stage: 'published', publishedAt: '2026-11-16' });
+    expect(lastPublishedDate(c, [done])).toBe('2026-11-16');
+    expect(channelTodo(c, [done], TODAY).dueDate).toBe('2026-11-17');
   });
 });
 

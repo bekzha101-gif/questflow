@@ -23,6 +23,13 @@ interface QuickAddModalProps {
   blockedMessage?: string;
 }
 
+/** Заголовок окна и подпись кнопки: с вкладки «Покупки» окно говорит о покупке, а не о квесте */
+export function quickAddLabels(kind: TaskKind): { title: string; submit: string } {
+  return kind === 'shopping'
+    ? { title: 'Добавить покупку', submit: 'Добавить покупку' }
+    : { title: 'Новая задача или большая цель', submit: 'Добавить квест' };
+}
+
 export const QuickAddModal: React.FC<QuickAddModalProps> = ({
   isOpen,
   onClose,
@@ -130,7 +137,7 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
         <div className="flex items-center justify-between pb-3 border-b border-white/10 mb-3 shrink-0">
           <div>
             <h2 className="font-bold text-sm text-zinc-100">
-              {kind === 'shopping' ? 'Новая покупка' : 'Новая задача или большая цель'}
+              {quickAddLabels(kind).title}
             </h2>
             <p className="text-[11px] text-zinc-500">Умный ввод или добавление шагов/дедлайна вручную</p>
           </div>
@@ -300,7 +307,7 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
               type="submit"
               className="px-4 py-1.5 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-bold text-xs shadow cursor-pointer active:scale-95 transition-all"
             >
-              Добавить квест
+              {quickAddLabels(kind).submit}
             </button>
           </div>
         </form>
