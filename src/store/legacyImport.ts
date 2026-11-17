@@ -13,6 +13,9 @@ import type { TimeLogEntry } from '../types';
 
 export const LEGACY_FLAG = 'qf2_legacy_imported';
 
+/** Маркер в облаке (kv): перенос уже сделан с какого-то устройства — другие устройства старые строки не шлют */
+export const CLOUD_IMPORT_MARKER = 'legacy_imported';
+
 /** Метка времени перенесённых строк: старше любых настоящих правок, поэтому облако всегда выигрывает */
 export const LEGACY_TS = '2000-01-01T00:00:00.000Z';
 
@@ -47,6 +50,8 @@ export interface ImportReport {
   counts: Partial<Record<TableName, number>>;
   /** Перенос уже был (флаг qf2_legacy_imported) — ничего не делали */
   alreadyImported: boolean;
+  /** Перенос пропущен, потому что в облаке уже есть перенесённые данные (бэкап всё равно скачан) */
+  cloudAlreadyImported?: boolean;
   /** Имя скачанного файла бэкапа */
   backupFile: string | null;
 }
@@ -101,6 +106,11 @@ function browserDownload(filename: string, json: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+/** Есть ли в облаке маркер переноса (вызывать после чтения облака) */
+export function cloudHasLegacyImport(store: Store): boolean {
+  return store.get('kv', CLOUD_IMPORT_MARKER) !== null;
+}
+
 /** Нужен ли перенос: флага нет, а старые данные есть */
 export function needsLegacyImport(storage?: StorageLike): boolean {
   const s = storage ?? (typeof window !== 'undefined' ? window.localStorage : null);
@@ -127,8 +137,10 @@ export async function runLegacyImport(opts: ImportOptions = {}): Promise<ImportR
     return { counts: {}, alreadyImported: true, backupFile: null };
   }
 
-  // Облако подключено — сначала дочитываем его, чтобы не перезаписать уже перенесённое
-  if (store.isConnected) await store.whenReady();
+  // Перенос идёт только в прочитанное облако: иначе неизвестно, что там уже есть,
+  // и старые строки этого браузера могли бы вернуть удалённое на другом устройстве
+  if (!store.isConnected) throw new Error('Войдите в аккаунт: данные переносятся только в облако');
+  if (!(await store.whenReady())) throw new Error('Нет связи с облаком');
 
   // 1. Бэкап всех ключей до любой записи
   const keys = listKeys(storage).filter((k) => k.startsWith('questflow_'));
@@ -138,6 +150,12 @@ export async function runLegacyImport(opts: ImportOptions = {}): Promise<ImportR
   const backupFile = `questflow-backup-${todayStr(now)}.json`;
   const backup = { source: 'questflow_full_backup', version: 2, exportedAt: now.toISOString(), localStorage: raw };
   (opts.download ?? browserDownload)(backupFile, JSON.stringify(backup, null, 2));
+
+  // В облаке уже есть перенос (с другого устройства) — старые данные этого браузера не отправляем
+  if (!opts.force && cloudHasLegacyImport(store)) {
+    storage.setItem(LEGACY_FLAG, now.toISOString());
+    return { counts: {}, alreadyImported: true, cloudAlreadyImported: true, backupFile };
+  }
 
   // 2. Запись только отсутствующих строк
   const counts: Partial<Record<TableName, number>> = {};
@@ -228,7 +246,8 @@ export async function runLegacyImport(opts: ImportOptions = {}): Promise<ImportR
     put('kv', { key: `legacy:${k}`, value: parse(raw[k]) });
   }
 
+  if (!cloudHasLegacyImport(store)) store.upsert('kv', { key: CLOUD_IMPORT_MARKER, value: { at: now.toISOString(), counts } });
   storage.setItem(LEGACY_FLAG, now.toISOString());
-  if (store.isConnected) void store.flush();
+  void store.flush();
   return { counts, alreadyImported: false, backupFile };
 }

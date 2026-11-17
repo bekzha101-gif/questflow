@@ -2,7 +2,7 @@
 // + слияние строк из облака (pull и Realtime). Конфликты: построчно, побеждает более поздний updated_at.
 // Удаление — мягкое (deleted: true), поэтому удалённое не возвращается с другого устройства.
 import { TABLES, TABLE_NAMES, type TableName } from './tables';
-import { fromRow, keyOf, toRow, tsOf, type Row } from './mapping';
+import { fromRow, keyOf, sameContent, toRow, tsOf, type Row } from './mapping';
 import type { RemoteFactory } from './remote';
 
 export interface StorageLike {
@@ -30,6 +30,13 @@ const CACHE_PREFIX = 'qf2_';
 const QUEUE_PREFIX = 'qf2_queue_';
 const ORDER_PREFIX = 'qf2_order_';
 const RETRY_MS = 15_000;
+
+/**
+ * Метка записи, выведенной из запасного значения (записи ещё нет, облако не прочитано).
+ * Старше меток переноса и сидов (2000-01-01), поэтому любая строка из облака её перебивает,
+ * а триггер в базе не даст ей перезаписать облако.
+ */
+export const FALLBACK_TS = '1999-01-01T00:00:00.000Z';
 
 export class Store {
   private storage: StorageLike;
@@ -194,6 +201,22 @@ export class Store {
   // ─── Запись ──────────────────────────────────────────────────────────────
   upsert<T extends object>(table: TableName, item: T, opts: WriteOptions = {}) {
     this.write(table, toRow(table, item), false, opts);
+  }
+
+  /**
+   * Записать одну запись как setState: next = action(prev ?? fallback).
+   * Если записи нет (или она сама из запасного значения, а облако не прочитано), строка получает
+   * FALLBACK_TS и не может перебить настоящие данные из облака.
+   */
+  writeRecord<T extends object>(table: TableName, fallback: T, action: T | ((prev: T) => T), key: string, item: (v: T) => object) {
+    const row = this.getRow(table, key);
+    const live = row && !row.deleted ? row : undefined;
+    const prev = live ? fromRow<T>(table, live) : fallback;
+    const next = typeof action === 'function' ? (action as (p: T) => T)(prev) : action;
+    const obj = item(next);
+    if (live && sameContent(toRow(table, obj), live)) return;
+    const derived = !live || (live.updated_at === FALLBACK_TS && this.ready !== true);
+    this.upsert(table, obj, derived ? { updatedAt: FALLBACK_TS } : {});
   }
 
   remove(table: TableName, key: string) {

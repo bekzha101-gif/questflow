@@ -137,4 +137,24 @@ describe('store: офлайн-очередь, удаления, ошибки, Re
     await other.connect(cloud.factory);
     expect(other.items<Record<string, unknown>>('tasks2')[0]).toMatchObject({ expReward: 25, projectId: 'proj-1', kind: 'task' });
   });
+
+  it('запись из запасного значения до чтения облака не перебивает перенесённые данные', async () => {
+    // Облако: статы, перенесённые с Mac (метка переноса 2000-01-01)
+    const cloud = new FakeCloud();
+    cloud.emit('game_stats', { level: 7, gold: 900, streak: 10, updated_at: '2000-01-01T00:00:00.000Z', deleted: false, extra: {} });
+    const { store } = setup();
+    const fallback = { level: 4, gold: 427, streak: 0 };
+
+    // Новый браузер: эффект «новый день» пишет streak+1 поверх запасных статов, облако ещё не подключено
+    store.writeRecord('game_stats', fallback, (p: typeof fallback) => ({ ...p, streak: p.streak + 1 }), 'me', (v) => v);
+    await store.connect(cloud.factory);
+
+    expect(store.get('game_stats', 'me')).toMatchObject({ level: 7, gold: 900, streak: 10 });
+    expect(cloud.rows('game_stats')[0]).toMatchObject({ level: 7, gold: 900, streak: 10 });
+
+    // после чтения облака обычная правка снова получает свежую метку и уходит в облако
+    store.writeRecord('game_stats', fallback, (p: typeof fallback) => ({ ...p, streak: p.streak + 1 }), 'me', (v) => v);
+    await store.flush();
+    expect(cloud.rows('game_stats')[0]).toMatchObject({ level: 7, streak: 11 });
+  });
 });

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { Store } from './core';
 import { MemoryStorage, FakeCloud } from './testing';
-import { runLegacyImport, needsLegacyImport, LEGACY_FLAG } from './legacyImport';
+import { runLegacyImport, needsLegacyImport, LEGACY_FLAG, CLOUD_IMPORT_MARKER } from './legacyImport';
 import { TABLE_NAMES } from './tables';
 
 function legacyStorage() {
@@ -39,6 +39,13 @@ function legacyStorage() {
   return s;
 }
 
+/** Браузер с вошедшим пользователем: облако подключено и прочитано */
+async function connectedStore(storage: MemoryStorage, cloud = new FakeCloud()) {
+  const store = new Store({ storage, isOnline: () => true, flushDelayMs: -1 });
+  await store.connect(cloud.factory);
+  return { store, cloud };
+}
+
 function snapshot(store: Store) {
   return Object.fromEntries(TABLE_NAMES.map((t) => [t, JSON.stringify(store.items(t))]));
 }
@@ -46,7 +53,7 @@ function snapshot(store: Store) {
 describe('runLegacyImport: перенос старых ключей questflow_* в новые таблицы', () => {
   it('сначала скачивает JSON-бэкап, затем переносит все разделы; старые ключи остаются', async () => {
     const storage = legacyStorage();
-    const store = new Store({ storage, isOnline: () => true, flushDelayMs: -1 });
+    const { store } = await connectedStore(storage);
     const events: string[] = [];
     let backup: Record<string, unknown> = {};
 
@@ -97,7 +104,7 @@ describe('runLegacyImport: перенос старых ключей questflow_* 
 
   it('повторный перенос ничего не дублирует и не меняет', async () => {
     const storage = legacyStorage();
-    const store = new Store({ storage, isOnline: () => true, flushDelayMs: -1 });
+    const { store } = await connectedStore(storage);
     await runLegacyImport({ store, storage, download: () => {} });
     const before = snapshot(store);
 
@@ -122,5 +129,42 @@ describe('runLegacyImport: перенос старых ключей questflow_* 
     expect(byId['task-1731'].title).toBe('Монтаж видео — уже правил на Mac');
     expect(byId['habit-water'].deleted).toBe(true);
     expect(byId['shop-1']).toBeDefined();
+  });
+
+  it('если в облаке уже есть перенос, второе устройство не шлёт свои старые строки', async () => {
+    // Mac уже перенёс данные; задачу shop-1 там удалили ещё до переноса — в облаке её нет
+    const cloud = new FakeCloud();
+    cloud.emit('kv', { key: CLOUD_IMPORT_MARKER, value: { at: '2026-11-17T05:00:00Z' }, updated_at: '2026-11-17T05:00:00Z', deleted: false, extra: {} });
+    cloud.emit('tasks2', { id: 'task-1731', title: 'Монтаж видео', type: 'todo', updated_at: '2000-01-01T00:00:00.000Z', deleted: false, extra: {} });
+    const storage = legacyStorage();
+    const { store } = await connectedStore(storage, cloud);
+    let downloaded = false;
+
+    const report = await runLegacyImport({ store, storage, download: () => (downloaded = true) });
+    await store.flush();
+
+    expect(downloaded).toBe(true);
+    expect(report.cloudAlreadyImported).toBe(true);
+    expect(cloud.rows('tasks2').map((r) => r.id)).toEqual(['task-1731']);
+    expect(cloud.rows('channels2')).toHaveLength(0);
+    expect(storage.getItem(LEGACY_FLAG)).not.toBeNull();
+  });
+
+  it('без входа (облако не подключено) ничего не переносит', async () => {
+    const storage = legacyStorage();
+    const store = new Store({ storage, isOnline: () => true, flushDelayMs: -1 });
+
+    await expect(runLegacyImport({ store, storage, download: () => {} })).rejects.toThrow();
+    expect(store.hasAnyRow('tasks2')).toBe(false);
+    expect(store.pendingCount()).toBe(0);
+    expect(storage.getItem(LEGACY_FLAG)).toBeNull();
+  });
+
+  it('после переноса в облаке появляется маркер', async () => {
+    const storage = legacyStorage();
+    const { store, cloud } = await connectedStore(storage);
+    await runLegacyImport({ store, storage, download: () => {} });
+    await store.flush();
+    expect(cloud.rows('kv').map((r) => r.key)).toContain(CLOUD_IMPORT_MARKER);
   });
 });

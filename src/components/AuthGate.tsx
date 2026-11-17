@@ -70,20 +70,37 @@ export function AuthGate({ children }: AuthGateProps) {
   const [importReport, setImportReport] = useState<ImportReport | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
 
-  // Облако хранилища: подключаем при входе, отключаем при выходе
+  // Облако хранилища: подключаем при входе, отключаем при выходе.
+  // Пока облако не прочитано, приложение не монтируется: иначе его эффекты (сброс дня и т.п.)
+  // записали бы запасные значения поверх настоящих данных.
   const userId = session?.user.id ?? null;
+  const [cloudState, setCloudState] = useState<'none' | 'connecting' | 'ready' | 'failed'>('none');
+  const [cloudAttempt, setCloudAttempt] = useState(0);
   useEffect(() => {
-    if (userId && supabase) {
-      void connectCloud(supabase, userId);
-    } else {
+    if (!userId || !supabase) {
       disconnectCloud();
+      setCloudState('none');
+      return;
     }
-  }, [userId]);
+    let alive = true;
+    setCloudState('connecting');
+    void connectCloud(supabase, userId).then((ok) => {
+      if (alive) setCloudState(ok ? 'ready' : 'failed');
+    });
+    return () => {
+      alive = false;
+    };
+  }, [userId, cloudAttempt]);
+
+  const retryCloud = () => {
+    disconnectCloud();
+    setCloudAttempt((n) => n + 1);
+  };
 
   // Стартовые данные из брифинга — один раз, после переноса и после чтения облака
   useEffect(() => {
-    if (importStage === 'done' && authResolved) void ensureSeeds();
-  }, [importStage, authResolved, userId]);
+    if (importStage === 'done' && authResolved && cloudState !== 'connecting') void ensureSeeds();
+  }, [importStage, authResolved, cloudState]);
 
   const handleLegacyImport = async () => {
     setImportStage('running');
@@ -91,6 +108,7 @@ export function AuthGate({ children }: AuthGateProps) {
     try {
       const report = await runLegacyImport();
       setImportReport(report);
+
       setImportStage('done');
     } catch (e) {
       console.error('Перенос не удался', e);
@@ -252,9 +270,10 @@ export function AuthGate({ children }: AuthGateProps) {
     setIsSyncInfoModalOpen(false);
   };
 
-  // Первый вход новой версии: сначала перенос старых данных, потом приложение
-  if (importStage !== 'done') {
-    return (
+  // Что показать вместо приложения: проверка входа, чтение облака, перенос старых данных
+  const waitingCloud = !authResolved || (userId !== null && cloudState === 'connecting');
+  const gateScreen =
+    importStage !== 'done' ? (
       <div className="min-h-screen bg-[#09090c] text-zinc-200 flex items-center justify-center p-4">
         <div className="linear-card bg-[#0e0e13] border border-white/[0.07] rounded-3xl max-w-md w-full p-6 space-y-4">
           <div className="flex items-center gap-2">
@@ -268,8 +287,12 @@ export function AuthGate({ children }: AuthGateProps) {
           </p>
           {!session && (
             <p className="text-[11px] text-amber-300/80 leading-relaxed">
-              Вы не вошли в аккаунт: данные перенесутся в новое хранилище браузера и уйдут в облако после входа.
+              Перенос идёт только в облако: войдите в аккаунт. Так старые данные этого браузера не вернут то,
+              что уже удалено на другом устройстве.
             </p>
+          )}
+          {session && cloudState === 'failed' && (
+            <p className="text-[11px] text-rose-300 leading-relaxed">Нет связи с облаком. Проверьте интернет и повторите.</p>
           )}
           {importStage === 'error' && (
             <p className="text-[11px] text-rose-300 flex items-start gap-1.5">
@@ -277,25 +300,46 @@ export function AuthGate({ children }: AuthGateProps) {
               <span>Перенос не удался: {importError}. Данные не тронуты, попробуйте ещё раз.</span>
             </p>
           )}
-          <button
-            onClick={handleLegacyImport}
-            disabled={importStage === 'running'}
-            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 disabled:opacity-60 text-white text-sm font-medium cursor-pointer"
-          >
-            <Download className="w-4 h-4" />
-            {importStage === 'running' ? 'Переношу…' : 'Перенести в облако'}
-          </button>
+          {!session ? (
+            <button
+              onClick={() => setShowAuthFormModal(true)}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium cursor-pointer"
+            >
+              <Cloud className="w-4 h-4" />
+              Войти в аккаунт
+            </button>
+          ) : cloudState === 'failed' ? (
+            <button
+              onClick={retryCloud}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white text-sm font-medium cursor-pointer"
+            >
+              <CloudOff className="w-4 h-4" />
+              Повторить
+            </button>
+          ) : (
+            <button
+              onClick={handleLegacyImport}
+              disabled={importStage === 'running' || cloudState !== 'ready'}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 disabled:opacity-60 text-white text-sm font-medium cursor-pointer"
+            >
+              <Download className="w-4 h-4" />
+              {importStage === 'running' ? 'Переношу…' : cloudState === 'ready' ? 'Перенести в облако' : 'Читаю облако…'}
+            </button>
+          )}
         </div>
       </div>
-    );
-  }
+    ) : waitingCloud ? (
+      <div className="min-h-screen bg-[#09090c] flex items-center justify-center text-xs text-zinc-500">
+        Загружаю данные…
+      </div>
+    ) : null;
 
   // If user is inside the app (session OR guestMode)
   return (
     <>
-      {children}
+      {gateScreen ?? children}
 
-      {importReport && !importReport.alreadyImported && (
+      {importReport && (!importReport.alreadyImported || importReport.cloudAlreadyImported) && (
         <div className="fixed bottom-20 md:bottom-6 right-4 z-[9998] max-w-xs bg-[#121218] border border-white/[0.07] rounded-2xl p-4 text-xs text-zinc-300 space-y-2 shadow-2xl">
           <div className="flex items-center justify-between gap-2">
             <span className="font-semibold text-emerald-300 flex items-center gap-1.5">
@@ -306,7 +350,9 @@ export function AuthGate({ children }: AuthGateProps) {
             </button>
           </div>
           <p className="text-[11px] text-zinc-400">
-            Бэкап: {importReport.backupFile}. Записано строк: {Object.values(importReport.counts).reduce((a, b) => a + (b ?? 0), 0)}.
+            {importReport.cloudAlreadyImported
+              ? `В облаке уже есть перенесённые данные: старые данные этого браузера не отправлены. Бэкап: ${importReport.backupFile}.`
+              : `Бэкап: ${importReport.backupFile}. Записано строк: ${Object.values(importReport.counts).reduce((a, b) => a + (b ?? 0), 0)}.`}
           </p>
         </div>
       )}

@@ -143,12 +143,7 @@ export function useRecordState<T extends object>(
   const current = value ?? fallback;
   const set = useCallback<Dispatch<SetStateAction<T>>>(
     (action) => {
-      const prev = store.get<T>(table, key) ?? fallback;
-      const next = typeof action === 'function' ? (action as (p: T) => T)(prev) : action;
-      const row = store.getRow(table, key);
-      const item = key === SINGLE_KEY ? next : { ...next, [keyField(table)]: key };
-      if (row && !row.deleted && sameContent(toRow(table, item), row)) return;
-      store.upsert(table, item);
+      store.writeRecord<T>(table, fallback, action, key, (v) => (key === SINGLE_KEY ? v : { ...v, [keyField(table)]: key }));
     },
     [table, key], // eslint-disable-line react-hooks/exhaustive-deps
   );
