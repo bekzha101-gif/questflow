@@ -15,23 +15,28 @@ import {
 import { 
   loadDailyProtocol, 
   saveDailyProtocol,
-  loadFoodLogs, 
-  saveFoodLogs, 
+  addFoodEntry,
+  useFoodLogs,
+  useHealthAlarms,
+  useTodayStr,
+  startHealthAlarmScanner,
   loadSleepLogs, 
   saveSleepLogs, 
   loadDamageIncidents, 
   saveDamageIncidents, 
   loadRecoveryLogs, 
   saveRecoveryLogs,
-  loadHealthAlarms,
-  saveHealthAlarms,
   loadSavedAiReport,
   playHealthAlarmSound,
   scanHealthAlarms,
   generateHealthAiReport,
-  getTodayDateString,
   getCurrentTimeString
 } from '../utils/healthTracker';
+import { requestDesktopNotificationPermission } from '../utils/recoveryCycle';
+
+// Сканер будильников здоровья — один на всё приложение, выше разделов:
+// App импортирует этот модуль сразу, поэтому будильник звенит при любом открытом разделе.
+startHealthAlarmScanner();
 import { 
   Heart, 
   Droplet, 
@@ -68,15 +73,21 @@ export function HealthBioTracker({
   onAddNotification
 }: HealthBioTrackerProps) {
   const isAiHidden = useHiddenSections().includes('ai');
-  const today = getTodayDateString();
+  // «Сегодня» по Бишкеку, само переходит на новый день в полночь
+  const today = useTodayStr();
 
   // State
   const [protocol, setProtocol] = useState<HealthDailyProtocol>(() => loadDailyProtocol(today));
-  const [foodLogs, setFoodLogs] = useState<FoodLogEntry[]>(loadFoodLogs);
+  useEffect(() => {
+    if (protocol.date !== today) setProtocol(loadDailyProtocol(today)); // eslint-disable-line react-hooks/set-state-in-effect
+  }, [today, protocol.date]);
+  const [foodLogs, setFoodLogs] = useFoodLogs();
   const [sleepLogs, setSleepLogs] = useState<SleepCycleEntry[]>(loadSleepLogs);
   const [damages, setDamages] = useState<DamageIncident[]>(loadDamageIncidents);
   const [recoveries, setRecoveries] = useState<RecoveryLogEntry[]>(loadRecoveryLogs);
-  const [alarms, setAlarms] = useState<HealthAlarmConfig[]>(loadHealthAlarms);
+  const { alarms, saved: alarmsSaved, setAlarms } = useHealthAlarms();
+  const updateAlarm = (id: string, patch: Partial<HealthAlarmConfig>) =>
+    setAlarms(alarms.map((a) => (a.id === id ? { ...a, ...patch } : a)));
   const [aiReport, setAiReport] = useState<HealthAiReport | null>(loadSavedAiReport);
 
   const [activeTab, setActiveTab] = useState<'today' | 'food' | 'sleep' | 'recovery' | 'alarms' | 'ai_report' | 'archive'>('today');
@@ -95,18 +106,11 @@ export function HealthBioTracker({
   // Alarm scanner status
   const [scanStatus, setScanStatus] = useState(() => scanHealthAlarms(protocol, alarms));
 
-  // Auto-scan timer every minute
+  // Баннер раздела обновляется раз в 30 с. Звук и уведомления даёт общий сканер (startHealthAlarmScanner),
+  // поэтому здесь ничего не звенит и звук не повторяется каждые 30 секунд.
   useEffect(() => {
-    const timer = setInterval(() => {
-      const result = scanHealthAlarms(protocol, alarms);
-      setScanStatus(result);
-
-      // If meditation time triggered right now
-      if (result.isMeditationTime && !protocol.meditationDone) {
-        playHealthAlarmSound('meditation');
-      }
-    }, 30000);
-
+    setScanStatus(scanHealthAlarms(protocol, alarms)); // eslint-disable-line react-hooks/set-state-in-effect
+    const timer = setInterval(() => setScanStatus(scanHealthAlarms(protocol, alarms)), 30000);
     return () => clearInterval(timer);
   }, [protocol, alarms]);
 
@@ -153,26 +157,13 @@ export function HealthBioTracker({
     e.preventDefault();
     if (!foodDesc.trim()) return;
 
-    const entry: FoodLogEntry = {
-      id: `food-${Date.now()}`,
-      timestamp: new Date().toISOString(),
-      date: today,
-      time: foodTime,
-      mealType,
-      food: foodDesc.trim(),
-      feeling,
-    };
-
-    const next = [entry, ...foodLogs];
-    setFoodLogs(next);
-    saveFoodLogs(next);
+    // Дата — по Бишкеку в момент записи; запись сразу уходит в хранилище (health_food)
+    addFoodEntry({ mealType, food: foodDesc.trim(), feeling, time: foodTime });
     setFoodDesc('');
   };
 
   const handleDeleteFood = (id: string) => {
-    const next = foodLogs.filter(f => f.id !== id);
-    setFoodLogs(next);
-    saveFoodLogs(next);
+    setFoodLogs(foodLogs.filter(f => f.id !== id));
   };
 
   // Add Sleep Entry
@@ -765,7 +756,7 @@ export function HealthBioTracker({
             {foodLogs.length === 0 ? (
               <p className="text-xs text-zinc-600 text-center py-6">Записей питания пока нет</p>
             ) : (
-              foodLogs.slice(0, 15).map((log) => (
+              [...foodLogs].sort((a, b) => (a.timestamp < b.timestamp ? 1 : -1)).slice(0, 15).map((log) => (
                 <div
                   key={log.id}
                   className="bg-[#111115] border border-white/[0.05] rounded-xl p-3 flex items-center justify-between gap-3"
@@ -898,20 +889,31 @@ export function HealthBioTracker({
               </div>
               <button
                 onClick={() => {
-                  if ('Notification' in window) {
-                    Notification.requestPermission().then((res) => {
-                      alert(`Статус системных уведомлений: ${res}`);
-                    });
-                  }
+                  playHealthAlarmSound('heal');
+                  void requestDesktopNotificationPermission();
                 }}
                 className="px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs text-zinc-200"
               >
-                Включить Web-Push
+                Включить уведомления
               </button>
             </div>
+            <p className="text-[11px] text-zinc-500">
+              Звенят при любом открытом разделе сайта. Когда сайт закрыт, напоминание пришлёт Telegram-бот.
+            </p>
+            {!alarmsSaved && (
+              <div className="flex items-center justify-between gap-3 p-3 rounded-xl bg-amber-500/[0.06] border border-amber-500/20">
+                <span className="text-[11px] text-amber-200/90">Это будильники по умолчанию. Сохрани, чтобы их знал и бот.</span>
+                <button
+                  onClick={() => setAlarms(alarms)}
+                  className="px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-xs text-amber-100 shrink-0"
+                >
+                  Сохранить
+                </button>
+              </div>
+            )}
 
             <div className="space-y-2">
-              {alarms.map((alarm, idx) => (
+              {alarms.map((alarm) => (
                 <div
                   key={alarm.id}
                   className="p-3 rounded-xl bg-[#16161c] border border-white/[0.04] flex items-center justify-between gap-3"
@@ -920,12 +922,7 @@ export function HealthBioTracker({
                     <input
                       type="time"
                       value={alarm.time}
-                      onChange={(e) => {
-                        const next = [...alarms];
-                        next[idx].time = e.target.value;
-                        setAlarms(next);
-                        saveHealthAlarms(next);
-                      }}
+                      onChange={(e) => updateAlarm(alarm.id, { time: e.target.value })}
                       className="bg-black/50 border border-white/10 rounded-lg px-2 py-1 text-xs font-mono text-white focus:outline-none"
                     />
                     <span className="text-xs text-zinc-200 font-medium">{alarm.title}</span>
@@ -942,12 +939,7 @@ export function HealthBioTracker({
                     <input
                       type="checkbox"
                       checked={alarm.enabled}
-                      onChange={(e) => {
-                        const next = [...alarms];
-                        next[idx].enabled = e.target.checked;
-                        setAlarms(next);
-                        saveHealthAlarms(next);
-                      }}
+                      onChange={(e) => updateAlarm(alarm.id, { enabled: e.target.checked })}
                       className="w-4 h-4 rounded accent-purple-500 cursor-pointer"
                     />
                   </div>

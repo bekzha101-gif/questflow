@@ -1,198 +1,179 @@
+// День восстановления: каждая пятница (вместо прежнего цикла 7+1).
+// Правило дня — shared/time.isRecoveryDay. Отметки активностей — в хранилище (kv `recovery:<дата>`),
+// награда за активность выдаётся один раз за день, даже если галочку снять и поставить снова.
+import { useCallback, useMemo } from 'react';
+import { addDays, isRecoveryDay, todayStr } from '@shared/time';
+import { useRecord } from '../store';
+
 export interface RecoveryActivity {
   id: string;
   title: string;
   description: string;
+  /** Ключ иконки (без эмодзи): sauna | walk | meditation | massage */
   icon: string;
   expReward: number;
   goldReward: number;
   hpReward: number;
 }
 
+/** Совместимость со старым кодом (таймер, App): параметров у пятницы нет */
 export interface RecoveryCycleConfig {
-  workDaysCount: number; // 7
-  recoveryDaysCount: number; // 1
-  cycleStartDate: string; // YYYY-MM-DD
+  activities: RecoveryActivity[];
   notification24hEnabled: boolean;
   desktopPushEnabled: boolean;
-  activities: RecoveryActivity[];
 }
 
 export interface DayCycleInfo {
   dateStr: string;
   isWorkDay: boolean;
   isRecoveryDay: boolean;
-  dayIndexInCycle: number; // 0..6 work, 7 recovery
-  dayNumberInCycle: number; // 1..7 work, 8 recovery
   isTomorrowRecovery: boolean;
   isTodayRecovery: boolean;
 }
 
+export const RECOVERY_BLOCK_MESSAGE = 'Сегодня пятница — день восстановления. Рабочие задачи и таймер отдыхают.';
+
 export const DEFAULT_RECOVERY_ACTIVITIES: RecoveryActivity[] = [
   {
     id: 'sauna_pool',
-    title: 'Бассейн и сауна',
-    description: 'Глубокий прогрев в сауне и плавание для снятия мышечных зажимов',
-    icon: '🧖‍♂️',
+    title: 'Баня или бассейн',
+    description: 'Прогрев в бане или плавание — снять зажимы после недели',
+    icon: 'sauna',
     expReward: 40,
     goldReward: 15,
     hpReward: 30,
   },
   {
     id: 'nature_walk',
-    title: 'Прогулка на природе (10 000+ шагов)',
-    description: 'Пешая прогулка на свежем воздухе без смартфона и наушников',
-    icon: '🌲',
+    title: 'Прогулка',
+    description: 'На свежем воздухе, без телефона и наушников',
+    icon: 'walk',
     expReward: 40,
     goldReward: 15,
     hpReward: 25,
   },
   {
     id: 'meditation',
-    title: 'Медитация (20-30 минут)',
-    description: 'Полная ментальная разгрузка, наблюдение за дыханием и тишина',
-    icon: '🧘‍♂️',
+    title: 'Медитация',
+    description: '20–30 минут тишины и дыхания',
+    icon: 'meditation',
     expReward: 35,
     goldReward: 10,
     hpReward: 25,
   },
   {
     id: 'massage_stretching',
-    title: 'Массаж / МФР / растяжка',
-    description: 'Снятие триггерных точек, миофасциальный релиз и мягкая растяжка',
-    icon: '💆‍♂️',
+    title: 'Массаж или растяжка',
+    description: 'Массаж, МФР или мягкая растяжка',
+    icon: 'massage',
     expReward: 35,
     goldReward: 10,
     hpReward: 20,
   },
 ];
 
+/** Сегодня по Бишкеку */
 export function getTodayStr(): string {
-  const d = new Date();
-  const year = d.getFullYear();
-  const month = (d.getMonth() + 1).toString().padStart(2, '0');
-  const day = d.getDate().toString().padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-export function getDefaultCycleStartDate(): string {
-  // По умолчанию старт цикла - текущая дата
-  return getTodayStr();
+  return todayStr();
 }
 
 export function loadRecoveryCycleConfig(): RecoveryCycleConfig {
-  try {
-    const raw = localStorage.getItem('questflow_recovery_cycle_config');
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed.cycleStartDate) {
-        return {
-          workDaysCount: 7,
-          recoveryDaysCount: 1,
-          cycleStartDate: parsed.cycleStartDate,
-          notification24hEnabled: parsed.notification24hEnabled ?? true,
-          desktopPushEnabled: parsed.desktopPushEnabled ?? true,
-          activities: DEFAULT_RECOVERY_ACTIVITIES,
-        };
-      }
-    }
-  } catch (e) {
-    console.error('Failed to load recovery cycle config:', e);
-  }
-
-  // Старт цикла ещё не задан: фиксируем сегодняшний день и сразу сохраняем,
-  // иначе каждый день считался бы «Днём 1» и детокс никогда не наступал.
-  const initialConfig: RecoveryCycleConfig = {
-    workDaysCount: 7,
-    recoveryDaysCount: 1,
-    cycleStartDate: getDefaultCycleStartDate(),
-    notification24hEnabled: true,
-    desktopPushEnabled: true,
-    activities: DEFAULT_RECOVERY_ACTIVITIES,
-  };
-  saveRecoveryCycleConfig(initialConfig);
-  return initialConfig;
+  return { activities: DEFAULT_RECOVERY_ACTIVITIES, notification24hEnabled: true, desktopPushEnabled: true };
 }
 
-export function saveRecoveryCycleConfig(config: RecoveryCycleConfig): void {
-  try {
-    localStorage.setItem('questflow_recovery_cycle_config', JSON.stringify(config));
-  } catch (e) {
-    console.error('Failed to save recovery cycle config:', e);
-  }
-}
-
-// Загрузка отмеченных активностей детокса по датам
-export function loadCompletedRecoveryActivities(): Record<string, string[]> {
-  try {
-    const raw = localStorage.getItem('questflow_recovery_completed_activities');
-    return raw ? JSON.parse(raw) : {};
-  } catch {
-    return {};
-  }
-}
-
-export function saveCompletedRecoveryActivities(data: Record<string, string[]>): void {
-  try {
-    localStorage.setItem('questflow_recovery_completed_activities', JSON.stringify(data));
-  } catch (e) {
-    console.error('Failed to save completed recovery activities:', e);
-  }
-}
-
-// Проверка и расчет статуса любого дня в цикле 7+1
-export function getDayCycleInfo(targetDateStr: string, config: RecoveryCycleConfig): DayCycleInfo {
-  const [tY, tM, tD] = targetDateStr.split('-').map(Number);
-  const targetDate = new Date(tY, tM - 1, tD, 12, 0, 0);
-
-  const [sY, sM, sD] = config.cycleStartDate.split('-').map(Number);
-  const startDate = new Date(sY, sM - 1, sD, 12, 0, 0);
-
-  const msPerDay = 24 * 60 * 60 * 1000;
-  const diffDays = Math.round((targetDate.getTime() - startDate.getTime()) / msPerDay);
-
-  const totalCycleDays = 8; // 7 рабочих + 1 восстановление
-  const dayIndexInCycle = ((diffDays % totalCycleDays) + totalCycleDays) % totalCycleDays;
-  const dayNumberInCycle = dayIndexInCycle + 1;
-
-  const isRecoveryDay = dayIndexInCycle === 7;
-  const isWorkDay = !isRecoveryDay;
-
-  // Проверка завтрашнего дня
-  const tomorrow = new Date(targetDate.getTime() + msPerDay);
-  const tomY = tomorrow.getFullYear();
-  const tomM = (tomorrow.getMonth() + 1).toString().padStart(2, '0');
-  const tomD = tomorrow.getDate().toString().padStart(2, '0');
-  const tomStr = `${tomY}-${tomM}-${tomD}`;
-  const tomDiffDays = Math.round((tomorrow.getTime() - startDate.getTime()) / msPerDay);
-  const tomIndex = ((tomDiffDays % totalCycleDays) + totalCycleDays) % totalCycleDays;
-  const isTomorrowRecovery = tomIndex === 7;
-
-  const todayStr = getTodayStr();
-  const isTodayRecovery = targetDateStr === todayStr && isRecoveryDay;
-
+/** Статус дня: пятница — восстановление. Второй параметр оставлен для старых вызовов. */
+export function getDayCycleInfo(dateStr: string, _config?: RecoveryCycleConfig): DayCycleInfo {
+  const rec = isRecoveryDay(dateStr);
   return {
-    dateStr: targetDateStr,
-    isWorkDay,
-    isRecoveryDay,
-    dayIndexInCycle,
-    dayNumberInCycle,
-    isTomorrowRecovery,
-    isTodayRecovery,
+    dateStr,
+    isWorkDay: !rec,
+    isRecoveryDay: rec,
+    isTomorrowRecovery: isRecoveryDay(addDays(dateStr, 1)),
+    isTodayRecovery: rec && dateStr === todayStr(),
   };
 }
 
-// Запрос разрешения на Web Push уведомления в macOS
+/** В пятницу рабочие задачи не добавляются */
+export function canAddWorkTask(dateStr: string): boolean {
+  return !isRecoveryDay(dateStr);
+}
+
+// ─── Активности дня восстановления ───────────────────────────────────────────
+
+export interface RecoveryDayState {
+  /** Отмеченные сейчас активности */
+  done: string[];
+  /** Активности, за которые награда уже выдана в этот день */
+  rewarded: string[];
+}
+
+export function emptyRecoveryDay(): RecoveryDayState {
+  return { done: [], rewarded: [] };
+}
+
+/** Переключить галочку. Награда — только при первой отметке активности за день. */
+export function toggleRecoveryActivity(
+  state: RecoveryDayState,
+  activityId: string,
+  activities: RecoveryActivity[] = DEFAULT_RECOVERY_ACTIVITIES,
+): { state: RecoveryDayState; reward: RecoveryActivity | null } {
+  const act = activities.find((a) => a.id === activityId);
+  if (!act) return { state, reward: null };
+  if (state.done.includes(activityId)) {
+    return { state: { ...state, done: state.done.filter((x) => x !== activityId) }, reward: null };
+  }
+  const already = state.rewarded.includes(activityId);
+  return {
+    state: { done: [...state.done, activityId], rewarded: already ? state.rewarded : [...state.rewarded, activityId] },
+    reward: already ? null : act,
+  };
+}
+
+export const recoveryKvKey = (dateStr: string) => `recovery:${dateStr}`;
+const LEGACY_KEY = 'legacy:questflow_recovery_completed_activities';
+
+interface KvRow<T> {
+  key: string;
+  value: T;
+}
+
+/**
+ * Отметки активностей за день (хранилище). toggle возвращает активность, если за неё положена награда.
+ * Старые отметки (перенесённые из браузера) читаются как уже награждённые.
+ */
+export function useRecoveryDay(dateStr: string) {
+  const key = recoveryKvKey(dateStr);
+  const { value, save } = useRecord<KvRow<RecoveryDayState>>('kv', key);
+  const { value: legacy } = useRecord<KvRow<Record<string, string[]>>>('kv', LEGACY_KEY);
+
+  const state = useMemo<RecoveryDayState>(() => {
+    if (value?.value && Array.isArray(value.value.done)) {
+      return { done: value.value.done, rewarded: Array.isArray(value.value.rewarded) ? value.value.rewarded : value.value.done };
+    }
+    const old = legacy?.value?.[dateStr];
+    return Array.isArray(old) ? { done: old, rewarded: old } : emptyRecoveryDay();
+  }, [value, legacy, dateStr]);
+
+  const toggle = useCallback(
+    (activityId: string): RecoveryActivity | null => {
+      const r = toggleRecoveryActivity(state, activityId);
+      save({ key, value: r.state });
+      return r.reward;
+    },
+    [state, save, key],
+  );
+
+  return { done: state.done, toggle };
+}
+
+// ─── Системные уведомления ───────────────────────────────────────────────────
+
 export async function requestDesktopNotificationPermission(): Promise<boolean> {
-  if (typeof window === 'undefined' || !('Notification' in window)) {
-    return false;
-  }
-  if (Notification.permission === 'granted') {
-    return true;
-  }
+  if (typeof window === 'undefined' || !('Notification' in window)) return false;
+  if (Notification.permission === 'granted') return true;
   if (Notification.permission !== 'denied') {
     try {
-      const perm = await Notification.requestPermission();
-      return perm === 'granted';
+      return (await Notification.requestPermission()) === 'granted';
     } catch {
       return false;
     }
@@ -200,20 +181,30 @@ export async function requestDesktopNotificationPermission(): Promise<boolean> {
   return false;
 }
 
-// Отправка системного Web Push уведомления
-export function sendDesktopNotification(title: string, body: string, tag: string = 'questflow-alert'): void {
-  if (typeof window === 'undefined' || !('Notification' in window)) {
-    return;
+/** Иконка относительно base сборки (сайт может жить в подпапке GitHub Pages) */
+function iconUrl(): string {
+  try {
+    return `${import.meta.env.BASE_URL ?? './'}favicon.svg`;
+  } catch {
+    return './favicon.svg';
   }
-  if (Notification.permission === 'granted') {
+}
+
+/** Системное уведомление: через service worker, если он есть (Android/PWA), иначе Notification */
+export function sendDesktopNotification(title: string, body: string, tag: string = 'questflow-alert'): void {
+  if (typeof window === 'undefined' || !('Notification' in window)) return;
+  if (Notification.permission !== 'granted') return;
+  const opts: NotificationOptions = { body, icon: iconUrl(), tag };
+  const fallback = () => {
     try {
-      new Notification(title, {
-        body,
-        icon: '/favicon.ico',
-        tag,
-      });
+      new Notification(title, opts);
     } catch (e) {
-      console.warn('Desktop notification dispatch failed:', e);
+      console.warn('Не удалось показать уведомление:', e);
     }
+  };
+  if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+    navigator.serviceWorker.ready.then((reg) => reg.showNotification(title, opts)).catch(fallback);
+  } else {
+    fallback();
   }
 }

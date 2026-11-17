@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { TaskItem, Project, UserStats, Reward } from '../types';
 import { isShoppingTask } from '../utils/taskFilters';
 import { todayStr as todayBishkek, addDays } from '@shared/time';
@@ -22,13 +22,14 @@ import {
 } from 'lucide-react';
 import { playQuestCompleteSound, playCoinSound } from '../utils/sound';
 import { triggerQuestConfetti } from '../utils/confetti';
-import { 
-  loadRecoveryCycleConfig, 
-  getDayCycleInfo, 
-  loadCompletedRecoveryActivities, 
-  saveCompletedRecoveryActivities, 
-  RecoveryActivity 
+import {
+  getDayCycleInfo,
+  DEFAULT_RECOVERY_ACTIVITIES,
+  RECOVERY_BLOCK_MESSAGE,
+  useRecoveryDay,
+  RecoveryActivity,
 } from '../utils/recoveryCycle';
+import { useHabitDay } from '../utils/bigDataTracker';
 
 interface CommandCenterTodayProps {
   tasks: TaskItem[];
@@ -116,13 +117,13 @@ function Column({ title, count, badge, children }: {
 }
 
 // ─── Mini add input (Linear style clean bar) ──────────────────────────────────
-function AddInput({ 
-  placeholder, 
-  onAdd, 
-  disabled = false, 
-  disabledMessage 
-}: { 
-  placeholder: string; 
+function AddInput({
+  placeholder,
+  onAdd,
+  disabled = false,
+  disabledMessage
+}: {
+  placeholder: string;
   onAdd: (v: string) => void;
   disabled?: boolean;
   disabledMessage?: string;
@@ -316,7 +317,7 @@ function TaskRow({
 
           {/* ── Deadline & Priority Row ───────────────────────────── */}
           <div className="flex items-center justify-between gap-2 flex-wrap text-xs">
-            
+
             {/* Deadline */}
             <div className="flex items-center gap-1.5">
               <Calendar className="w-3 h-3 text-zinc-400" />
@@ -469,25 +470,16 @@ export function CommandCenterToday({
   const [todoFilter, setTodoFilter] = useState<TodoFilter>('active');
   const [boughtId, setBoughtId] = useState<string | null>(null);
 
-  // Recovery cycle status (7 work days + 1 recovery day)
-  const recoveryConfig = loadRecoveryCycleConfig();
+  // Пятница — день восстановления (shared/time.isRecoveryDay)
   const currentToday = todayStr();
-  const cycleInfo = getDayCycleInfo(currentToday, recoveryConfig);
-  const [completedActivitiesMap, setCompletedActivitiesMap] = useState<Record<string, string[]>>(loadCompletedRecoveryActivities);
-
-  const todayCompletedActs = completedActivitiesMap[currentToday] || [];
+  const cycleInfo = getDayCycleInfo(currentToday);
+  const recoveryActivities = DEFAULT_RECOVERY_ACTIVITIES;
+  const { done: todayCompletedActs, toggle: toggleRecovery } = useRecoveryDay(currentToday);
 
   const handleToggleTodayActivity = (act: RecoveryActivity) => {
-    const isDone = todayCompletedActs.includes(act.id);
-    const updated = isDone 
-      ? todayCompletedActs.filter((id) => id !== act.id)
-      : [...todayCompletedActs, act.id];
-
-    const nextMap = { ...completedActivitiesMap, [currentToday]: updated };
-    setCompletedActivitiesMap(nextMap);
-    saveCompletedRecoveryActivities(nextMap);
-
-    if (!isDone) {
+    // Награда — только за первую отметку активности за день
+    const reward = toggleRecovery(act.id);
+    if (reward) {
       playQuestCompleteSound();
       playCoinSound();
       triggerQuestConfetti();
@@ -501,6 +493,16 @@ export function CommandCenterToday({
 
   const habits = tasks.filter((t) => t.type === 'habit');
   const dailies = tasks.filter((t) => t.type === 'daily');
+
+  // Привычки одним касанием: отметка за сегодня, награда один раз; снимок идёт в день Big Data
+  const { doneIds: habitsDoneToday, tap: tapHabit, syncSnapshot } = useHabitDay(tasks, currentToday);
+  const dailySig = dailies.map((d) => `${d.id}:${d.completed ? 1 : 0}`).join(',') + '|' + habits.map((h) => h.id).join(',');
+  useEffect(() => {
+    syncSnapshot();
+  }, [dailySig]); // eslint-disable-line react-hooks/exhaustive-deps
+  const handleTapHabit = (habitId: string) => {
+    if (tapHabit(habitId)) onTriggerHabit(habitId, 'positive');
+  };
 
   // Shopping tasks are isolated in the Shopping List and never mixed with daily goals/tasks
   const shoppingTasksCount = shoppingCount;
@@ -553,13 +555,9 @@ export function CommandCenterToday({
             <h1 className="text-base sm:text-lg font-semibold text-zinc-100 tracking-tight leading-tight">
               Сегодня
             </h1>
-            {cycleInfo.isRecoveryDay ? (
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/25 text-rose-300 border border-rose-500/40 animate-pulse">
-                🧖‍♂️ День 8: Детокс
-              </span>
-            ) : (
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/25">
-                🟢 Спринт (День {cycleInfo.dayNumberInCycle}/7)
+            {cycleInfo.isRecoveryDay && (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/25">
+                Пятница · восстановление
               </span>
             )}
           </div>
@@ -567,61 +565,45 @@ export function CommandCenterToday({
 
       </div>
 
-      {/* ── 24h Advance Notice Banner ─────────────────────────────────── */}
+      {/* ── Четверг: завтра восстановление ────────────────────────────── */}
       {cycleInfo.isTomorrowRecovery && !cycleInfo.isRecoveryDay && (
-        <div className="mx-3 sm:mx-6 mt-3 bg-gradient-to-r from-amber-950/40 via-[#19130c] to-amber-950/40 border border-amber-500/40 rounded-2xl p-3 sm:p-4 shadow-lg flex items-start gap-3 select-none">
-          <div className="p-2 rounded-xl bg-amber-500/20 text-amber-300 shrink-0 text-lg">
-            🧖‍♂️
-          </div>
+        <div className="mx-3 sm:mx-6 mt-3 border border-amber-500/25 bg-amber-500/[0.06] rounded-2xl p-3 sm:p-4 flex items-start gap-3 select-none">
+          <Calendar className="w-4 h-4 text-amber-300 shrink-0 mt-0.5" />
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="text-xs sm:text-sm font-bold text-amber-200">
-                Напоминание за 24 часа: Завтра День Активного Восстановления!
-              </h3>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-semibold">
-                День 7/7 завершается
-              </span>
-            </div>
+            <h3 className="text-xs sm:text-sm font-semibold text-amber-200">Завтра пятница — день восстановления</h3>
             <p className="text-xs text-amber-300/80 mt-1 leading-relaxed">
-              Завтра 8-й день: полный цифровой детокс без интернета и гаджетов. Завершите срочные цифровые задачи, предупредите коллег и запланируйте бассейн с сауной, прогулку в парке и медитацию.
+              День без работы и интернета. Закрой срочное сегодня и запланируй баню или бассейн, прогулку, медитацию.
             </p>
           </div>
         </div>
       )}
 
-      {/* ── Day 8 Recovery Detox Hero Banner ──────────────────────────── */}
+      {/* ── Пятница: активности восстановления ──────────────────────────── */}
       {cycleInfo.isRecoveryDay && (
-        <div className="mx-3 sm:mx-6 mt-3 bg-gradient-to-r from-rose-950/60 via-[#1c0d12] to-rose-950/60 border border-rose-500/50 rounded-2xl p-4 sm:p-5 shadow-2xl relative overflow-hidden select-none">
-          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3 pb-3 border-b border-rose-500/20">
+        <div className="mx-3 sm:mx-6 mt-3 bg-[#101014] border border-emerald-500/25 rounded-2xl p-4 sm:p-5 relative overflow-hidden select-none">
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3 pb-3 border-b border-white/[0.06]">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-rose-500/25 border border-rose-500/50 flex items-center justify-center text-xl shadow">
-                🧖‍♂️
+              <div className="w-10 h-10 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center">
+                <Heart className="w-5 h-5 text-emerald-300" />
               </div>
               <div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h2 className="text-sm sm:text-base font-bold text-rose-100 tracking-tight">
-                    ДЕНЬ АКТИВНОГО ВОССТАНОВЛЕНИЯ (ЦИФРОВОЙ ДЕТОКС)
-                  </h2>
-                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-rose-500/30 text-rose-200 border border-rose-500/40">
-                    ДЕНЬ 8 ИЗ 8
-                  </span>
-                </div>
-                <p className="text-xs text-rose-300/90 mt-0.5">
-                  Сегодня день без интернета и гаджетов. Закройте ноутбук, отложите смартфон. Только тепло сауны, вода бассейна, природа и медитация.
+                <h2 className="text-sm sm:text-base font-semibold text-zinc-100 tracking-tight">Пятница — день восстановления</h2>
+                <p className="text-xs text-zinc-400 mt-0.5">
+                  Без работы и интернета. Отметь, что сделал: награда за каждую активность — один раз за день.
                 </p>
               </div>
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
-              <span className="text-xs font-mono font-bold px-3 py-1.5 rounded-xl bg-rose-950/70 border border-rose-500/40 text-rose-300">
-                Выполнено: {todayCompletedActs.length}/{recoveryConfig.activities.length}
+              <span className="text-xs font-mono px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-emerald-300">
+                {todayCompletedActs.length}/{recoveryActivities.length}
               </span>
             </div>
           </div>
 
           {/* Ritual Checklist */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 pt-3">
-            {recoveryConfig.activities.map((act) => {
+            {recoveryActivities.map((act) => {
               const isDone = todayCompletedActs.includes(act.id);
               return (
                 <button
@@ -629,19 +611,18 @@ export function CommandCenterToday({
                   onClick={() => handleToggleTodayActivity(act)}
                   className={`p-3 rounded-xl border text-left flex items-start gap-2.5 transition-all tactile-btn ${
                     isDone
-                      ? 'bg-rose-900/40 border-rose-500/50 text-rose-200'
-                      : 'bg-[#151014] hover:bg-[#1c141a] border-white/5 text-zinc-300 hover:border-white/15'
+                      ? 'bg-emerald-500/[0.08] border-emerald-500/30 text-emerald-100'
+                      : 'bg-[#14141a] hover:bg-[#181822] border-white/[0.06] text-zinc-300 hover:border-white/15'
                   }`}
                 >
                   <div className={`mt-0.5 w-4 h-4 rounded-md border flex items-center justify-center shrink-0 ${
-                    isDone ? 'bg-rose-500 border-rose-400 text-white' : 'border-zinc-600'
+                    isDone ? 'bg-emerald-500 border-emerald-400 text-zinc-950' : 'border-zinc-600'
                   }`}>
                     {isDone && <Check className="w-3 h-3 stroke-[3]" />}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="text-xs font-bold flex items-center gap-1.5">
-                      <span>{act.icon}</span>
-                      <span className={isDone ? 'line-through text-rose-300/80' : 'text-zinc-200'}>
+                      <span className={isDone ? 'text-emerald-200' : 'text-zinc-200'}>
                         {act.title}
                       </span>
                     </div>
@@ -656,12 +637,10 @@ export function CommandCenterToday({
             })}
           </div>
 
-          {todayCompletedActs.length === recoveryConfig.activities.length && (
-            <div className="mt-3 p-3 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-200 text-xs font-semibold flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
-                <span>🏆 Все практики закрыты! Получен трофей «Мастер перезагрузки» и полное восстановление HP (+100 HP, +150 EXP, +50 золота)!</span>
-              </div>
+          {todayCompletedActs.length === recoveryActivities.length && (
+            <div className="mt-3 p-3 rounded-xl bg-emerald-500/[0.08] border border-emerald-500/25 text-emerald-200 text-xs font-medium flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-emerald-300 shrink-0" />
+              <span>Все активности восстановления отмечены.</span>
             </div>
           )}
         </div>
@@ -672,11 +651,9 @@ export function CommandCenterToday({
 
         {/* ── COL 1: HABITS ───────────────────────────────────────────── */}
         <Column title="Привычки" count={habits.length}>
-          <AddInput 
-            placeholder="Добавить привычку..." 
-            onAdd={addHabit} 
-            disabled={cycleInfo.isRecoveryDay}
-            disabledMessage="Сегодня день отдыха. Уберите гаджеты и идите в баню!"
+          <AddInput
+            placeholder="Добавить привычку..."
+            onAdd={addHabit}
           />
           {habits.length === 0 ? (
             <div className="py-8 text-center">
@@ -684,21 +661,29 @@ export function CommandCenterToday({
               <p className="text-[10px] text-zinc-600 mt-1">Нажмите + чтобы добавить</p>
             </div>
           ) : (
-            habits.map((habit) => (
+            habits.map((habit) => {
+              const doneToday = habitsDoneToday.includes(habit.id);
+              return (
               <div
                 key={habit.id}
-                className="group flex items-center gap-2 px-2.5 py-2 rounded-xl bg-[#14141a] hover:bg-[#181822] border border-white/[0.06] hover:border-white/[0.12] transition-all"
+                className={`group flex items-center gap-2 px-2.5 py-2 rounded-xl border transition-all ${
+                  doneToday
+                    ? 'bg-[#0d0d12] border-white/[0.03]'
+                    : 'bg-[#14141a] hover:bg-[#181822] border-white/[0.06] hover:border-white/[0.12]'
+                }`}
               >
+                {/* Одно касание: отметить привычку за сегодня (награда — один раз за день) */}
                 <button
                   type="button"
-                  onClick={() => onTriggerHabit(habit.id, 'positive')}
-                  className="shrink-0 w-6 h-6 rounded-lg bg-emerald-950/60 hover:bg-emerald-800/80 text-emerald-300 border border-emerald-700/40 flex items-center justify-center transition-all tactile-btn"
-                  title="Выполнить привычку (+EXP, +Золото)"
+                  onClick={() => handleTapHabit(habit.id)}
+                  className="flex-1 min-w-0 flex items-center gap-2 text-left tactile-btn"
+                  title={doneToday ? 'Снять отметку за сегодня' : 'Отметить за сегодня'}
                 >
-                  <Plus className="w-3 h-3" />
+                  {doneToday
+                    ? <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400 fill-emerald-500/20" />
+                    : <Circle className="w-4 h-4 shrink-0 text-zinc-500" />}
+                  <span className={`flex-1 text-xs truncate ${doneToday ? 'text-zinc-500 line-through' : 'text-zinc-200'}`}>{habit.title}</span>
                 </button>
-
-                <span className="flex-1 text-xs text-zinc-200 truncate">{habit.title}</span>
 
                 {(habit.habitCounter ?? 0) > 0 && (
                   <span className="shrink-0 text-[10px] font-mono text-zinc-400 px-1 rounded bg-black/40">
@@ -737,7 +722,8 @@ export function CommandCenterToday({
                   </button>
                 )}
               </div>
-            ))
+              );
+            })
           )}
         </Column>
 
@@ -751,11 +737,9 @@ export function CommandCenterToday({
             </span>
           }
         >
-          <AddInput 
-            placeholder="Добавить ежедневную..." 
-            onAdd={addDaily} 
-            disabled={cycleInfo.isRecoveryDay}
-            disabledMessage="Сегодня день отдыха. Уберите гаджеты и идите в баню!"
+          <AddInput
+            placeholder="Добавить ежедневную..."
+            onAdd={addDaily}
           />
           {dailies.length === 0 ? (
             <div className="py-8 text-center">
@@ -822,8 +806,8 @@ export function CommandCenterToday({
         </Column>
 
         {/* ── COL 3: TO-DO's (with subtasks + deadline) ───────────────── */}
-        <Column 
-          title="Задачи" 
+        <Column
+          title="Задачи"
           count={activeTodos.length}
           badge={
             shoppingTasksCount > 0 && onOpenShoppingTab ? (
@@ -839,11 +823,11 @@ export function CommandCenterToday({
             ) : undefined
           }
         >
-          <AddInput 
-            placeholder="Добавить задачу..." 
-            onAdd={addTodo} 
+          <AddInput
+            placeholder="Добавить задачу..."
+            onAdd={addTodo}
             disabled={cycleInfo.isRecoveryDay}
-            disabledMessage="Сегодня день отдыха. Уберите гаджеты и идите в баню!"
+            disabledMessage={RECOVERY_BLOCK_MESSAGE}
           />
 
           {/* Filter tabs (Segmented Control) */}

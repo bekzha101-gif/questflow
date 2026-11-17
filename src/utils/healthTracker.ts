@@ -1,72 +1,86 @@
-import { 
-  FoodLogEntry, 
-  SleepCycleEntry, 
-  HealthDailyProtocol, 
-  RecoveryLogEntry, 
-  DamageIncident, 
-  HealthAlarmConfig, 
-  HealthAiReport 
+import { useEffect, useState } from 'react';
+import {
+  FoodLogEntry,
+  SleepCycleEntry,
+  HealthDailyProtocol,
+  RecoveryLogEntry,
+  DamageIncident,
+  HealthAlarmConfig,
+  HealthAiReport,
+  MealType,
+  FoodFeeling,
 } from '../types/health';
+import { bishkekHM, todayStr } from '@shared/time';
+import { store as defaultStore, useCollectionState, type Store } from '../store';
+import { sendDesktopNotification } from './recoveryCycle';
 
-const KEYS = {
-  DAILY_PREFIX: 'questflow_health_daily_',
-  FOOD: 'questflow_health_food_v1',
-  SLEEP: 'questflow_health_sleep_v1',
-  DAMAGE: 'questflow_health_damage_v1',
-  RECOVERY: 'questflow_health_recovery_v1',
-  ALARMS: 'questflow_health_alarms_v1',
-  AI_REPORT: 'questflow_health_ai_report_v1',
+// Здоровье: все данные — в хранилище (src/store), а не в отдельных ключах браузера.
+// Еда — таблица health_food, будильники — health_alarms (их читает и сервер для Telegram),
+// остальное (протокол дня, сон, урон, восстановление, AI-отчёт) — kv. Старые ключи questflow_*
+// после переноса лежат в kv как legacy:<ключ> и читаются как запасной вариант.
+// Время — только по Бишкеку (shared/time).
+
+const KV = {
+  DAILY_PREFIX: 'health_daily:',
+  SLEEP: 'health_sleep',
+  DAMAGE: 'health_damage',
+  RECOVERY: 'health_recovery',
+  AI_REPORT: 'health_ai_report',
+  FIRED: 'health_alarms_fired',
+};
+const LEGACY = {
+  DAILY_PREFIX: 'legacy:questflow_health_daily_',
+  SLEEP: 'legacy:questflow_health_sleep_v1',
+  DAMAGE: 'legacy:questflow_health_damage_v1',
+  RECOVERY: 'legacy:questflow_health_recovery_v1',
+  AI_REPORT: 'legacy:questflow_health_ai_report_v1',
 };
 
-export function getTodayDateString(): string {
-  const now = new Date();
-  return now.toISOString().slice(0, 10);
+interface KvRow<T> {
+  key: string;
+  value: T;
 }
 
-export function getCurrentTimeString(): string {
-  const now = new Date();
-  const h = String(now.getHours()).padStart(2, '0');
-  const m = String(now.getMinutes()).padStart(2, '0');
-  return `${h}:${m}`;
+function kvGet<T>(key: string, legacyKey: string | null, s: Store = defaultStore): T | null {
+  const row = s.get<KvRow<T>>('kv', key);
+  if (row && row.value !== undefined && row.value !== null) return row.value;
+  if (legacyKey) {
+    const old = s.get<KvRow<T>>('kv', legacyKey);
+    if (old && old.value !== undefined && old.value !== null) return old.value;
+  }
+  return null;
+}
+
+function kvSet<T>(key: string, value: T, s: Store = defaultStore) {
+  s.upsert('kv', { key, value });
+}
+
+/** Сегодня по Бишкеку */
+export function getTodayDateString(now: Date = new Date()): string {
+  return todayStr(now);
+}
+
+/** Текущее время ЧЧ:ММ по Бишкеку */
+export function getCurrentTimeString(now: Date = new Date()): string {
+  const { h, m } = bishkekHM(now);
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+/** «Сегодня», которое само переходит на новый день в полночь по Бишкеку */
+export function useTodayStr(): string {
+  const [day, setDay] = useState(() => todayStr());
+  useEffect(() => {
+    const t = setInterval(() => setDay(todayStr()), 30_000);
+    return () => clearInterval(t);
+  }, []);
+  return day;
 }
 
 export const DEFAULT_HEALTH_ALARMS: HealthAlarmConfig[] = [
-  {
-    id: 'alarm-meditation',
-    title: '🧘 Будильник на медитацию',
-    time: '17:15',
-    enabled: true,
-    type: 'meditation',
-    soundEnabled: true,
-    repeatDaily: true,
-  },
-  {
-    id: 'alarm-walk',
-    title: '🚶 Прогулка на свежем воздухе',
-    time: '21:00',
-    enabled: true,
-    type: 'walk',
-    soundEnabled: true,
-    repeatDaily: true,
-  },
-  {
-    id: 'alarm-gadgets',
-    title: '📵 Отключение телефона и гаджетов (за 1ч до сна)',
-    time: '22:00',
-    enabled: true,
-    type: 'gadgets_off',
-    soundEnabled: true,
-    repeatDaily: true,
-  },
-  {
-    id: 'alarm-sleep',
-    title: '😴 Отбой (сон 8-9 часов)',
-    time: '23:00',
-    enabled: true,
-    type: 'sleep',
-    soundEnabled: true,
-    repeatDaily: true,
-  },
+  { id: 'alarm-meditation', title: 'Медитация', time: '17:15', enabled: true, type: 'meditation', soundEnabled: true, repeatDaily: true },
+  { id: 'alarm-walk', title: 'Прогулка на свежем воздухе', time: '21:00', enabled: true, type: 'walk', soundEnabled: true, repeatDaily: true },
+  { id: 'alarm-gadgets', title: 'Убрать телефон и гаджеты (за час до сна)', time: '22:00', enabled: true, type: 'gadgets_off', soundEnabled: true, repeatDaily: true },
+  { id: 'alarm-sleep', title: 'Отбой', time: '23:00', enabled: true, type: 'sleep', soundEnabled: true, repeatDaily: true },
 ];
 
 export function getDefaultDailyProtocol(date = getTodayDateString()): HealthDailyProtocol {
@@ -85,171 +99,161 @@ export function getDefaultDailyProtocol(date = getTodayDateString()): HealthDail
   };
 }
 
-// ─── Storage Operations ──────────────────────────────────────────────────────
+// ─── Чтение и запись ─────────────────────────────────────────────────────────
 
 export function loadDailyProtocol(date = getTodayDateString()): HealthDailyProtocol {
-  try {
-    const raw = localStorage.getItem(`${KEYS.DAILY_PREFIX}${date}`);
-    if (raw) return JSON.parse(raw);
-  } catch (e) {
-    console.error('Error loading daily health protocol', e);
-  }
-  return getDefaultDailyProtocol(date);
+  const v = kvGet<HealthDailyProtocol>(KV.DAILY_PREFIX + date, LEGACY.DAILY_PREFIX + date);
+  return v ? { ...getDefaultDailyProtocol(date), ...v, date } : getDefaultDailyProtocol(date);
 }
 
 export function saveDailyProtocol(protocol: HealthDailyProtocol) {
-  try {
-    localStorage.setItem(`${KEYS.DAILY_PREFIX}${protocol.date}`, JSON.stringify(protocol));
-  } catch (e) {
-    console.error('Error saving daily health protocol', e);
-  }
+  kvSet(KV.DAILY_PREFIX + protocol.date, protocol);
 }
 
-export function loadFoodLogs(): FoodLogEntry[] {
-  try {
-    const raw = localStorage.getItem(KEYS.FOOD);
-    if (raw) return JSON.parse(raw);
-  } catch (e) {
-    console.error('Error loading food logs', e);
-  }
-  return [];
+/** Новая запись еды: дата и время — по Бишкеку в момент записи */
+export function addFoodEntry(
+  input: { mealType: MealType; food: string; feeling: FoodFeeling; notes?: string; time?: string },
+  now: Date = new Date(),
+  s: Store = defaultStore,
+): FoodLogEntry {
+  const entry: FoodLogEntry = {
+    id: `food-${now.getTime()}-${Math.random().toString(36).slice(2, 6)}`,
+    timestamp: now.toISOString(),
+    date: todayStr(now),
+    time: input.time || getCurrentTimeString(now),
+    mealType: input.mealType,
+    food: input.food,
+    feeling: input.feeling,
+    ...(input.notes ? { notes: input.notes } : {}),
+  };
+  s.upsert('health_food', entry);
+  return entry;
 }
 
-export function saveFoodLogs(logs: FoodLogEntry[]) {
-  try {
-    localStorage.setItem(KEYS.FOOD, JSON.stringify(logs));
-  } catch (e) {
-    console.error('Error saving food logs', e);
-  }
+/** Записи еды за день, по времени */
+export function foodForDay(entries: FoodLogEntry[], date: string): FoodLogEntry[] {
+  return entries.filter((f) => f.date === date).sort((a, b) => (a.time < b.time ? -1 : a.time > b.time ? 1 : 0));
+}
+
+export function loadFoodLogs(s: Store = defaultStore): FoodLogEntry[] {
+  return s.items<FoodLogEntry>('health_food');
+}
+
+/** Дневник питания как useState поверх хранилища (переживает перезагрузку, синкается) */
+export function useFoodLogs() {
+  return useCollectionState<FoodLogEntry>('health_food');
 }
 
 export function loadSleepLogs(): SleepCycleEntry[] {
-  try {
-    const raw = localStorage.getItem(KEYS.SLEEP);
-    if (raw) return JSON.parse(raw);
-  } catch (e) {
-    console.error('Error loading sleep logs', e);
-  }
-  return [];
+  return kvGet<SleepCycleEntry[]>(KV.SLEEP, LEGACY.SLEEP) ?? [];
 }
 
 export function saveSleepLogs(logs: SleepCycleEntry[]) {
-  try {
-    localStorage.setItem(KEYS.SLEEP, JSON.stringify(logs));
-  } catch (e) {
-    console.error('Error saving sleep logs', e);
-  }
+  kvSet(KV.SLEEP, logs);
 }
 
 export function loadDamageIncidents(): DamageIncident[] {
-  try {
-    const raw = localStorage.getItem(KEYS.DAMAGE);
-    if (raw) return JSON.parse(raw);
-  } catch (e) {
-    console.error('Error loading damage incidents', e);
-  }
-  return [];
+  return kvGet<DamageIncident[]>(KV.DAMAGE, LEGACY.DAMAGE) ?? [];
 }
 
 export function saveDamageIncidents(incidents: DamageIncident[]) {
-  try {
-    localStorage.setItem(KEYS.DAMAGE, JSON.stringify(incidents));
-  } catch (e) {
-    console.error('Error saving damage incidents', e);
-  }
+  kvSet(KV.DAMAGE, incidents);
 }
 
 export function loadRecoveryLogs(): RecoveryLogEntry[] {
-  try {
-    const raw = localStorage.getItem(KEYS.RECOVERY);
-    if (raw) return JSON.parse(raw);
-  } catch (e) {
-    console.error('Error loading recovery logs', e);
-  }
-  return [];
+  return kvGet<RecoveryLogEntry[]>(KV.RECOVERY, LEGACY.RECOVERY) ?? [];
 }
 
 export function saveRecoveryLogs(logs: RecoveryLogEntry[]) {
-  try {
-    localStorage.setItem(KEYS.RECOVERY, JSON.stringify(logs));
-  } catch (e) {
-    console.error('Error saving recovery logs', e);
-  }
+  kvSet(KV.RECOVERY, logs);
 }
 
-export function loadHealthAlarms(): HealthAlarmConfig[] {
-  try {
-    const raw = localStorage.getItem(KEYS.ALARMS);
-    if (raw) return JSON.parse(raw);
-  } catch (e) {
-    console.error('Error loading health alarms', e);
-  }
-  return DEFAULT_HEALTH_ALARMS;
+/** Будильники из хранилища; пока таблица пуста — будильники по умолчанию */
+export function loadHealthAlarms(s: Store = defaultStore): HealthAlarmConfig[] {
+  return s.hasAnyRow('health_alarms') ? s.items<HealthAlarmConfig>('health_alarms') : DEFAULT_HEALTH_ALARMS;
 }
 
-export function saveHealthAlarms(alarms: HealthAlarmConfig[]) {
-  try {
-    localStorage.setItem(KEYS.ALARMS, JSON.stringify(alarms));
-  } catch (e) {
-    console.error('Error saving health alarms', e);
-  }
+/** Будильники как useState: первая правка записывает их в health_alarms (сервер шлёт их в Telegram) */
+export function useHealthAlarms(): {
+  alarms: HealthAlarmConfig[];
+  saved: boolean;
+  setAlarms: (next: HealthAlarmConfig[]) => void;
+} {
+  const [items, setItems] = useCollectionState<HealthAlarmConfig>('health_alarms');
+  const saved = items.length > 0 || defaultStore.hasAnyRow('health_alarms');
+  return { alarms: saved ? items : DEFAULT_HEALTH_ALARMS, saved, setAlarms: (next) => setItems(next) };
+}
+
+export function saveHealthAlarms(alarms: HealthAlarmConfig[], s: Store = defaultStore) {
+  for (const a of alarms) s.upsert('health_alarms', a);
 }
 
 export function loadSavedAiReport(): HealthAiReport | null {
-  try {
-    const raw = localStorage.getItem(KEYS.AI_REPORT);
-    if (raw) return JSON.parse(raw);
-  } catch (e) {
-    console.error('Error loading AI report', e);
-  }
-  return null;
+  return kvGet<HealthAiReport>(KV.AI_REPORT, LEGACY.AI_REPORT);
 }
 
 export function saveAiReport(report: HealthAiReport) {
-  try {
-    localStorage.setItem(KEYS.AI_REPORT, JSON.stringify(report));
-  } catch (e) {
-    console.error('Error saving AI report', e);
-  }
+  kvSet(KV.AI_REPORT, report);
 }
 
-// ─── Web Audio Alarm Chime & Sound Synthesizer ───────────────────────────────
+// ─── Звук: один AudioContext на всё приложение ───────────────────────────────
+
+type AudioCtor = typeof AudioContext;
+let sharedCtx: AudioContext | null = null;
+
+function audioContext(): AudioContext | null {
+  if (typeof window === 'undefined') return null;
+  if (sharedCtx) return sharedCtx;
+  const w = window as unknown as { AudioContext?: AudioCtor; webkitAudioContext?: AudioCtor };
+  const Ctor = w.AudioContext || w.webkitAudioContext;
+  if (!Ctor) return null;
+  try {
+    sharedCtx = new Ctor();
+  } catch {
+    return null;
+  }
+  return sharedCtx;
+}
+
+/** Разбудить звук после жеста пользователя (политика автоплея браузера) */
+export function unlockHealthAudio() {
+  const ctx = audioContext();
+  if (ctx && ctx.state === 'suspended') void ctx.resume().catch(() => undefined);
+}
 
 export function playHealthAlarmSound(type: 'meditation' | 'alert' | 'heal') {
   try {
-    const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    if (!AudioCtx) return;
-    const ctx = new AudioCtx();
+    const ctx = audioContext();
+    if (!ctx) return;
+    if (ctx.state === 'suspended') void ctx.resume().catch(() => undefined);
+    const now = ctx.currentTime;
 
     if (type === 'meditation') {
-      // Tibetan Singing Bowl / Zen Bell Sound
+      // Поющая чаша
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.type = 'sine';
-      osc.frequency.setValueAtTime(432, ctx.currentTime); // 432 Hz healing tone
-      osc.frequency.exponentialRampToValueAtTime(216, ctx.currentTime + 3.0);
-      gain.gain.setValueAtTime(0.4, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 3.0);
+      osc.frequency.setValueAtTime(432, now);
+      osc.frequency.exponentialRampToValueAtTime(216, now + 3.0);
+      gain.gain.setValueAtTime(0.4, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 3.0);
       osc.connect(gain);
       gain.connect(ctx.destination);
-      osc.start();
-      osc.stop(ctx.currentTime + 3.0);
+      osc.start(now);
+      osc.stop(now + 3.0);
     } else if (type === 'alert') {
-      // Gentle warning ping
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.type = 'triangle';
-      osc.frequency.setValueAtTime(320, ctx.currentTime);
-      osc.frequency.setValueAtTime(240, ctx.currentTime + 0.15);
-      gain.gain.setValueAtTime(0.3, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.8);
+      osc.frequency.setValueAtTime(320, now);
+      osc.frequency.setValueAtTime(240, now + 0.15);
+      gain.gain.setValueAtTime(0.3, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
       osc.connect(gain);
       gain.connect(ctx.destination);
-      osc.start();
-      osc.stop(ctx.currentTime + 0.8);
-    } else if (type === 'heal') {
-      // Pleasant harmonic chime
-      const now = ctx.currentTime;
+      osc.start(now);
+      osc.stop(now + 0.8);
+    } else {
       [528, 660, 792].forEach((freq, idx) => {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
@@ -264,11 +268,116 @@ export function playHealthAlarmSound(type: 'meditation' | 'alert' | 'heal') {
       });
     }
   } catch (err) {
-    console.warn('Audio playback error', err);
+    console.warn('Не удалось проиграть звук', err);
   }
 }
 
-// ─── Automated Alarm Scanner ─────────────────────────────────────────────────
+// ─── Будильники: сканер выше разделов ────────────────────────────────────────
+
+/** Сколько минут после времени будильника он ещё может сработать (вкладка открылась позже) */
+export const ALARM_WINDOW_MIN = 10;
+
+const toMin = (hm: string) => {
+  const [h, m] = hm.split(':').map(Number);
+  return (h || 0) * 60 + (m || 0);
+};
+
+/** Будильники, которые должны прозвенеть сейчас (по Бишкеку) и ещё не звенели сегодня */
+export function dueHealthAlarms(alarms: HealthAlarmConfig[], now: Date, firedToday: string[]): HealthAlarmConfig[] {
+  const { h, m } = bishkekHM(now);
+  const cur = h * 60 + m;
+  return alarms.filter((a) => {
+    if (!a || !a.enabled || !a.time || firedToday.includes(a.id)) return false;
+    const t = toMin(a.time);
+    return cur >= t && cur <= t + ALARM_WINDOW_MIN;
+  });
+}
+
+export const HEALTH_ALARM_EVENT = 'questflow:health-alarm';
+
+export interface HealthAlarmDeps {
+  store?: Store;
+  now?: () => Date;
+  play?: (type: 'meditation' | 'alert') => void;
+  notify?: (title: string, body: string) => void;
+}
+
+/** Один шаг сканера: звук и уведомление для наступивших будильников, отметка «прозвенел сегодня» */
+export function tickHealthAlarms(deps: HealthAlarmDeps = {}): HealthAlarmConfig[] {
+  const s = deps.store ?? defaultStore;
+  const now = (deps.now ?? (() => new Date()))();
+  const date = todayStr(now);
+  const firedRow = kvGet<{ date: string; ids: string[] }>(KV.FIRED, null, s);
+  const fired = firedRow && firedRow.date === date ? firedRow.ids : [];
+  const due = dueHealthAlarms(loadHealthAlarms(s), now, fired);
+  if (!due.length) return [];
+
+  kvSet(KV.FIRED, { date, ids: [...fired, ...due.map((a) => a.id)] }, s);
+  const play = deps.play ?? playHealthAlarmSound;
+  const notify = deps.notify ?? defaultNotify;
+  const withSound = due.find((a) => a.soundEnabled !== false);
+  if (withSound) play(withSound.type === 'meditation' ? 'meditation' : 'alert');
+  for (const a of due) {
+    notify(a.title, `Будильник ${a.time}`);
+    // Разовый будильник после срабатывания выключается
+    if (a.repeatDaily === false && s.hasKey('health_alarms', a.id)) s.upsert('health_alarms', { ...a, enabled: false });
+  }
+  return due;
+}
+
+function defaultNotify(title: string, body: string) {
+  sendDesktopNotification(title, body, `health-${title}`);
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
+  window.dispatchEvent(new CustomEvent(HEALTH_ALARM_EVENT, { detail: { title, body } }));
+  showInPageAlarm(title, body);
+}
+
+/** Плашка поверх любого раздела: видна, даже если системные уведомления запрещены */
+function showInPageAlarm(title: string, body: string) {
+  const box = document.createElement('div');
+  box.setAttribute('role', 'alert');
+  box.style.cssText =
+    'position:fixed;left:50%;top:16px;transform:translateX(-50%);z-index:99999;background:#16161f;' +
+    'border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:12px 16px;color:#f4f4f5;' +
+    'font:500 13.5px Inter,system-ui,sans-serif;box-shadow:0 10px 30px rgba(0,0,0,.5);display:flex;gap:14px;align-items:center';
+  const text = document.createElement('div');
+  const t = document.createElement('div');
+  t.textContent = title;
+  const b = document.createElement('div');
+  b.textContent = body;
+  b.style.cssText = 'color:#a1a1aa;font-size:12px;font-weight:400';
+  text.append(t, b);
+  const close = document.createElement('button');
+  close.textContent = 'OK';
+  close.style.cssText = 'background:#f4f4f5;color:#09090c;border:0;border-radius:8px;padding:5px 10px;font-weight:600;cursor:pointer';
+  close.onclick = () => box.remove();
+  box.append(text, close);
+  document.body.appendChild(box);
+  setTimeout(() => box.remove(), 5 * 60_000);
+}
+
+let scannerTimer: ReturnType<typeof setInterval> | null = null;
+
+/**
+ * Запустить сканер будильников один раз на всё приложение (не внутри раздела):
+ * работает, какой бы раздел ни был открыт. Повторный вызов ничего не делает.
+ */
+export function startHealthAlarmScanner(deps: HealthAlarmDeps = {}): () => void {
+  if (typeof window === 'undefined') return () => undefined;
+  if (!scannerTimer) {
+    const unlock = () => unlockHealthAudio();
+    window.addEventListener('pointerdown', unlock, { once: true });
+    window.addEventListener('keydown', unlock, { once: true });
+    tickHealthAlarms(deps);
+    scannerTimer = setInterval(() => tickHealthAlarms(deps), 20_000);
+  }
+  return () => {
+    if (scannerTimer) clearInterval(scannerTimer);
+    scannerTimer = null;
+  };
+}
+
+// ─── Флаги для баннера раздела «Здоровье» ─ ─────────────────────────────────────────────────
 
 export interface AlarmScanResult {
   isMeditationTime: boolean;
@@ -299,7 +408,7 @@ export function scanHealthAlarms(
   // Between med time and med time + 15 mins
   if (!protocol.meditationDone && currentMinutes >= medMinutes && currentMinutes <= medMinutes + 15) {
     isMeditationTime = true;
-    activeAlarmText = `🧘 Время медитации (${medAlarm.time})! Сделайте 10-15 минутную практику`;
+    activeAlarmText = `Время медитации (${medAlarm.time})! Сделайте 10-15 минутную практику`;
   }
 
   // If passed med time + 20 mins and not done, mark as missed!
@@ -313,7 +422,7 @@ export function scanHealthAlarms(
   const gadgetMinutes = gH * 60 + gM;
   if (!protocol.gadgetsFullOff && currentMinutes >= gadgetMinutes && currentMinutes <= gadgetMinutes + 60) {
     isGadgetsOffTime = true;
-    if (!activeAlarmText) activeAlarmText = '📵 Пора отключить телефон и гаджеты за 1 час до сна!';
+    if (!activeAlarmText) activeAlarmText = 'Пора отключить телефон и гаджеты за 1 час до сна!';
   }
 
   // Bedtime alarm
@@ -322,7 +431,7 @@ export function scanHealthAlarms(
   const sleepMinutes = sH * 60 + sM;
   if (currentMinutes >= sleepMinutes - 30 && currentMinutes <= sleepMinutes) {
     isBedtimeSoon = true;
-    if (!activeAlarmText) activeAlarmText = '😴 Готовьтесь ко сну. Идеал для здоровья — 8-9 часов глубокого сна';
+    if (!activeAlarmText) activeAlarmText = 'Готовьтесь ко сну. Идеал для здоровья — 8-9 часов глубокого сна';
   }
 
   return {

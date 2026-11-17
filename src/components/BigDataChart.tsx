@@ -1,217 +1,166 @@
-import React, { useState } from 'react';
-import { DailyLogEntry } from '../utils/bigDataTracker';
+// График оценки дня (1–10) за месяц: линия оценки, дельта к обычному уровню и подписи у дней-спадов.
+// SVG руками, без библиотек. Не ломается при 0 и 1 дне с оценкой.
 
-interface BigDataChartProps {
-  days: DailyLogEntry[];
+export interface ScorePoint {
+  date: string;
+  /** Подпись по оси X — число месяца */
+  dayNum: number;
+  score: number | null;
+  /** Оценка минус среднее прошлых дней (shared/bigdata.dayDelta) */
+  delta: number | null;
+  isDrop: boolean;
+  isRecovery: boolean;
+  /** Причины спада (shared/bigdata.explainDrop) */
+  reasons: string[];
 }
 
-export function BigDataChart({ days }: BigDataChartProps) {
-  const [hoveredDay, setHoveredDay] = useState<DailyLogEntry | null>(null);
+interface BigDataChartProps {
+  points: ScorePoint[];
+  selectedDate?: string | null;
+  onSelect?: (date: string) => void;
+}
 
-  const width = 800;
-  const height = 220;
-  const padding = { top: 20, right: 30, bottom: 30, left: 40 };
+const W = 800;
+const H = 220;
+const PAD_L = 28;
+const PAD_R = 12;
+const PAD_T = 16;
+const PAD_B = 26;
 
-  const chartWidth = width - padding.left - padding.right;
-  const chartHeight = height - padding.top - padding.bottom;
+export function BigDataChart({ points, selectedDate, onSelect }: BigDataChartProps) {
+  const n = points.length;
+  const scored = points.filter((p) => p.score !== null);
+  const innerW = W - PAD_L - PAD_R;
+  const innerH = H - PAD_T - PAD_B;
+  // При одном дне в месяце (или пустом) точка встаёт посередине, деления на ноль нет
+  const x = (i: number) => PAD_L + (n <= 1 ? innerW / 2 : (i * innerW) / (n - 1));
+  const y = (v: number) => PAD_T + innerH - ((Math.min(10, Math.max(0, v)) / 10) * innerH);
 
-  // Max / Min scales
-  const maxScore = 10;
-  const maxSleep = 12; // hours
-
-  const points = days.map((d, index) => {
-    const x = padding.left + (index / (days.length - 1)) * chartWidth;
-    const scoreVal = d.score !== null ? d.score : 0;
-    const yScore = padding.top + chartHeight - (scoreVal / maxScore) * chartHeight;
-
-    const sleepHours = d.sleepMinutes ? d.sleepMinutes / 60 : 0;
-    const ySleep = padding.top + chartHeight - (Math.min(sleepHours, maxSleep) / maxSleep) * chartHeight;
-
-    return { day: d, x, yScore, ySleep, scoreVal, sleepHours };
+  // Линия рвётся на днях без оценки
+  const segments: string[] = [];
+  let cur = '';
+  points.forEach((p, i) => {
+    if (p.score === null) {
+      if (cur) segments.push(cur);
+      cur = '';
+      return;
+    }
+    cur += `${cur ? 'L' : 'M'}${x(i).toFixed(1)},${y(p.score).toFixed(1)} `;
   });
+  if (cur) segments.push(cur);
 
-  // SVG Paths
-  const scorePath = points
-    .filter((p) => p.scoreVal > 0)
-    .reduce((acc, p, i) => `${acc} ${i === 0 ? 'M' : 'L'} ${p.x} ${p.yScore}`, '');
-
-  const sleepPath = points
-    .filter((p) => p.sleepHours > 0)
-    .reduce((acc, p, i) => `${acc} ${i === 0 ? 'M' : 'L'} ${p.x} ${p.ySleep}`, '');
+  const selected = points.find((p) => p.date === selectedDate && p.score !== null) ?? null;
+  const drops = points.filter((p) => p.isDrop);
 
   return (
-    <div className="bg-[#111115] border border-white/[0.08] rounded-3xl p-5 space-y-3">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <div>
-          <h3 className="text-xs font-bold text-white uppercase tracking-wider font-mono">
-            График Месяца: Сон (ч) vs Оценка Фокуса (1-10)
-          </h3>
-          <p className="text-[11px] text-zinc-500">Наведите курсор на точку для детального анализа дня</p>
-        </div>
-
-        {/* Legend */}
-        <div className="flex items-center gap-4 text-xs font-mono">
-          <div className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
-            <span className="text-zinc-300">Оценка дня</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-indigo-400" />
-            <span className="text-zinc-300">Сон (часов)</span>
-          </div>
-        </div>
-      </div>
-
-      {/* SVG Chart */}
+    <div className="space-y-3">
       <div className="relative w-full overflow-x-auto">
-        <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-52 select-none overflow-visible">
-          <defs>
-            {/* Emerald Line Gradient */}
-            <linearGradient id="scoreGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#34d399" stopOpacity="0.4" />
-              <stop offset="100%" stopColor="#34d399" stopOpacity="0.0" />
-            </linearGradient>
-            {/* Indigo Line Gradient */}
-            <linearGradient id="sleepGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#818cf8" stopOpacity="0.3" />
-              <stop offset="100%" stopColor="#818cf8" stopOpacity="0.0" />
-            </linearGradient>
-          </defs>
-
-          {/* Grid lines */}
-          {[0, 2.5, 5, 7.5, 10].map((val) => {
-            const y = padding.top + chartHeight - (val / 10) * chartHeight;
-            return (
-              <g key={val}>
-                <line
-                  x1={padding.left}
-                  y1={y}
-                  x2={width - padding.right}
-                  y2={y}
-                  stroke="#ffffff"
-                  strokeOpacity="0.06"
-                  strokeDasharray="4 4"
-                />
-                <text x={padding.left - 8} y={y + 3} textAnchor="end" fill="#71717a" fontSize="9" fontFamily="monospace">
-                  {val}
-                </text>
-              </g>
-            );
-          })}
-
-          {/* Sleep Path */}
-          {sleepPath && (
-            <path
-              d={sleepPath}
-              fill="none"
-              stroke="#818cf8"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="drop-shadow-md"
-            />
-          )}
-
-          {/* Score Path */}
-          {scorePath && (
-            <path
-              d={scorePath}
-              fill="none"
-              stroke="#34d399"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="drop-shadow-md"
-            />
-          )}
-
-          {/* Interactive Data Points */}
-          {points.map((p, idx) => (
-            <g key={idx}>
-              {/* Vertical Guide when hovered */}
-              {hoveredDay?.day === p.day.day && (
-                <line
-                  x1={p.x}
-                  y1={padding.top}
-                  x2={p.x}
-                  y2={padding.top + chartHeight}
-                  stroke="#a855f7"
-                  strokeWidth="1.5"
-                  strokeDasharray="2 2"
-                />
-              )}
-
-              {/* Day Number X Axis */}
-              <text
-                x={p.x}
-                y={height - 10}
-                textAnchor="middle"
-                fill={hoveredDay?.day === p.day.day ? '#ffffff' : '#52525b'}
-                fontSize="9"
-                fontFamily="monospace"
-                fontWeight={hoveredDay?.day === p.day.day ? 'bold' : 'normal'}
-              >
-                {p.day.day}
+        <svg viewBox={`0 0 ${W} ${H}`} className="w-full min-w-[560px] h-auto" role="img" aria-label="Оценка дня по дням месяца">
+          {[2, 4, 6, 8, 10].map((v) => (
+            <g key={v}>
+              <line x1={PAD_L} x2={W - PAD_R} y1={y(v)} y2={y(v)} stroke="rgba(255,255,255,0.05)" />
+              <text x={PAD_L - 8} y={y(v) + 3} textAnchor="end" fontSize="9" fill="#52525b" fontFamily="ui-monospace, monospace">
+                {v}
               </text>
-
-              {/* Score dot */}
-              {p.scoreVal > 0 && (
-                <circle
-                  cx={p.x}
-                  cy={p.yScore}
-                  r={hoveredDay?.day === p.day.day ? 5 : 3}
-                  fill="#34d399"
-                  className="transition-all cursor-pointer"
-                  onMouseEnter={() => setHoveredDay(p.day)}
-                />
-              )}
-
-              {/* Sleep dot */}
-              {p.sleepHours > 0 && (
-                <circle
-                  cx={p.x}
-                  cy={p.ySleep}
-                  r={hoveredDay?.day === p.day.day ? 5 : 3}
-                  fill="#818cf8"
-                  className="transition-all cursor-pointer"
-                  onMouseEnter={() => setHoveredDay(p.day)}
-                />
-              )}
-
-              {/* Invisible touch overlay for easier hover */}
-              <rect
-                x={p.x - 10}
-                y={padding.top}
-                width={20}
-                height={chartHeight}
-                fill="transparent"
-                className="cursor-pointer"
-                onMouseEnter={() => setHoveredDay(p.day)}
-              />
             </g>
           ))}
+
+          {points.map((p, i) =>
+            p.isRecovery ? (
+              <rect
+                key={`r-${p.date}`}
+                x={x(i) - (n <= 1 ? 10 : innerW / (n - 1) / 2)}
+                y={PAD_T}
+                width={n <= 1 ? 20 : innerW / (n - 1)}
+                height={innerH}
+                fill="rgba(52,211,153,0.05)"
+              />
+            ) : null,
+          )}
+
+          {segments.map((d, i) => (
+            <path key={i} d={d} fill="none" stroke="#a78bfa" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+          ))}
+
+          {points.map((p, i) =>
+            p.score === null ? null : (
+              <g key={p.date} onClick={() => onSelect?.(p.date)} style={{ cursor: onSelect ? 'pointer' : 'default' }}>
+                <circle cx={x(i)} cy={y(p.score)} r="10" fill="transparent" />
+                <circle
+                  cx={x(i)}
+                  cy={y(p.score)}
+                  r={p.date === selectedDate ? 5 : p.isDrop ? 4.5 : 3}
+                  fill={p.isDrop ? '#fb7185' : '#a78bfa'}
+                  stroke="#09090c"
+                  strokeWidth="1.5"
+                />
+                {p.isDrop && p.delta !== null && (
+                  <text x={x(i)} y={y(p.score) + 16} textAnchor="middle" fontSize="9" fill="#fb7185" fontFamily="ui-monospace, monospace">
+                    {p.delta.toFixed(1)}
+                  </text>
+                )}
+              </g>
+            ),
+          )}
+
+          {points.map((p, i) =>
+            n <= 16 || p.dayNum % 2 === 1 ? (
+              <text
+                key={`x-${p.date}`}
+                x={x(i)}
+                y={H - 8}
+                textAnchor="middle"
+                fontSize="9"
+                fill={p.isRecovery ? '#34d399' : '#52525b'}
+                fontFamily="ui-monospace, monospace"
+              >
+                {p.dayNum}
+              </text>
+            ) : null,
+          )}
         </svg>
+
+        {scored.length === 0 && (
+          <div className="absolute inset-0 flex items-center justify-center text-xs text-zinc-500">
+            В этом месяце ещё нет оценок дня
+          </div>
+        )}
       </div>
 
-      {/* Hovered Tooltip Card */}
-      {hoveredDay && (
-        <div className="p-3 rounded-2xl bg-[#181820] border border-purple-500/30 flex items-center justify-between flex-wrap gap-3 animate-fade-in text-xs">
-          <div className="flex items-center gap-3">
-            <span className="font-bold text-white font-mono bg-purple-600/30 text-purple-300 px-2 py-0.5 rounded-lg border border-purple-500/40">
-              День {hoveredDay.day} ({hoveredDay.dayOfWeek})
+      {selected && (
+        <div className="text-xs text-zinc-300 px-1">
+          <span className="font-mono text-zinc-100">{selected.dayNum}</span> · оценка{' '}
+          <span className="font-mono text-zinc-100">{selected.score}</span>
+          {selected.delta !== null && (
+            <span className={`font-mono ml-1 ${selected.delta < 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
+              ({selected.delta > 0 ? '+' : ''}
+              {selected.delta.toFixed(1)} к обычному)
             </span>
-            <span className="text-zinc-300 font-medium">{hoveredDay.why || 'Без заметок'}</span>
-          </div>
+          )}
+        </div>
+      )}
 
-          <div className="flex items-center gap-3 font-mono text-[11px]">
-            <span className="text-emerald-400 font-bold">Оценка: {hoveredDay.score ?? '—'}/10</span>
-            <span className="text-indigo-400 font-bold">Сон: {hoveredDay.sleep || '—'}</span>
-            {hoveredDay.tags.length > 0 && (
-              <span className="text-zinc-400 bg-white/5 px-2 py-0.5 rounded border border-white/10">
-                {hoveredDay.tags.join(', ')}
-              </span>
-            )}
-          </div>
+      {drops.length > 0 && (
+        <div className="space-y-2">
+          {drops.map((p) => (
+            <div key={p.date} className="p-3 rounded-xl bg-rose-500/[0.05] border border-rose-500/20">
+              <div className="text-xs font-medium text-rose-200">
+                {p.dayNum}-е: спад до {p.score}
+                {p.delta !== null && <span className="font-mono text-rose-400 ml-1">({p.delta.toFixed(1)})</span>}
+              </div>
+              {p.reasons.length > 0 ? (
+                <ul className="mt-1 space-y-0.5">
+                  {p.reasons.map((r) => (
+                    <li key={r} className="text-[11px] text-zinc-400">
+                      {r}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-1 text-[11px] text-zinc-500">В данных дня не видно причины — запиши её в «почему».</p>
+              )}
+            </div>
+          ))}
         </div>
       )}
     </div>
