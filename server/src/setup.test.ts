@@ -122,6 +122,12 @@ describe('npm run setup', () => {
     expect(t.written()).toMatch(/^ANTHROPIC_API_KEY=$/m);
   });
 
+  it('стоимость ключа Claude API в подсказке совпадает с docs/ai-and-costs.md ($3–5 в месяц)', async () => {
+    const t = makeDeps([TOKEN, URL, SERVICE, OWNER, '', 'да']);
+    await runSetup(t.deps);
+    expect(t.out.join('\n')).toContain('примерно $3–5 в месяц');
+  });
+
   it('если /start нажал не владелец — не привязывает его и ждёт дальше', async () => {
     const t = makeDeps([TOKEN, URL, SERVICE, OWNER, '', 'нет', 'да'], {
       updates: [

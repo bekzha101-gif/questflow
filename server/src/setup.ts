@@ -182,7 +182,7 @@ export async function runSetup(deps: SetupDeps): Promise<{ ok: boolean }> {
     [
       '',
       'Шаг 5 (необязательно). Ключ Claude API — запасной путь для анализа, если `claude -p` по подписке недоступен.',
-      '  console.anthropic.com → API Keys. Платный: примерно $3–10 в месяц. Можно пропустить.',
+      '  console.anthropic.com → API Keys. Платный: примерно $3–5 в месяц. Можно пропустить.',
     ].join('\n'),
   );
   if (
