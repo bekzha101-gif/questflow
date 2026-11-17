@@ -100,3 +100,70 @@
 
 ## Что построили законченные таски
 (заполняется по ходу)
+
+## Выставлено таском 01 (факт)
+- `shared/time`: APP_TZ, todayStr, dayOfWeek, isRecoveryDay, bishkekHM, addDays, weekStart, monthKey. `shared/types`: TableName + доменные типы всех таблиц §2.
+- `src/store`: useCollection, useRecord(table, key='me'), useSyncStatus; сверх §3 — useCollectionState, useRecordState, writeCollection, connectCloud(client, userId), disconnectCloud, syncNow.
+- RemoteTable {upsert(rows), select(), subscribe(onRow)}, createSupabaseRemote; Store(storage, now, isOnline, flushDelayMs). Подмена для тестов — `src/store/testing.ts`.
+- runLegacyImport(opts?) → ImportReport {counts, alreadyImported, backupFile}; needsLegacyImport(); ensureSeeds(store?). Кеш: qf2_<table>, qf2_queue_<table>, qf2_order_<table>.
+- В каждой таблице 002 есть `extra jsonb` для полей без колонки. Триггер игнорирует UPDATE, если `updated_at` не новее текущего; null → now(). **Сервер/бот обязан слать `updated_at`.**
+- Перенесённые строки и сиды имеют updated_at 2000-01-01 (любая правка их перебивает). Старые questflow_* ключи — в kv как `legacy:<ключ>`; ключи с токенами не переносятся.
+- Ремонт 01 (по ревью): `Store.writeRecord(table, fallback, action, key, item)` — на нём useRecordState. `FALLBACK_TS = '1999-01-01T00:00:00.000Z'` — метка записи из запасного значения, пока облако не прочитано (облако её всегда перебивает).
+- `runLegacyImport` без подключённого и прочитанного облака отклоняется. Маркер в облаке kv `CLOUD_IMPORT_MARKER = 'legacy_imported'` → бэкап скачивается, строки не пишутся, отчёт `{alreadyImported:true, cloudAlreadyImported:true}`. `cloudHasLegacyImport(store)`.
+- AuthGate монтирует приложение только после проверки входа и (если вошёл) чтения облака. Сиды — после чтения облака.
+
+## Выставлено таском 02 (факт)
+- `src/sections/routes`: SECTION_IDS, TabType, getSection, resolveTab(id|null), goalsViewFor/healthViewFor/progressViewFor. `?tab=<старый id>` при старте открывает нужный раздел.
+- `src/sections/types`: SectionContext. Разделы: TodaySection{ctx} · GoalsSection{ctx,tab} · ChannelsSection{ctx} · HealthSection{ctx,tab} · ProgressSection{ctx,tab}. Подвкладки — `src/sections/SubTabs.tsx`.
+- `src/sections/today/mainTask`: pickMainTask(tasks,today) (срок ≤ сегодня, затем p1..p4), focusHoursToday(logs,today), FOCUS_HOURS_NORM=6. Строка фокуса — `src/sections/today/FocusStrip.tsx` (читает timerStorage).
+- `src/utils/taskFilters`: isShoppingTask (решает kind, без kind — старое правило), selectRegularTasks, selectShoppingTasks, makeTask(input,{id,projectId,kind}), KindedTask, TaskKind. Покупки отфильтрованы один раз в App (regularTasks).
+- QuickAddModal `kind?`; ShoppingListView.onOpenQuickAdd('shopping'). «Ещё» удалён; «Календарь жизни» и «AI-помощники» — в меню настроек шапки. HP/EXP/уровень — в шапке.
+
+## Выставлено таском 08 (факт)
+- `server/src/db`: createDb(client, ownerUserId, {now}) → Db {getBotSettings, saveBotSettings(patch; шлёт updated_at), getTimerState, markTimerNotified(startedAt), listHealthAlarms/Tasks/Channels/Videos, listFocusSessions(date), getKv(key), dumpAll}.
+- `server/src/bot`: createBotService({token, db, conversation, botInfo?}) → {bot, send(text, keyboard?): Promise<boolean>, start, stop}. /start — привязка чата или «Бот работает.»; чужим — «Этот бот приватный.».
+- ConversationApi {startEvening, eveningReminder, weeklyReport, monthlyReport (date), handleUpdate(IncomingMessage{chatId,text?,voiceFileId?,photoFileId?,callbackData?})}. Сейчас — заглушка `server/src/conversationStub.ts`; таск 09 подключает себя в `server/src/index.ts`.
+- `server/src/scheduler`: runTick(deps, now), startScheduler(deps) (cron каждые 30 с, Asia/Bishkek). `server/src/backup`: runBackup({dir, now, dumpAll, keepDays=60}). `server/src/setup`: runSetup(SetupDeps).
+- kv `plan:<YYYY-MM-DD>` = {mainTask?, mainTaskId?, firstBlockTask?} — для утреннего сообщения. bot_settings.last_sent ключи: morning, evening, evening_reminder, thursday, weekly, monthly, backup, alarm:<id>, publications "дата|id,id", timer_last, timer_work_end.
+- Таймер на сервере пока считает `server/src/timerWatch.ts` (120/20/3); `remindersFor` из `shared/channels` подгружается require в рантайме — таск 06 должен экспортировать его оттуда. **`shared/` компилируется сборкой сервера в strict CommonJS: код в shared/ — строгий TS без DOM, `cd server && npm run build` должен проходить.**
+
+## Выставлено таском 04 (факт)
+- `shared/goals`: splitTarget(target, weeks=4): number[] · goalProgress(goal, weeks, steps, today?) → {pct, onTrack, expected, week:{index,target,pct,stepsDone,stepsTotal}, dayNeed} · weeksFor(goal, savedWeeks): GoalWeek[] · currentWeekIndex(month, today): 0..4 · goalPct(goal, weeks?) · stepsForTimer(goals, steps, today?): GoalStepEx[] (шаги текущей недели активных целей, не сделанные и не предложенные) · acceptStep(step) · monthLabel('2026-11') → «Ноябрь 2026» · monthSummary(goals, weeks?).
+- `GoalStepEx = GoalStep & {proposed?: boolean}`; `proposed` хранится в `extra` строки goal_steps. Итог месяца — `goal.summary`, итог недели — `week.review`: бот (таск 09) пишет в эти поля. Недели — строкой в базе только после правки, иначе считаются на лету.
+- Раздел «Цели»: вкладки «Цели месяца» (по умолчанию), «Архив», «Задачи», «Покупки», «Календарь».
+
+## Выставлено таском 06 (факт)
+- `shared/channels`: effectiveStatus(channel, today): ChannelStatus · nextDueDates(channel, lastPublished|null, today, count=7): string[] (заброшен/архив → []) · channelTodo(channel, videos, today) → {step, label, dueDate|null, urgency: overdue|today|soon|later|none, videoId?} · remindersFor(channels, videos, today, limit=3): {channelId, text}[] (под server/src/publications.ts toReminder) · normalizeVideo, normalizeStage, canPublish(checklist), lastPublishedOf(channelId, videos), leadDays(channel) (монтаж >3 ч — за 2 дня, иначе за 1), cadenceLabel(n) · константы CHECKLIST_ITEMS, VIDEO_STAGES, CADENCES.
+- ContentProductionBoard({onPublishReward?, channelId?}) — награда за публикацию пока 75 EXP + 50 золота (таск 07 привязывает к правилам). ChannelCard({channel, videos, today, onChange}). Команда — kv `team`, каналы — `channels2`. AiVideoStudioModal удалён.
+
+## Выставлено таском 03 (факт)
+- `shared/timer`: WORK_MIN, BREAK_MIN, BLOCKS_PER_DAY, IDLE_TIMER · computeTimer(s, nowMs) → {phase, elapsedSec, remainingSec, expired} · nextAfterExpire(s, now) · settleTimer(s, now) · startBlock(s, now, {today, taskId}) · pauseTimer · resumeTimer · cancelBlock(s) · canStartBlock(s, today) · nextBlockNumber(s, today) · dayNormDone(s, today) · blockRecord(s, now) → BlockRecord{id,date,blockIndex,startedAt,endedAt,minutes,taskId,full}|null · blockSessionId(s) = 'focus-<date>-b<N>' · formatWorked(sec) → '2ч 00м' · blockReward(min, full) → {exp, gold}.
+- blockIndex — номер текущего/последнего блока дня (0 — блоков не было). timer_state.task_id и focus_sessions.task_id: id задачи | 'step:<id>' | 'goal:<id>'. В extra focus_sessions: mode, title, blockIndex, resultSkipped. Перерывы в focus_sessions не пишутся.
+- `src/components/timer`: useTimerState() → [state, commit], useNow(ms), buildTargetGroups, parseTargetRef/targetRef, resultUpdates, pendingResultSession. timerStorage: legacyToTimerState, broadcastTimerState/subscribeTimerState (BroadcastChannel questflow_timer_channel_v2), claimTimerEvent(key). `src/sections/today/daySummary`: daySummary(sessions, today), isWorkSessionOf. Проп onDamageHp у таймера больше не используется.
+
+## Выставлено таском 05 (факт)
+- `shared/bigdata`: dayDelta(days, date): number|null · isDropDay · explainDrop(days, date, cfg): Reason[]{kind,label} · influenceFactors(days, cfg, minDays=14): Factor[] | 'not_enough_data' · monthDates(month) · shiftMonth(month, n) · formatSleep · DROP_THRESHOLD=1.5 · типы BigDataDayInput, BigDataCriterion{type:'number'|'boolean'|'scale'|'text'} (полный тип здесь: в shared/types у Criterion нет 'scale').
+- bigdata_days.extra: habitsDoneIds, habitsRewardedIds, habitsDone, habitsTotal, habitsMissed: string[], fillRewarded; tags и supplements — подписи/названия текстом. Заметка дня — в bigdata_days (AI читает её в таске 09).
+- `src/utils/bigDataTracker`: patchDay(date, patch) · useBigDataDays · useBigDataSettings · useHabitDay(tasks, date) · tapHabit · habitSnapshot · buildMonth · normalizeConfig + add/rename/remove для сфер, критериев, БАДов.
+- `src/utils/recoveryCycle`: getDayCycleInfo(date) (пятница) · canAddWorkTask · toggleRecoveryActivity · useRecoveryDay(date) · kv `recovery:<date>` = {done, rewarded}. Старые экспорты оставлены для App и TogglTimerBar.
+- `src/utils/healthTracker`: addFoodEntry(input, now, store) · foodForDay · useFoodLogs · useHealthAlarms · dueHealthAlarms(alarms, now, fired) · tickHealthAlarms(deps) · startHealthAlarmScanner() · useTodayStr. kv: `health_daily:<date>`, health_sleep, health_damage, health_recovery, health_ai_report, health_alarms_fired. Событие `questflow:health-alarm`.
+
+## Выставлено таском 07 (факт)
+- `shared/gamification`: RULES · ACHIEVEMENTS (7) · AchievementId · applyEvent(stats, ev: GameEventInput, ctx: {now, journal?, unlocked?, facts?: {publishedVideos?, activeChannels?}}) → {stats, events, unlocked, applied, rejected?: 'duplicate'|'shop_locked'|'not_enough_gold', leveledUp, hpZero} · dayOutcome(DayFacts{date, focusMin, blocks, habitsDone, habitsTotal, recoveryDone?}) · isFullDay · shopLocked · levelProgress · focusReward(min, full) · withRulesStart(stats, today) · pendingDayCloses(stats, today) · eveningReminderDue(now, {answered, reminded}, date?) · eveningMissedEvent(date) | null · dayCloseEvent(day).
+- id события = `${kind}:${ref}` (day_close: ref = дата); производные: level_up:*, hp_zero:*, achievement:<id>. Новые поля game_stats в extra: rulesSince, lastClosedDate, shopLocked, incomeHundredsPaid.
+- Сайт: `src/sections/progress/game`: applyGame(input, {store?, now?, facts?}), syncGameFacts(opts), dayFactsFor(date, store), factsOf(store), logSessionOnce(prev, entry); событие окна GAME_EVENT='questflow:game'. Сайт закрывает прошедшие дни сам (при открытии и раз в минуту) с rulesSince.
+- **Правило для бота (таск 09):** закрытие дня / пропуск вечера / доход — только через applyEvent с теми же id. Дедуп через game_events (insert-only, ключ (user_id,id)): сначала вставить событие, применять статы только если вставка прошла (не дубль), иначе бот и сайт применят один день дважды.
+
+## Выставлено таском 09 (факт)
+- `server/src/conversation`: createConversation(ConversationDeps{store, send(text, Keyboard?), ai, stt, files?, now?, log?}) → ConversationApi + tick(now?) · createSupabaseStore(client, ownerId, now?) → ConversationStore · toInlineKeyboard, createTelegramFiles. Подключён в `server/src/index.ts` вместо заглушки; повтор отложенного анализа — setInterval 5 мин.
+- `server/src/ai`: createAi({runCli?, claudePath?, apiKey?, model?, fetch?, timeoutMs?, log?}).analyze(kind, payload) → AiResult{source, summary, good, better, boost, facts, steps, sleep?} | null. Основной путь — `claude -p` (читает картинку), запасной — API (DEFAULT_API_MODEL).
+- `server/src/stt`: createStt({python?, model?, device?, run?}).transcribe(path) → string | null; `server/stt/transcribe.py` (faster-whisper, звук через ffmpeg), установка `server/stt/install.ps1` в `server/stt/.venv`.
+- Кнопки: `qf:<seq>:<действие>`, `qa:<stepId>`, `qA:<неделя>`. kv `plan:<дата>` += videos, reminders; `onboarding:new_channels`; `wishes:<YYYY-MM>`. ai_memory id `day:/week:/month:<ключ>`. goal_steps.extra {proposed, proposedFor}; channels2.extra {planned, plan, stallReason}; bigdata_days.extra goodBetter. env: ANTHROPIC_MODEL, WHISPER_PYTHON, WHISPER_MODEL, WHISPER_DEVICE.
+- Бот сам закрывает прошедшие дни (day_close) через applyEvent, дедуп — вставкой в game_events.
+
+## Изменено ремонтом F1 (факт)
+- Store.writeRecord(..., opts?: {auto?}) — метка 1999 только при auto; Store.autoWritesAllowed(); useAutoWritesAllowed(). TableDef.insertOnly (game_events: insert с ignoreDuplicates, политика insert+select).
+- AuthGate: canMountApp(authResolved, userId, CloudGate), CloudGate/CloudState — приложение монтируется только после чтения облака этого userId. Быстрый вход с паролем удалён.
+- `src/sections/today/dailyReset`: runDailyReset(today, lastReset, store?). mainTaskFor(tasks, today, plan), DayPlan — сначала kv `plan:<today>.mainTaskId`.
+- `src/sections/progress/game`: GameOptions.auto; resetGameStats(fresh, opts) (сброс только статов); rewardBigDataFill(date, opts); rewardRecoveryActivity(date, actId, opts) → ApplyResult|null. В разделах нет `bonus`; удалены SectionContext.onAwardRewards/onAddGoldReward и пропы onLogReward/onPublishReward.
+- Сервер: SchedulerDeps.conversationWaitMs, CONVERSATION_WAIT_MS; таймер — settleTimer → computeTimer, timerWatch.ts удалён; CLI_ISOLATION_ARGS для `claude -p` (≈3,1K токенов, 5 с); AiOptions.apiTimeoutMs; createTelegramFiles(..., timeoutMs); crashLine(e, config, at); ConvState.flags.monthDate; conversationStub.ts удалён; DEFAULT_API_MODEL claude-sonnet-5-5.
