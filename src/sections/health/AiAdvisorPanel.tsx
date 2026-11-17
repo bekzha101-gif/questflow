@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Bot, Loader2 } from 'lucide-react';
 import { ADVISOR_QUESTION_MAX, canRequestAdvisor } from '@shared/aiAdvisor';
+import { useCloudConnected } from '../../store';
 import { useAiAdvisor } from './aiAdvisor';
 
 function when(iso: string): string {
@@ -30,7 +31,9 @@ function List({ title, items, color }: { title: string; items: string[]; color: 
 export function AiAdvisorPanel() {
   const { state, view, request } = useAiAdvisor();
   const [question, setQuestion] = useState('');
-  const canAsk = canRequestAdvisor(view);
+  // Без облака запрос остаётся в браузере и до бота не доходит
+  const cloud = useCloudConnected();
+  const canAsk = cloud && canRequestAdvisor(view);
   const last = state?.last;
 
   const ask = () => {
@@ -50,6 +53,12 @@ export function AiAdvisorPanel() {
           </p>
         </div>
       </div>
+
+      {!cloud && (
+        <p className="text-[11px] text-amber-400/90">
+          Советник работает только после входа в облако: в гостевом режиме запрос не дойдёт до компьютера с ботом.
+        </p>
+      )}
 
       <div className="flex flex-col sm:flex-row gap-2">
         <input

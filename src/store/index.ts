@@ -91,6 +91,11 @@ export function useAutoWritesAllowed(): boolean {
   return useSyncExternalStore(subscribe, () => store.autoWritesAllowed());
 }
 
+/** Подключено ли облако (вход выполнен). В гостевом режиме — false: данные живут только в браузере */
+export function useCloudConnected(): boolean {
+  return useSyncExternalStore(subscribe, () => store.isConnected);
+}
+
 export function useSyncStatus(): SyncStatus {
   return useSyncExternalStore(subscribe, () => store.status());
 }
