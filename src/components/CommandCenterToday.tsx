@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { TaskItem, Project, UserStats, Reward } from '../types';
 import { isShoppingTask } from '../utils/taskFilters';
+import { todayStr as todayBishkek, addDays } from '@shared/time';
 import {
   CheckCircle2,
   Circle,
@@ -49,17 +50,21 @@ interface CommandCenterTodayProps {
   onOpenStudioTab?: () => void;
   onOpenLifeTab?: () => void;
   onOpenShoppingTab?: () => void;
+  // Сколько невыполненных покупок (сами покупки на «Сегодня» не показываются)
+  shoppingCount?: number;
   onUpdateStats?: (newStats: Partial<UserStats>) => void;
   onAwardRewards?: (exp: number, gold: number, hp?: number) => void;
 }
 
+// «Сегодня» — по Бишкеку (shared/time), а не по UTC
 function todayStr(): string {
-  return new Date().toISOString().slice(0, 10);
+  return todayBishkek();
 }
 
 function isCompletedToday(completedAt?: string): boolean {
   if (!completedAt) return false;
-  return completedAt.slice(0, 10) === todayStr();
+  const at = Date.parse(completedAt);
+  return !Number.isNaN(at) && todayBishkek(new Date(at)) === todayStr();
 }
 
 function isOverdue(dueDate?: string): boolean {
@@ -69,9 +74,7 @@ function isOverdue(dueDate?: string): boolean {
 
 function formatDueDate(dueDate: string): string {
   const today = todayStr();
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const tomorrowStr = tomorrow.toISOString().slice(0, 10);
+  const tomorrowStr = addDays(today, 1);
 
   if (dueDate === today) return 'Сегодня';
   if (dueDate === tomorrowStr) return 'Завтра';
@@ -459,6 +462,7 @@ export function CommandCenterToday({
   onOpenHealthModal,
   onOpenLifeTab,
   onOpenShoppingTab,
+  shoppingCount = 0,
   onUpdateStats,
   onAwardRewards,
 }: CommandCenterTodayProps) {
@@ -499,7 +503,7 @@ export function CommandCenterToday({
   const dailies = tasks.filter((t) => t.type === 'daily');
 
   // Shopping tasks are isolated in the Shopping List and never mixed with daily goals/tasks
-  const shoppingTasksCount = tasks.filter((t) => isShoppingTask(t) && !t.completed).length;
+  const shoppingTasksCount = shoppingCount;
   const allTodos = tasks.filter((t) => t.type === 'todo' && !isShoppingTask(t));
   const activeTodos = allTodos.filter((t) => !t.completed);
   const completedTodayTodos = allTodos.filter((t) => t.completed && isCompletedToday(t.completedAt));
@@ -561,49 +565,6 @@ export function CommandCenterToday({
           </div>
         </div>
 
-        <div className="flex items-center gap-2 sm:gap-3">
-          {/* Health HP pill */}
-          <button
-            type="button"
-            onClick={() => {
-              if (onOpenHealthModal) onOpenHealthModal();
-              else if (onOpenLifeTab) onOpenLifeTab();
-            }}
-            className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-[#111116] hover:bg-rose-950/40 border border-white/[0.07] hover:border-rose-500/40 transition-all tactile-btn group"
-            title="Открыть Центр Здоровья, Биоритмы и Будильники"
-          >
-            <Heart className="w-3.5 h-3.5 text-rose-500 fill-rose-500/20 group-hover:scale-110 transition-transform" />
-            <span className="text-[10px] text-rose-400 font-mono font-bold">HP</span>
-            <div className="w-14 sm:w-18 h-1.5 bg-zinc-900 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-rose-500 rounded-full transition-all duration-500"
-                style={{ width: `${Math.round((stats.hp / Math.max(1, stats.maxHp)) * 100)}%` }}
-              />
-            </div>
-            <span className="text-[10px] font-mono text-zinc-300 group-hover:text-white font-semibold">
-              {stats.hp}
-            </span>
-          </button>
-
-          {/* EXP Mini Bar */}
-          <div className="hidden sm:flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-[#111116] border border-white/[0.07]">
-            <span className="text-[10px] text-indigo-400 font-mono font-medium">EXP</span>
-            <div className="w-16 h-1.5 bg-zinc-900 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-indigo-500/80 rounded-full transition-all duration-500"
-                style={{ width: `${Math.round((stats.exp / Math.max(1, stats.maxExp)) * 100)}%` }}
-              />
-            </div>
-            <span className="text-[10px] font-mono text-zinc-400">{stats.exp}</span>
-          </div>
-
-          {/* Level & Gold */}
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#111116] border border-white/[0.07]">
-            <span className="text-xs text-zinc-300">Ур. <strong className="text-white">{stats.level}</strong></span>
-            <span className="text-zinc-600">·</span>
-            <span className="text-amber-400 font-mono text-xs font-semibold">{stats.gold} 🪙</span>
-          </div>
-        </div>
       </div>
 
       {/* ── 24h Advance Notice Banner ─────────────────────────────────── */}

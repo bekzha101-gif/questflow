@@ -15,18 +15,19 @@ import { timeLogConverter } from './store/adapters';
 import { AuthGate } from './components/AuthGate';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { useSupabaseSync } from './hooks/useSupabaseSync';
-import { initialStats, initialTasks, initialRewards } from './data/initialData';
+import { initialStats } from './data/initialData';
 
 
 import { Header } from './components/Header';
-import { Navigation, TabType, getSection, SECTION_TITLES } from './components/Navigation';
+import { Navigation, SECTION_TITLES } from './components/Navigation';
 import { MobileBottomNav } from './components/MobileBottomNav';
-import { MoreScreen } from './components/MoreScreen';
-import { CommandCenterToday } from './components/CommandCenterToday';
-import { MediaStudioHub } from './components/MediaStudioHub';
-import { QuestsHub } from './components/QuestsHub';
-import { LifeAnalyticsHub } from './components/LifeAnalyticsHub';
-import { TavernHub } from './components/TavernHub';
+import { getSection, resolveTab, type TabType } from './sections/routes';
+import type { SectionContext } from './sections/types';
+import { TodaySection } from './sections/today';
+import { GoalsSection } from './sections/goals';
+import { ChannelsSection } from './sections/channels';
+import { HealthSection } from './sections/health';
+import { ProgressSection } from './sections/progress';
 import { QuickAddModal } from './components/QuickAddModal';
 import { GoogleCalendarModal } from './components/GoogleCalendarModal';
 import { DeviceSyncModal } from './components/DeviceSyncModal';
@@ -37,11 +38,11 @@ import { UndoSnackbar, SnackbarAction } from './components/UndoSnackbar';
 import { TogglTimerBar } from './components/TogglTimerBar';
 import { HealthBioTracker } from './components/HealthBioTracker';
 import { TaskEditModal } from './components/TaskEditModal';
-import { ShoppingListView } from './components/ShoppingListView';
 import { playLevelUpSound } from './utils/sound';
 import { triggerLevelUpConfetti } from './utils/confetti';
 import { createGoogleCalendarTimeLogEvent } from './utils/googleCalendarApi';
-import { isShoppingTask } from './utils/taskFilters';
+import { selectRegularTasks, selectShoppingTasks, makeTask, type TaskKind } from './utils/taskFilters';
+import { todayStr } from '@shared/time';
 import { 
   loadRecoveryCycleConfig, 
   getDayCycleInfo, 
@@ -72,18 +73,25 @@ export function App() {
   const [timeLogs, setTimeLogs] = useCollectionState('focus_sessions', timeLogConverter);
 
   // Active Navigation Tab (Defaults to Today Command Center)
-  const [activeTab, setActiveTab] = useState<TabType>('today');
+  // Старые ссылки (?tab=shopping, ?tab=bigdata) открывают новое место; удалённые разделы открывают «Сегодня»
+  const [activeTab, setActiveTab] = useState<TabType>(() => resolveTab(new URLSearchParams(window.location.search).get('tab')));
 
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
+  const [quickAddKind, setQuickAddKind] = useState<TaskKind>('task');
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isCalendarModalOpen, setIsCalendarModalOpen] = useState(false);
   const [isDeviceSyncOpen, setIsDeviceSyncOpen] = useState(false);
   const [isAiMasterOpen, setIsAiMasterOpen] = useState(false);
-  const [aiGoalDraft, setAiGoalDraft] = useState('');
   const [isLevelUpModalOpen, setIsLevelUpModalOpen] = useState(false);
   const [isHealthModalOpen, setIsHealthModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<TaskItem | null>(null);
   const [snackbarAction, setSnackbarAction] = useState<SnackbarAction | null>(null);
+
+  // Окно добавления: без аргумента — задача, 'shopping' — покупка (вкладка «Покупки»)
+  const openQuickAdd = useCallback((kind: TaskKind = 'task') => {
+    setQuickAddKind(kind);
+    setIsQuickAddOpen(true);
+  }, []);
 
 
   // ─── Статус облачной синхронизации (сам синк — в src/store) ────────────────
@@ -92,7 +100,7 @@ export function App() {
   // ─── Auto Daily Reset at Midnight ────────────────────────────────────────
   useEffect(() => {
     const LAST_RESET_KEY = 'questflow_last_daily_reset';
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayStr();
     const lastReset = localStorage.getItem(LAST_RESET_KEY);
 
     if (lastReset !== today) {
@@ -144,7 +152,7 @@ export function App() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `questflow-backup-${new Date().toISOString().split('T')[0]}.json`;
+    a.download = `questflow-backup-${todayStr()}.json`;
     a.click();
     URL.revokeObjectURL(url);
   }, [stats, tasks, projects, rewards, notifications, calendarConfig, timeLogs]);
@@ -251,12 +259,12 @@ export function App() {
         setIsCommandPaletteOpen((prev) => !prev);
       } else if (!isInput && e.key.toLowerCase() === 'q') {
         e.preventDefault();
-        setIsQuickAddOpen(true);
+        openQuickAdd();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [openQuickAdd]);
 
 
   // Update Stats Helper
@@ -424,8 +432,9 @@ export function App() {
     const freshStats: UserStats = { ...initialStats };
 
     setStats(freshStats);
-    setTasks(initialTasks);
-    setRewards(initialRewards);
+    // Чистый лист: ничего не возвращаем из зашитых списков (задачи пользователя — единственный источник правды)
+    setTasks([]);
+    setRewards([]);
     
     // Clear localStorage
     localStorage.removeItem('questflow_stats_v1');
@@ -592,23 +601,6 @@ export function App() {
     );
   };
 
-  // Toggle Focus in ShortsFlow
-  const handleToggleFocus = (taskId: string) => {
-    setTasks((prev) =>
-      prev.map((t) => (t.id === taskId ? { ...t, inFocusFlow: !t.inFocusFlow } : t))
-    );
-  };
-
-  // Snooze Task
-  const handleSnoozeTask = (taskId: string, minutes: number) => {
-    setTasks((prev) =>
-      prev.map((t) => {
-        if (t.id !== taskId) return t;
-        return { ...t, durationMinutes: (t.durationMinutes || 25) + minutes };
-      })
-    );
-  };
-
   // Delete Task
   const handleDeleteTask = (taskId: string) => {
     const taskToDelete = tasks.find((t) => t.id === taskId);
@@ -626,22 +618,13 @@ export function App() {
   };
 
 
-  // Add Task
-  const handleAddTask = (newTask: Partial<TaskItem> & { title: string }) => {
-    const task: TaskItem = {
-      type: 'todo',
-      priority: 'p2',
-      projectId: projects[0]?.id || 'proj-inbox',
-      tags: [],
-      difficulty: 'medium',
-      expReward: 35,
-      goldReward: 20,
-      ...newTask,
-      id: `task-${Date.now()}`,
-      completed: false,
-      subtasks: newTask.subtasks || [],
-    };
-    setTasks((prev) => [task, ...prev]);
+  // Add Task / Shopping item
+  const handleAddTask = (newTask: Partial<TaskItem> & { title: string; kind?: TaskKind }) => {
+    const { kind, ...fields } = newTask;
+    setTasks((prev) => [
+      makeTask(fields, { id: `task-${Date.now()}`, projectId: projects[0]?.id || 'proj-inbox', kind }),
+      ...prev,
+    ]);
   };
 
   // Update Task fields (dueDate, priority, title, notes, etc.)
@@ -653,13 +636,12 @@ export function App() {
 
   // Add Batch of Quests from AI
   const handleAddQuestsBatch = (newQuests: Omit<TaskItem, 'id' | 'completed'>[]) => {
-    const tasksToAdd: TaskItem[] = newQuests.map((q, idx) => ({
-      ...q,
-      id: `task-ai-${Date.now()}-${idx}`,
-      completed: false,
-    }));
+    const tasksToAdd: TaskItem[] = newQuests.map((q, idx) => {
+      const { inFocusFlow: _removed, ...quest } = q; // поле Flow Shorts больше не пишем
+      return { ...quest, id: `task-ai-${Date.now()}-${idx}`, completed: false };
+    });
     setTasks((prev) => [...tasksToAdd, ...prev]);
-    setActiveTab('shorts');
+    setActiveTab('goals');
   };
 
   // Buy Reward from Shop
@@ -700,33 +682,70 @@ export function App() {
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
   };
 
-  // Focus, Due Today, and Shopping counts
-  const todayStr = new Date().toISOString().split('T')[0];
-  const dueTodayCount = tasks.filter((t) => !t.completed && (t.dueDate === todayStr || t.type === 'daily')).length;
-  const shoppingCount = tasks.filter((t) => isShoppingTask(t) && !t.completed).length;
+  // Покупки отделены один раз здесь: все экраны, кроме вкладки «Покупки», получают только обычные задачи
+  const today = todayStr();
+  const regularTasks = selectRegularTasks(tasks);
+  const shoppingTasks = selectShoppingTasks(tasks);
+  const dueTodayCount = regularTasks.filter((t) => !t.completed && (t.dueDate === today || t.type === 'daily')).length;
+  const shoppingCount = shoppingTasks.filter((t) => !t.completed).length;
 
   const section = getSection(activeTab);
+
+  const sectionContext: SectionContext = {
+    tasks: regularTasks,
+    shoppingTasks,
+    projects,
+    stats,
+    rewards,
+    timeLogs,
+    calendarConfig,
+    shoppingCount,
+    onToggleTask: handleToggleTask,
+    onToggleSubtask: handleToggleSubtask,
+    onAddSubtask: handleAddSubtask,
+    onTriggerHabit: handleTriggerHabit,
+    onToggleDaily: handleToggleDaily,
+    onAddTask: handleAddTask,
+    onUpdateTask: handleUpdateTask,
+    onEditTask: (task) => setEditingTask(task),
+    onDeleteTask: handleDeleteTask,
+    onBuyReward: handleBuyReward,
+    onAddReward: handleAddReward,
+    onUpdateStats: handleUpdateStats,
+    onAwardRewards: (exp, gold, hp) => {
+      awardRewards(exp, gold);
+      if (hp) handleUpdateStats({ hp: Math.min(stats.maxHp, stats.hp + hp) });
+    },
+    onAddGoldReward: (gold) => setStats((prev) => ({ ...prev, gold: prev.gold + gold })),
+    onAddNotification: (n) => setNotifications((prev) => [n, ...prev]),
+    onSyncCalendar: () => {
+      setCalendarConfig((prev) => ({ ...prev, lastSyncedAt: new Date().toLocaleTimeString() }));
+    },
+    onOpenCalendarModal: () => setIsCalendarModalOpen(true),
+    onOpenQuickAdd: openQuickAdd,
+    onOpenHealthModal: () => setIsHealthModalOpen(true),
+    onOpenTab: setActiveTab,
+  };
 
   return (
     <div className="h-screen bg-[#09090c] text-white flex font-sans selection:bg-purple-500 selection:text-white overflow-hidden">
 
-      {/* 1. Боковая навигация (Mac / широкий экран) */}
+      {/* 1. Боковая навигация (Mac / широкий экран): 5 разделов */}
       <Navigation
         activeTab={activeTab}
         onSelectTab={setActiveTab}
         dueTodayCount={dueTodayCount}
-        shoppingCount={shoppingCount}
       />
 
       <div className="flex-1 min-w-0 flex flex-col overflow-hidden pb-16 md:pb-0">
 
-      {/* 2. Шапка: название раздела, синхронизация, настройки */}
+      {/* 2. Шапка: название раздела, строка прогресса, синхронизация, настройки */}
       <Header
         title={SECTION_TITLES[section]}
         syncStatus={syncStatus}
         stats={stats}
         onUpdateStats={handleUpdateStats}
-        onOpenQuickAdd={() => setIsQuickAddOpen(true)}
+        onOpenQuickAdd={() => openQuickAdd()}
         onOpenSearch={() => setIsCommandPaletteOpen(true)}
         onOpenCalendarModal={() => setIsCalendarModalOpen(true)}
         onOpenDeviceSyncModal={() => setIsDeviceSyncOpen(true)}
@@ -740,7 +759,7 @@ export function App() {
 
       {/* 2.5 Toggl Track Style Time Tracker Bar (Focus 120m / Break 20m) */}
       <TogglTimerBar
-        tasks={tasks}
+        tasks={regularTasks}
         projects={projects}
         onLogSession={handleLogSession}
         onCompleteTask={handleToggleTask}
@@ -748,151 +767,27 @@ export function App() {
         isCalendarConnected={Boolean(calendarConfig.connected && calendarConfig.accessToken)}
       />
 
-      {/* 3. Main Views */}
+      {/* 3. Разделы: каждый живёт в своей папке src/sections/<id>/ */}
       <main className="flex-1 overflow-hidden flex flex-col">
-        
-        {/* 1. TODAY (Command Center / Home Focus) */}
-        {section === 'today' && (
-          <CommandCenterToday
-            tasks={tasks}
-            projects={projects}
-            stats={stats}
-            rewards={rewards}
-            onToggleTask={handleToggleTask}
-            onToggleSubtask={handleToggleSubtask}
-            onTriggerHabit={handleTriggerHabit}
-            onToggleDaily={handleToggleDaily}
-            onAddTask={handleAddTask}
-            onUpdateTask={handleUpdateTask}
-            onEditTask={(task) => setEditingTask(task)}
-            onDeleteTask={handleDeleteTask}
-            onAddSubtask={handleAddSubtask}
-            onBuyReward={handleBuyReward}
-            onOpenQuickAdd={() => setIsQuickAddOpen(true)}
-            onOpenHealthModal={() => setIsHealthModalOpen(true)}
-            onOpenStudioTab={() => setActiveTab('studio')}
-            onOpenLifeTab={() => setActiveTab('health')}
-            onOpenShoppingTab={() => setActiveTab('shopping')}
-            onUpdateStats={handleUpdateStats}
-            onAwardRewards={(exp, gold, hp) => {
-              awardRewards(exp, gold);
-              if (hp) handleUpdateStats({ hp: Math.min(stats.maxHp, stats.hp + hp) });
-            }}
-          />
-        )}
-
-        {/* 2. MEDIA STUDIO (Shorts, Production Kanban, Ideas, AI) */}
-        {section === 'studio' && (
+        {section === 'today' && <TodaySection ctx={sectionContext} />}
+        {section === 'goals' && (
           <div className="flex-1 overflow-y-auto">
-            <MediaStudioHub
-              tasks={tasks}
-              projects={projects}
-              stats={stats}
-              onToggleTask={handleToggleTask}
-              onToggleSubtask={handleToggleSubtask}
-              onSnoozeTask={handleSnoozeTask}
-              onToggleFocus={handleToggleFocus}
-              onAddTask={handleAddTask}
-              onOpenAiDecompose={(title) => {
-                setAiGoalDraft(title);
-                setIsAiMasterOpen(true);
-              }}
-              onPublishReward={(exp, gold) => awardRewards(exp, gold)}
-              onOpenAiMaster={() => setIsAiMasterOpen(true)}
-            />
+            <GoalsSection ctx={sectionContext} tab={activeTab} />
           </div>
         )}
-
-        {/* 3. QUESTS & HABITS BACKLOG */}
-        {section === 'quests' && (
+        {section === 'channels' && (
           <div className="flex-1 overflow-y-auto">
-            <QuestsHub
-              tasks={tasks}
-              projects={projects}
-              stats={stats}
-              rewards={rewards}
-              onToggleTask={handleToggleTask}
-              onToggleSubtask={handleToggleSubtask}
-              onAddSubtask={handleAddSubtask}
-              onToggleFocus={handleToggleFocus}
-              onDeleteTask={handleDeleteTask}
-              onEditTask={(task) => setEditingTask(task)}
-              onTriggerHabit={handleTriggerHabit}
-              onToggleDaily={handleToggleDaily}
-              onResetDailies={handleResetDailies}
-              onUpdateStats={handleUpdateStats}
-              onBuyReward={handleBuyReward}
-              onAddReward={handleAddReward}
-              onOpenQuickAdd={() => setIsQuickAddOpen(true)}
-            />
+            <ChannelsSection ctx={sectionContext} />
           </div>
         )}
-
-        {/* 3.5 SHOPPING LIST (Isolated Dedicated View) */}
-        {section === 'shopping' && (
+        {section === 'health' && (
           <div className="flex-1 overflow-y-auto">
-            <div className="max-w-7xl mx-auto py-3 px-2 sm:px-4">
-              <ShoppingListView
-                tasks={tasks}
-                projects={projects}
-                stats={stats}
-                onToggleTask={handleToggleTask}
-                onToggleSubtask={handleToggleSubtask}
-                onAddSubtask={handleAddSubtask}
-                onDeleteTask={handleDeleteTask}
-                onEditTask={(task) => setEditingTask(task)}
-                onOpenQuickAdd={() => setIsQuickAddOpen(true)}
-              />
-            </div>
+            <HealthSection ctx={sectionContext} tab={activeTab} />
           </div>
         )}
-
-        {/* 4. Календарь / Здоровье / Финансы */}
-        {(section === 'calendar' || section === 'health' || section === 'finances') && (
+        {section === 'progress' && (
           <div className="flex-1 overflow-y-auto">
-            <LifeAnalyticsHub
-              key={section}
-              view={section}
-              initialHealthTab={activeTab === 'bigdata' ? 'bigdata' : 'health'}
-              tasks={tasks}
-              projects={projects}
-              stats={stats}
-              calendarConfig={calendarConfig}
-              timeLogs={timeLogs}
-              onUpdateStats={handleUpdateStats}
-              onAddNotification={(n) => setNotifications((prev) => [n, ...prev])}
-              onSyncCalendar={() => {
-                setCalendarConfig((prev) => ({
-                  ...prev,
-                  lastSyncedAt: new Date().toLocaleTimeString(),
-                }));
-              }}
-              onOpenCalendarModal={() => setIsCalendarModalOpen(true)}
-              onOpenQuickAdd={() => setIsQuickAddOpen(true)}
-              onToggleTask={handleToggleTask}
-              onAddGoldReward={(gold) => setStats((prev) => ({ ...prev, gold: prev.gold + gold }))}
-              onLogReward={(exp, gold) => awardRewards(exp, gold)}
-            />
-          </div>
-        )}
-
-        {/* 5. TAVERN & REWARDS */}
-        {section === 'tavern' && (
-          <div className="flex-1 overflow-y-auto">
-            <TavernHub
-              stats={stats}
-              rewards={rewards}
-              onUpdateStats={handleUpdateStats}
-              onBuyReward={handleBuyReward}
-              onAddReward={handleAddReward}
-            />
-          </div>
-        )}
-
-        {/* 6. «Ещё»: второстепенные разделы (телефон) */}
-        {section === 'more' && (
-          <div className="flex-1 overflow-y-auto">
-            <MoreScreen onSelectTab={setActiveTab} shoppingCount={shoppingCount} />
+            <ProgressSection ctx={sectionContext} tab={activeTab} />
           </div>
         )}
       </main>
@@ -903,7 +798,7 @@ export function App() {
       <MobileBottomNav
         activeTab={activeTab}
         onSelectTab={setActiveTab}
-        onOpenQuickAdd={() => setIsQuickAddOpen(true)}
+        onOpenQuickAdd={() => openQuickAdd()}
       />
 
       {/* 5. Modals */}
@@ -912,6 +807,7 @@ export function App() {
         onClose={() => setIsQuickAddOpen(false)}
         projects={projects}
         onAddTask={handleAddTask}
+        kind={quickAddKind}
         blockedMessage={
           isQuickAddOpen && getDayCycleInfo(getTodayStr(), loadRecoveryCycleConfig()).isRecoveryDay
             ? 'Сегодня день отдыха. Уберите гаджеты и идите в баню!'
@@ -939,7 +835,7 @@ export function App() {
       <AiQuestMasterModal
         isOpen={isAiMasterOpen}
         onClose={() => setIsAiMasterOpen(false)}
-        initialGoal={aiGoalDraft}
+        initialGoal=""
         projects={projects}
         onAddQuests={handleAddQuestsBatch}
       />
@@ -996,12 +892,12 @@ export function App() {
       <GlobalCommandPalette
         isOpen={isCommandPaletteOpen}
         onClose={() => setIsCommandPaletteOpen(false)}
-        tasks={tasks}
+        tasks={regularTasks}
         projects={projects}
         activeTab={activeTab}
         onSelectTab={setActiveTab}
         onToggleTask={handleToggleTask}
-        onOpenQuickAdd={() => setIsQuickAddOpen(true)}
+        onOpenQuickAdd={() => openQuickAdd()}
         onOpenAiMaster={() => setIsAiMasterOpen(true)}
         onExportData={handleExportData}
       />

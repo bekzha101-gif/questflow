@@ -16,6 +16,7 @@ import {
   Tag, 
   Filter
 } from "lucide-react";
+import { selectShoppingTasks } from "../utils/taskFilters";
 import { renderFormattedText } from "../utils/textFormatter";
 import { playQuestCompleteSound, playCoinSound } from "../utils/sound";
 import { triggerQuestConfetti } from "../utils/confetti";
@@ -29,7 +30,8 @@ interface ShoppingListViewProps {
   onAddSubtask: (taskId: string, text: string) => void;
   onDeleteTask: (taskId: string) => void;
   onEditTask?: (task: TaskItem) => void;
-  onOpenQuickAdd: () => void;
+  // Добавление с этой вкладки всегда создаёт покупку (kind: 'shopping')
+  onOpenQuickAdd: (kind: 'shopping') => void;
 }
 
 export const ShoppingListView: React.FC<ShoppingListViewProps> = ({
@@ -43,9 +45,6 @@ export const ShoppingListView: React.FC<ShoppingListViewProps> = ({
   onEditTask,
   onOpenQuickAdd,
 }) => {
-  // Shopping project ID from Todoist
-  const SHOPPING_PROJECT_ID = "6h5FPgJ74x5g685w";
-  
   const [selectedCategory, setSelectedCategory] = useState<"all" | "nootropics" | "study" | "tech" | "health" | "completed">("all");
   const [expandedTasks, setExpandedTasks] = useState<Record<string, boolean>>({
     // Auto-expand items that have many subtasks for instant convenience
@@ -55,9 +54,7 @@ export const ShoppingListView: React.FC<ShoppingListViewProps> = ({
   const [newSubtaskInputs, setNewSubtaskInputs] = useState<Record<string, string>>({});
 
   // Filter tasks that belong to Shopping List or have shopping tags
-  const shoppingTasks = tasks.filter(
-    (t) => t.projectId === SHOPPING_PROJECT_ID || t.tags.includes("покупки") || t.tags.includes("желания")
-  );
+  const shoppingTasks = selectShoppingTasks(tasks);
 
   const toggleExpand = (taskId: string) => {
     setExpandedTasks((prev) => ({ ...prev, [taskId]: !prev[taskId] }));
@@ -161,7 +158,7 @@ export const ShoppingListView: React.FC<ShoppingListViewProps> = ({
           </div>
 
           <button
-            onClick={onOpenQuickAdd}
+            onClick={() => onOpenQuickAdd('shopping')}
             className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black font-bold text-xs shadow-lg shadow-amber-500/20 transition-all active:scale-95 cursor-pointer shrink-0"
           >
             <Plus className="w-4 h-4 stroke-[3]" />

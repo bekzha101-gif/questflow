@@ -11,7 +11,11 @@ import {
   X,
   Download,
   Upload,
+  Flame,
+  Heart,
+  Coins,
 } from 'lucide-react';
+import { HIDEABLE_SECTIONS, setSectionHidden, useHiddenSections } from '../utils/hiddenSections';
 
 interface HeaderProps {
   stats: UserStats;
@@ -44,6 +48,7 @@ export const Header: React.FC<HeaderProps> = ({
   syncStatus,
 }) => {
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
+  const hidden = useHiddenSections();
   const unreadNotifs = notifications.filter((n) => !n.read).length;
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
 
@@ -124,6 +129,34 @@ export const Header: React.FC<HeaderProps> = ({
                   >
                     <X className="w-3.5 h-3.5" />
                   </button>
+                </div>
+
+                {/* Скрытые части интерфейса (бывший экран «Ещё») */}
+                <div className="px-1 pt-1 pb-1.5 space-y-1 border-b border-white/[0.06]">
+                  <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-wider block">
+                    Показывать
+                  </span>
+                  {HIDEABLE_SECTIONS.map((section) => {
+                    const shown = !hidden.includes(section.id);
+                    return (
+                      <label
+                        key={section.id}
+                        className="flex items-center justify-between gap-2 px-1.5 py-1.5 rounded-lg hover:bg-white/[0.05] text-zinc-300 cursor-pointer"
+                      >
+                        <span className="min-w-0">
+                          <span className="block">{section.label}</span>
+                          <span className="block text-[10px] text-zinc-500 truncate">{section.description}</span>
+                        </span>
+                        <input
+                          type="checkbox"
+                          role="switch"
+                          checked={shown}
+                          onChange={(e) => setSectionHidden(section.id, !e.target.checked)}
+                          className="accent-emerald-500 w-4 h-4 shrink-0"
+                        />
+                      </label>
+                    );
+                  })}
                 </div>
 
                 {/* Sound Toggle */}
@@ -226,6 +259,33 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
 
         </div>
+      </div>
+
+      {/* Тонкая строка прогресса: уровень, HP, золото, серия — на каждом разделе */}
+      <div
+        aria-label="Прогресс героя"
+        className="flex items-center gap-4 pt-1 text-[11px] font-mono text-zinc-400 overflow-hidden whitespace-nowrap"
+      >
+        <span>Ур. <strong className="text-zinc-100">{stats.level}</strong></span>
+        <span className="flex items-center gap-1.5">
+          <Heart className="w-3 h-3 text-rose-500" />
+          <span className="w-12 h-1 bg-zinc-800 rounded-full overflow-hidden">
+            <span
+              className="block h-full bg-rose-500 rounded-full"
+              style={{ width: `${Math.round((stats.hp / Math.max(1, stats.maxHp)) * 100)}%` }}
+            />
+          </span>
+          <strong className="text-zinc-100">{stats.hp}</strong>
+        </span>
+        <span className="flex items-center gap-1 text-amber-400">
+          <Coins className="w-3 h-3" />
+          <strong>{stats.gold}</strong>
+        </span>
+        <span className="flex items-center gap-1 text-orange-400">
+          <Flame className="w-3 h-3" />
+          <strong>{stats.streak}</strong>
+          <span className="text-zinc-500">дн.</span>
+        </span>
       </div>
     </header>
   );

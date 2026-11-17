@@ -16,7 +16,8 @@ import {
 import { playQuestCompleteSound, playCoinSound } from '../utils/sound';
 import { triggerQuestConfetti } from '../utils/confetti';
 import { renderFormattedText } from '../utils/textFormatter';
-import { isShoppingTask } from '../utils/taskFilters';
+import { isShoppingTask, SHOPPING_PROJECT_ID } from '../utils/taskFilters';
+import { todayStr as todayBishkek } from '@shared/time';
 
 interface TodoistTaskListProps {
   tasks: TaskItem[];
@@ -25,7 +26,6 @@ interface TodoistTaskListProps {
   onToggleTask: (taskId: string) => void;
   onToggleSubtask: (taskId: string, subtaskId: string) => void;
   onAddSubtask: (taskId: string, text: string) => void;
-  onToggleFocus: (taskId: string) => void;
   onDeleteTask: (taskId: string) => void;
   onEditTask?: (task: TaskItem) => void;
   onOpenQuickAdd: () => void;
@@ -38,7 +38,6 @@ export const TodoistTaskList: React.FC<TodoistTaskListProps> = ({
   onToggleTask,
   onToggleSubtask,
   onAddSubtask,
-  onToggleFocus,
   onDeleteTask,
   onEditTask,
   onOpenQuickAdd,
@@ -74,15 +73,15 @@ export const TodoistTaskList: React.FC<TodoistTaskListProps> = ({
 
   const nonHabitTasks = tasks.filter((t) => {
     if (t.type === 'habit') return false;
-    // Keep shopping tasks isolated in the dedicated Shopping List view
-    if (selectedProjectId === 'all' && isShoppingTask(t)) return false;
+    // Покупки только на своей вкладке: ни в одном проекте и ни в одном фильтре
+    if (isShoppingTask(t)) return false;
     return true;
   });
 
   const filteredTasks = nonHabitTasks.filter((t) => {
     if (selectedProjectId !== 'all' && t.projectId !== selectedProjectId) return false;
 
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = todayBishkek();
 
     if (filterView === 'completed') return t.completed;
     if (t.completed) return false;
@@ -155,7 +154,7 @@ export const TodoistTaskList: React.FC<TodoistTaskListProps> = ({
           <span>Все проекты</span>
         </button>
 
-        {projects.map((p) => (
+        {projects.filter((p) => p.id !== SHOPPING_PROJECT_ID).map((p) => (
           <button
             key={p.id}
             onClick={() => setSelectedProjectId(p.id)}

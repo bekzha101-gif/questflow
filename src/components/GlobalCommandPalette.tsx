@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Search, CheckCircle, Clock, Calendar, Film, Sparkles, ArrowRight, X, Command, Activity, DollarSign, Users, Shield } from 'lucide-react';
+import { Search, CheckCircle, Clock, Calendar, Film, Sparkles, ArrowRight, X, Command, Activity, DollarSign, Zap, Target, ShoppingBag, Heart, TrendingUp } from 'lucide-react';
 import { TaskItem, Project } from '../types';
-import { TabType, getSection } from './Navigation';
-import { HideableSection, useHiddenSections } from '../utils/hiddenSections';
+import { TabType } from './Navigation';
+import { useHiddenSections } from '../utils/hiddenSections';
 
 interface CommandPaletteProps {
   isOpen: boolean;
@@ -54,18 +54,18 @@ export function GlobalCommandPalette({
 
   const hidden = useHiddenSections();
 
-  // Navigation Items
+  // Разделы: 5 основных и места внутри них (старые id ведут в новые разделы)
   const navItems = useMemo(() => [
-    { id: 'tab-shorts', type: 'nav', title: 'ShortsFlow — Фокус спринт', tab: 'shorts' as TabType, icon: Clock },
-    { id: 'tab-prod', type: 'nav', title: 'Канбан Продакшн YouTube (Shorts)', tab: 'production' as TabType, icon: Film },
-    { id: 'tab-bigdata', type: 'nav', title: 'Big Data Табличка (Сон, Ноотропы, Аналитика 31)', tab: 'bigdata' as TabType, icon: Activity },
-    { id: 'tab-ideas', type: 'nav', title: 'Пайплайн Идей & Сценариев', tab: 'ideas' as TabType, icon: Sparkles },
-    { id: 'tab-tasks', type: 'nav', title: 'Все Задачи (Todoist стиль)', tab: 'tasks' as TabType, icon: CheckCircle },
-    { id: 'tab-habits', type: 'nav', title: 'Привычки & Ежедневные Квесты (Habitica)', tab: 'habits' as TabType, icon: Shield },
+    { id: 'tab-today', type: 'nav', title: 'Сегодня — привычки, ежедневные, задачи, награды', tab: 'today' as TabType, icon: Zap },
+    { id: 'tab-goals', type: 'nav', title: 'Цели — задачи и цели месяца', tab: 'goals' as TabType, icon: Target },
+    { id: 'tab-shopping', type: 'nav', title: 'Покупки (вкладка в «Целях»)', tab: 'shopping' as TabType, icon: ShoppingBag },
+    { id: 'tab-cal', type: 'nav', title: 'Календарь & Time Blocking (вкладка в «Целях»)', tab: 'calendar' as TabType, icon: Calendar },
+    { id: 'tab-channels', type: 'nav', title: 'Каналы — канбан видео (Монтаж → Проверка → Опубликовано)', tab: 'channels' as TabType, icon: Film },
+    { id: 'tab-health', type: 'nav', title: 'Здоровье — еда, сон, будильники', tab: 'health' as TabType, icon: Heart },
+    { id: 'tab-bigdata', type: 'nav', title: 'Big Data табличка (сон, БАДы, аналитика)', tab: 'bigdata' as TabType, icon: Activity },
+    { id: 'tab-progress', type: 'nav', title: 'Прогресс — уровень, награды, доход', tab: 'progress' as TabType, icon: TrendingUp },
     { id: 'tab-fin', type: 'nav', title: 'Финансы & Доходы YouTube', tab: 'finances' as TabType, icon: DollarSign },
-    { id: 'tab-cal', type: 'nav', title: 'Календарь & Time Blocking', tab: 'calendar' as TabType, icon: Calendar },
-    { id: 'tab-team', type: 'nav', title: 'Команда & Роли монтажеров', tab: 'team' as TabType, icon: Users },
-  ].filter((item) => !hidden.includes(getSection(item.tab) as HideableSection)), [hidden]);
+  ], []);
 
   // Quick Action Items
   const quickActions = useMemo(() => [

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Project, TaskItem, SubTask } from '../types';
 import { parseNaturalLanguageTask } from '../utils/naturalLanguageParser';
+import type { TaskKind } from '../utils/taskFilters';
 import { 
   Plus, 
   Calendar, 
@@ -15,7 +16,9 @@ interface QuickAddModalProps {
   isOpen: boolean;
   onClose: () => void;
   projects: Project[];
-  onAddTask: (task: Omit<TaskItem, 'id' | 'completed'> & { subtasks?: SubTask[] }) => void;
+  onAddTask: (task: Omit<TaskItem, 'id' | 'completed'> & { subtasks?: SubTask[]; kind?: TaskKind }) => void;
+  // С вкладки «Покупки» окно открывается с kind: 'shopping' — запись сразу становится покупкой
+  kind?: TaskKind;
   // Если задано, вместо формы показывается это сообщение (день детокса)
   blockedMessage?: string;
 }
@@ -26,6 +29,7 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
   projects,
   onAddTask,
   blockedMessage,
+  kind = 'task',
 }) => {
   const [input, setInput] = useState('');
   const [selectedProjectId, setSelectedProjectId] = useState(projects[0]?.id || 'proj-inbox');
@@ -92,7 +96,7 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
 
     onAddTask({
       title: parsedData.title,
-      type: parsedData.type,
+      type: kind === 'shopping' ? 'todo' : parsedData.type,
       priority: parsedData.priority,
       projectId: selectedProjectId,
       tags: parsedData.tags,
@@ -102,7 +106,7 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
       difficulty: parsedData.difficulty,
       expReward: parsedData.expReward,
       goldReward: parsedData.goldReward,
-      inFocusFlow: parsedData.priority === 'p1',
+      kind,
       stage: 'backlog',
       subtasks: subtasks.map((text, idx) => ({
         id: `st-${Date.now()}-${idx}`,
@@ -125,7 +129,9 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
         {/* Header */}
         <div className="flex items-center justify-between pb-3 border-b border-white/10 mb-3 shrink-0">
           <div>
-            <h2 className="font-bold text-sm text-zinc-100">Новая задача или большая цель</h2>
+            <h2 className="font-bold text-sm text-zinc-100">
+              {kind === 'shopping' ? 'Новая покупка' : 'Новая задача или большая цель'}
+            </h2>
             <p className="text-[11px] text-zinc-500">Умный ввод или добавление шагов/дедлайна вручную</p>
           </div>
           <button
