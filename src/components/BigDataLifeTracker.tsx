@@ -2,7 +2,7 @@
 // месяцы листаются стрелками. Сферы, свои критерии и шаблон БАДов — в настройках (bigdata_config).
 // Аналитика (дельта, причины спада, «Что на тебя влияет») — shared/bigdata.ts.
 import React, { useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, Check, X, Plus, Trash2, Upload, Moon, Droplet, Timer, ListChecks, StickyNote } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Check, X, Plus, Trash2, Upload, Moon, Droplet, Timer, ListChecks, StickyNote, Activity, FlaskConical } from 'lucide-react';
 import { monthKey, todayStr } from '@shared/time';
 import {
   dayDelta,
@@ -39,7 +39,8 @@ import {
   type BigDataSettings,
   type MonthCell,
 } from '../utils/bigDataTracker';
-import { parseSleepCycleCsv } from '../utils/sleepCycleParser';
+import { applySleepImport, parseSleepCycleCsv, planSleepImport } from '../utils/sleepCycleParser';
+import { BIO_FIELDS, bioHistory, bioLatest, parseBioValues, useBiometrics, type BioKind } from '../utils/biometrics';
 import {
   loadGoogleFitConfig,
   saveGoogleFitConfig,
@@ -49,11 +50,12 @@ import {
 import { BigDataChart, type ScorePoint } from './BigDataChart';
 import { rewardBigDataFill } from '../sections/progress/game';
 
-type Tab = 'days' | 'analytics' | 'notes' | 'settings';
+type Tab = 'days' | 'analytics' | 'biometrics' | 'notes' | 'settings';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'days', label: 'Дни' },
   { id: 'analytics', label: 'Аналитика' },
+  { id: 'biometrics', label: 'Биометрия' },
   { id: 'notes', label: 'Заметки' },
   { id: 'settings', label: 'Настройки' },
 ];
@@ -195,9 +197,14 @@ export const BigDataLifeTracker: React.FC = () => {
 
       {tab === 'days' && (
         <div className="space-y-1.5">
-          {settings.spheres.length === 0 && (
-            <p className="text-[11px] text-zinc-500 px-1">Сфер дня пока нет — добавь их в «Настройках».</p>
-          )}
+          <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+            {settings.spheres.length === 0 ? (
+              <p className="text-[11px] text-zinc-500">Сфер дня пока нет — добавь их в «Настройках».</p>
+            ) : (
+              <span />
+            )}
+            <SleepCsvButton />
+          </div>
           {cells.map((c) => (
             <DayRow
               key={c.date}
@@ -224,6 +231,8 @@ export const BigDataLifeTracker: React.FC = () => {
           <InfluenceBlock days={analysisDays} cfg={analysisCfg} />
         </div>
       )}
+
+      {tab === 'biometrics' && <BiometricsPanel today={today} />}
 
       {tab === 'notes' && <NotesList cells={cells} onOpen={setEditing} />}
 
@@ -758,25 +767,6 @@ function SleepImport({ month }: { month: string }) {
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const onCsv = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const records = parseSleepCycleCsv(String(reader.result ?? ''));
-      let n = 0;
-      for (const r of records) {
-        const date = (r.endDate || r.startDate || '').slice(0, 10);
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
-        patchDay(date, { sleepMin: r.timeInBedMinutes || undefined, sleepQuality: r.sleepQuality || undefined });
-        n++;
-      }
-      setMsg(n ? `Записано ночей: ${n}` : 'В файле не нашлось ночей с датой');
-    };
-    reader.readAsText(file);
-    e.target.value = '';
-  };
-
   const fetchFit = async (token: string) => {
     const [y, m] = month.split('-').map(Number);
     setBusy(true);
@@ -807,15 +797,217 @@ function SleepImport({ month }: { month: string }) {
       <h3 className="text-[11px] font-semibold tracking-[0.06em] uppercase text-zinc-500">Импорт сна</h3>
       <p className="text-[11px] text-zinc-500">Обычно сон приходит скриншотом Sleep Cycle в вечернем разговоре с ботом. Здесь — запасные способы.</p>
       <div className="flex flex-wrap gap-2">
-        <label className="h-8 px-3 rounded-[10px] text-xs font-medium bg-[#16161f] border border-white/[0.12] text-zinc-200 inline-flex items-center gap-1.5 cursor-pointer">
-          <Upload className="w-3.5 h-3.5" /> CSV из Sleep Cycle
-          <input type="file" accept=".csv,text/csv" className="hidden" onChange={onCsv} />
-        </label>
+        <SleepCsvButton />
         <button onClick={onFit} disabled={busy} className="h-8 px-3 rounded-[10px] text-xs font-medium bg-[#16161f] border border-white/[0.12] text-zinc-200 disabled:opacity-50">
           {busy ? 'Загрузка…' : `Google Fit за ${monthTitle(month).toLowerCase()}`}
         </button>
       </div>
       {msg && <p className="text-[11px] text-zinc-400">{msg}</p>}
+    </section>
+  );
+}
+
+// ─── Загрузка CSV Sleep Cycle ────────────────────────────────────────────────
+
+/** Кнопка «Загрузить CSV Sleep Cycle»: сон и качество по датам; заполненные дни — только после подтверждения */
+function SleepCsvButton() {
+  const days = useBigDataDays();
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const onCsv = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const nights = parseSleepCycleCsv(String(reader.result ?? ''));
+      if (!nights.length) return setMsg('В файле не нашлось ночей Sleep Cycle (нужны колонки Start;End;…)');
+      const plan = planSleepImport(nights, days);
+      const overwrite =
+        plan.conflicts.length > 0 &&
+        window.confirm(
+          `В ${plan.conflicts.length} дн. сон уже заполнен другими значениями (${plan.conflicts
+            .slice(0, 5)
+            .map((c) => c.date)
+            .join(', ')}${plan.conflicts.length > 5 ? '…' : ''}). Перезаписать их данными из файла?`,
+        );
+      const res = applySleepImport(plan, overwrite);
+      for (const w of res.writes) patchDay(w.date, w.patch);
+      setMsg(`Sleep Cycle: добавлено ${res.added}, пропущено ${res.skipped}`);
+    };
+    reader.readAsText(file);
+  };
+
+  return (
+    <div className="inline-flex items-center gap-2">
+      {msg && <span className="text-[11px] text-zinc-400">{msg}</span>}
+      <label className="h-8 px-3 rounded-[10px] text-xs font-medium bg-[#16161f] border border-white/[0.12] text-zinc-200 inline-flex items-center gap-1.5 cursor-pointer hover:text-white">
+        <Upload className="w-3.5 h-3.5" /> Загрузить CSV Sleep Cycle
+        <input type="file" accept=".csv,text/csv" className="hidden" onChange={onCsv} />
+      </label>
+    </div>
+  );
+}
+
+// ─── Биометрия: замеры тела и анализы ────────────────────────────────────────
+
+function fmtNum(n: number) {
+  return Number.isInteger(n) ? String(n) : String(Math.round(n * 100) / 100);
+}
+
+function fmtDate(date: string) {
+  const [y, m, d] = date.split('-');
+  return `${d}.${m}.${y}`;
+}
+
+function BiometricsPanel({ today }: { today: string }) {
+  const { state, add, remove } = useBiometrics();
+  return (
+    <div className="grid gap-4 lg:grid-cols-2">
+      <BioCard kind="body" title="Замеры тела" icon={<Activity className="w-3.5 h-3.5" />} today={today} state={state} onAdd={add} onRemove={remove} />
+      <BioCard
+        kind="labs"
+        title="Анализы гормонов"
+        icon={<FlaskConical className="w-3.5 h-3.5" />}
+        today={today}
+        state={state}
+        onAdd={add}
+        onRemove={remove}
+        hint="Анализы обычно раз в 2–3 месяца. Эстрадиол: пг/мл = нг/л."
+      />
+    </div>
+  );
+}
+
+function BioCard({
+  kind,
+  title,
+  icon,
+  today,
+  state,
+  onAdd,
+  onRemove,
+  hint,
+}: {
+  kind: BioKind;
+  title: string;
+  icon: React.ReactNode;
+  today: string;
+  state: ReturnType<typeof useBiometrics>['state'];
+  onAdd: (kind: BioKind, date: string, values: Record<string, number>, note?: string) => void;
+  onRemove: (id: string) => void;
+  hint?: string;
+}) {
+  const fields = BIO_FIELDS[kind];
+  const [date, setDate] = useState(today);
+  const [form, setForm] = useState<Record<string, string>>({});
+  const [note, setNote] = useState('');
+  const latest = useMemo(() => bioLatest(state, kind), [state, kind]);
+  const history = useMemo(() => bioHistory(state, kind), [state, kind]);
+  const values = parseBioValues(kind, form);
+  const canSave = Object.keys(values).length > 0 && /^\d{4}-\d{2}-\d{2}$/.test(date);
+
+  const card = 'p-4 rounded-[20px] bg-[#101014] border border-white/[0.07] space-y-3';
+  const h = 'text-[11px] font-semibold tracking-[0.06em] uppercase text-zinc-500 inline-flex items-center gap-1.5';
+  const input = 'bg-[#09090c] border border-white/[0.08] focus:border-white/20 rounded-lg px-2.5 py-1.5 text-xs text-zinc-100 placeholder:text-zinc-600 focus:outline-none';
+
+  return (
+    <section className={card}>
+      <h3 className={h}>
+        {icon} {title}
+      </h3>
+      {hint && <p className="text-[11px] text-zinc-500">{hint}</p>}
+
+      {latest.length === 0 ? (
+        <p className="text-xs text-zinc-500">Записей пока нет — добавь первую ниже.</p>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          {latest.map((l) => (
+            <div key={l.field.id} className="p-2.5 rounded-xl bg-[#0e0e13] border border-white/[0.06]">
+              <div className="text-[10px] text-zinc-500">{l.field.label}</div>
+              <div className="text-sm font-mono text-zinc-100">
+                {fmtNum(l.value)} <span className="text-[10px] text-zinc-500">{l.field.unit}</span>
+              </div>
+              <div className="text-[10px] font-mono text-zinc-500">
+                {fmtDate(l.date)}
+                {l.delta !== undefined && l.prev && (
+                  <span className={l.delta === 0 ? ' text-zinc-500' : ' text-zinc-300'} title={`к ${fmtDate(l.prev.date)}: ${fmtNum(l.prev.value)} ${l.field.unit}`}>
+                    {' '}
+                    {l.delta > 0 ? '+' : ''}
+                    {fmtNum(l.delta)}
+                  </span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <form
+        className="space-y-2 pt-2 border-t border-white/[0.05]"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!canSave) return;
+          onAdd(kind, date, values, note);
+          setForm({});
+          setNote('');
+        }}
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] text-zinc-500">{kind === 'labs' ? 'Дата анализа' : 'Дата замера'}</span>
+          <input type="date" className={input} value={date} onChange={(e) => setDate(e.target.value)} />
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          {fields.map((f) => (
+            <label key={f.id} className="space-y-1">
+              <span className="block text-[10px] text-zinc-500">
+                {f.label}, {f.unit}
+              </span>
+              <input
+                className={`${input} w-full font-mono`}
+                inputMode="decimal"
+                value={form[f.id] ?? ''}
+                onChange={(e) => setForm((p) => ({ ...p, [f.id]: e.target.value }))}
+                placeholder="—"
+              />
+            </label>
+          ))}
+        </div>
+        <div className="flex gap-2">
+          <input className={`${input} flex-1`} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Заметка (необязательно)" />
+          <button
+            disabled={!canSave}
+            className="h-8 px-3 rounded-[10px] text-xs font-medium bg-[#16161f] border border-white/[0.12] text-zinc-200 inline-flex items-center gap-1 disabled:opacity-40"
+          >
+            <Plus className="w-3.5 h-3.5" /> Сохранить
+          </button>
+        </div>
+      </form>
+
+      {history.length > 0 && (
+        <div className="space-y-1 pt-2 border-t border-white/[0.05]">
+          <div className="text-[10px] uppercase tracking-[0.06em] text-zinc-600">История</div>
+          {history.map((e) => (
+            <div key={e.id} className="flex items-start gap-2 text-[11px]">
+              <span className="font-mono text-zinc-400 shrink-0">{fmtDate(e.date)}</span>
+              <span className="flex-1 text-zinc-300">
+                {fields
+                  .filter((f) => typeof e.values[f.id] === 'number')
+                  .map((f) => `${f.label} ${fmtNum(e.values[f.id])} ${f.unit}`)
+                  .join(' · ')}
+                {e.note && <span className="text-zinc-500"> — {e.note}</span>}
+              </span>
+              <button
+                className="p-1 rounded-lg text-zinc-600 hover:text-rose-400"
+                title="Удалить запись"
+                onClick={() => window.confirm(`Удалить запись от ${fmtDate(e.date)}?`) && onRemove(e.id)}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </section>
   );
 }
