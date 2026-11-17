@@ -6,7 +6,7 @@ import { APP_TZ, addDays, bishkekHM, dayOfWeek, isRecoveryDay, monthKey, todaySt
 import type { BotSettings, Task } from '../../shared/types';
 import type { Db } from './db';
 import { TEXT, morningMessage } from './messages';
-import { BLOCKS_PER_DAY, WORK_MIN, computeTimer, settleTimer } from '../../shared/timer';
+import { BLOCKS_PER_DAY, BREAK_MIN, WORK_MIN, computeTimer, settleTimer } from '../../shared/timer';
 
 /** Точки вызова вечернего разговора и отчётов (реализация — src/conversation) */
 export interface ConversationApi {
@@ -301,7 +301,8 @@ async function checkTimer(
   if (!t || !t.running || t.phase === 'idle' || !t.startedAt || Number.isNaN(Date.parse(t.startedAt))) return;
   const nowMs = now.getTime();
 
-  // Сайт закрыт — бот сам «доводит» таймер, как сайт: истёкшая работа становится отдыхом (shared/timer)
+  // Сайт закрыт — бот сам «доводит» таймер, как сайт: истёкшая работа становится отдыхом (shared/timer).
+  // Секундомер не истекает (settleTimer его не трогает) и в отдых не переходит: «пора на отдых» ему не шлём.
   const s = settleTimer(t, nowMs);
   const settledHere = s !== t;
 
@@ -349,7 +350,7 @@ async function checkTimer(
     // notified_end строки в базе относится к ней самой: у отдыха, посчитанного здесь, его ещё нет
     if ((!settledHere && t.notifiedEnd) || done('timer_last', id)) return;
     // Отдых, который к этому тику уже давно кончился (бот был выключен), — без сообщения
-    const breakEndMs = Date.parse(breakStarted) + (Number(s.targetMin) > 0 ? Number(s.targetMin) : 20) * 60_000;
+    const breakEndMs = Date.parse(breakStarted) + (Number(s.targetMin) > 0 ? Number(s.targetMin) : BREAK_MIN) * 60_000;
     if (settledHere && nowMs - breakEndMs > STALE_TIMER_EVENT_MS) {
       await mark('timer_last', id);
       return;

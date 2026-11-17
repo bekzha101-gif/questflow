@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { X } from 'lucide-react';
 import type { TargetGroup } from './targets';
 
@@ -5,12 +6,21 @@ interface Props {
   title: string;
   groups: TargetGroup[];
   selectedRef: string | null;
-  onPick: (ref: string | null) => void;
+  /** Свободное название блока, уже заданное пользователем (пусто — название из цели) */
+  initialName?: string | null;
+  /** Идёт блок: кнопка внизу сохраняет название, а не начинает блок */
+  editing?: boolean;
+  /** name — своё название блока; null — брать название выбранной цели */
+  onPick: (ref: string | null, name: string | null) => void;
   onClose: () => void;
 }
 
-// Выбор, над чем работать в блоке: «Шаги недели», «Задачи дня», «Цели месяца». Покупок здесь нет.
-export function TaskPicker({ title, groups, selectedRef, onPick, onClose }: Props) {
+// Выбор, над чем работать в блоке: свободное название «Над чем вы работаете?» и цель —
+// «Шаги недели», «Задачи дня», «Цели месяца». Покупок здесь нет. Пока название не переписано,
+// блок называется по выбранной цели; переписанное название сохраняется и при смене цели.
+export function TaskPicker({ title, groups, selectedRef, initialName, editing = false, onPick, onClose }: Props) {
+  const [name, setName] = useState(initialName ?? '');
+  const custom = name.trim() || null;
   const empty = groups.every((g) => g.items.length === 0);
   return (
     <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur flex items-center justify-center p-4" onClick={onClose}>
@@ -30,6 +40,24 @@ export function TaskPicker({ title, groups, selectedRef, onPick, onClose }: Prop
           </button>
         </div>
 
+        <div className="px-5 pt-3">
+          <input
+            type="text"
+            autoFocus
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') onPick(selectedRef, custom);
+            }}
+            placeholder="Над чем вы работаете?"
+            aria-label="Над чем вы работаете?"
+            className="w-full bg-white/[0.03] border border-white/[0.08] rounded-xl px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:border-white/[0.2]"
+          />
+          <p className="mt-1 text-[11px] text-zinc-600">
+            {custom ? 'Своё название останется и при выборе цели ниже.' : 'Пусто — блок назовётся по выбранной цели.'}
+          </p>
+        </div>
+
         <div className="flex-1 overflow-y-auto px-3 py-3 space-y-4">
           {groups.map((g) => (
             <div key={g.key}>
@@ -41,7 +69,7 @@ export function TaskPicker({ title, groups, selectedRef, onPick, onClose }: Prop
                   {g.items.map((it) => (
                     <button
                       key={it.ref}
-                      onClick={() => onPick(it.ref)}
+                      onClick={() => onPick(it.ref, custom)}
                       className={`w-full text-left px-3 py-2 rounded-xl text-sm transition-colors ${
                         selectedRef === it.ref ? 'bg-emerald-500/15 text-emerald-200' : 'text-zinc-200 hover:bg-white/[0.04]'
                       }`}
@@ -59,10 +87,12 @@ export function TaskPicker({ title, groups, selectedRef, onPick, onClose }: Prop
 
         <div className="px-5 py-3 border-t border-white/[0.06]">
           <button
-            onClick={() => onPick(null)}
-            className="w-full py-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.07] text-xs text-zinc-300"
+            onClick={() => onPick(editing ? selectedRef : null, custom)}
+            className={`w-full py-2 rounded-xl text-xs ${
+              editing || custom ? 'bg-zinc-100 hover:bg-white font-semibold text-zinc-950' : 'bg-white/[0.04] hover:bg-white/[0.07] text-zinc-300'
+            }`}
           >
-            Без задачи
+            {editing ? 'Сохранить название' : custom ? 'Начать без цели' : 'Без задачи'}
           </button>
         </div>
       </div>

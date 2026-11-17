@@ -1,11 +1,12 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Coffee, Eye, EyeOff, Flame, Pause, Play, Square, Tag } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Coffee, Eye, EyeOff, Flame, Pause, Play, Settings2, Square, Tag, Timer } from 'lucide-react';
 import type { TaskItem, TimeLogEntry, Project } from '../types';
 import type { FocusSession, Goal, GoalStep } from '@shared/types';
 import { todayStr, isRecoveryDay } from '@shared/time';
 import {
   BLOCKS_PER_DAY,
   BREAK_MIN,
+  isStopwatch,
   blockRecord,
   canStartBlock,
   cancelBlock,
@@ -24,11 +25,12 @@ import { playQuestCompleteSound, playCoinSound, playBreakBellSound, playWorkRead
 import { triggerQuestConfetti } from '../utils/confetti';
 import { sendDesktopNotification, requestDesktopNotificationPermission } from '../utils/recoveryCycle';
 import { claimTimerEvent } from '../utils/timerStorage';
-import { useNow, useTimerState } from './timer/useTimerState';
+import { useNow, useTimerSettings, useTimerState } from './timer/useTimerState';
 import { buildTargetGroups, parseTargetRef, resultUpdates, type BlockResultInput } from './timer/targets';
 import { pendingResultSession } from './timer/sessions';
 import { TaskPicker } from './timer/TaskPicker';
 import { BlockResultModal } from './timer/BlockResultModal';
+import { TimerSettingsPanel } from './timer/TimerSettingsPanel';
 
 interface TogglTimerBarProps {
   tasks: TaskItem[];
@@ -47,6 +49,14 @@ const MIN_LOG_SEC = 60;
 
 const blockLabel = (n: number) => `Блок ${n} из ${BLOCKS_PER_DAY}`;
 
+/** «2 ч», «1 ч 30 мин», «45 мин» */
+function formatMinutes(min: number): string {
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  if (!h) return `${m} мин`;
+  return m ? `${h} ч ${m} мин` : `${h} ч`;
+}
+
 function formatClock(totalSeconds: number): string {
   const h = Math.floor(totalSeconds / 3600);
   const m = Math.floor((totalSeconds % 3600) / 60);
@@ -56,10 +66,12 @@ function formatClock(totalSeconds: number): string {
   return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
 }
 
-// Таймер дня 120/20 × 3. Состояние — timer_state в Supabase (переживает паузу, закрытие вкладки
-// и браузера, видно с другого устройства); правила — shared/timer.ts. Управление только на сайте.
+// Таймер дня (по умолчанию 120/20 × 3, длительности и секундомер — в настройках kv `timer_settings`).
+// Состояние — timer_state в Supabase (переживает паузу, закрытие вкладки и браузера, видно с другого
+// устройства); правила — shared/timer.ts. Управление только на сайте.
 export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({ tasks, onLogSession, onCompleteTask, isCalendarConnected = false }) => {
   const [state, commit] = useTimerState();
+  const [settings, saveSettings] = useTimerSettings();
   const now = useNow();
   const today = todayStr(new Date(now));
   const view = computeTimer(state, now);
@@ -71,6 +83,8 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({ tasks, onLogSessio
   const tasksStore = useCollection<TaskItem>('tasks2');
 
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsRef = useRef<HTMLDivElement>(null);
   const [peek, setPeek] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   // Блоки, закончившиеся при закрытом сайте (для подписи в окне отметки)
@@ -88,10 +102,23 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({ tasks, onLogSessio
     if (t.kind === 'step') return steps.items.find((x) => x.id === t.id)?.title ?? 'Шаг недели';
     return goals.find((x) => x.id === t.id)?.title ?? 'Цель месяца';
   };
+  /** Название блока: своё («Над чем вы работаете?») или по выбранной цели */
+  const blockTitle = (s: { title?: string | null; taskId?: string | null }): string => s.title?.trim() || titleOf(s.taskId);
 
-  // ─── Конец блока работы: запись в focus_sessions, отдых 20 мин сам ─────────────
+  // Окно настроек закрывается кликом мимо него
+  useEffect(() => {
+    if (!settingsOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (settingsRef.current && !settingsRef.current.contains(e.target as Node)) setSettingsOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [settingsOpen]);
+
+  // ─── Конец блока работы: запись в focus_sessions; отсчёт — дальше отдых сам, секундомер — ожидание ─
   const finishWork = (at: number) => {
     const rec = blockRecord(state, at);
+    const stopwatch = isStopwatch(state);
     if (!rec) return;
     commit(nextAfterExpire(state, at));
     setPeek(false);
@@ -102,9 +129,11 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({ tasks, onLogSessio
     const reward = focusReward(rec.minutes, rec.full);
     const entry = {
       id: rec.id,
-      title: titleOf(rec.taskId),
+      title: blockTitle(state),
       mode: 'work',
-      targetMinutes: state.targetMin,
+      // У секундомера плана нет: «план» в календаре — сколько отработано
+      targetMinutes: stopwatch ? rec.minutes : state.targetMin,
+      timerType: stopwatch ? 'stopwatch' : 'countdown',
       actualMinutes: rec.minutes,
       startedAt: rec.startedAt,
       completedAt: rec.endedAt,
@@ -129,8 +158,11 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({ tasks, onLogSessio
       triggerQuestConfetti();
     }
     playCoinSound();
-    playBreakBellSound();
-    sendDesktopNotification('Пора на отдых', `Отдых ${BREAK_MIN} минут. Встань, разомнись, выпей воды.`, 'questflow-timer-rest');
+    if (!stopwatch) {
+      playBreakBellSound();
+      const breakMin = Number(state.breakMin) > 0 ? Number(state.breakMin) : BREAK_MIN;
+      sendDesktopNotification('Пора на отдых', `Отдых ${breakMin} минут. Встань, разомнись, выпей воды.`, 'questflow-timer-rest');
+    }
     sendDesktopNotification(`Ты проработал ${worked}`, `${blockLabel(rec.blockIndex)} записан.`, 'questflow-timer-worked');
   };
 
@@ -166,10 +198,10 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({ tasks, onLogSessio
   const recovery = isRecoveryDay(today);
   const canStart = canStartBlock(state, today);
 
-  const handlePick = (ref: string | null) => {
+  const handlePick = (ref: string | null, name: string | null) => {
     setPickerOpen(false);
     if (state.phase === 'work') {
-      commit({ ...state, taskId: ref });
+      commit({ ...state, taskId: ref, title: name });
       return;
     }
     if (!canStart) return;
@@ -177,7 +209,8 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({ tasks, onLogSessio
       void requestDesktopNotificationPermission();
     }
     setPeek(false);
-    commit(startBlock(state, Date.now(), { today, taskId: ref }));
+    setSettingsOpen(false);
+    commit(startBlock(state, Date.now(), { today, taskId: ref, settings, title: name }));
   };
 
   const handlePauseResume = () => {
@@ -228,7 +261,10 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({ tasks, onLogSessio
   // ─── Вид ────────────────────────────────────────────────────────────────────
   const normDone = dayNormDone(state, today);
   const doneBlocks = state.date === today ? (state.phase === 'work' ? state.blockIndex - 1 : state.blockIndex) : 0;
-  const currentTitle = state.phase === 'idle' ? null : titleOf(state.taskId);
+  const stopwatchRun = isStopwatch(state);
+  const currentTitle = state.phase === 'idle' ? null : blockTitle(state);
+  // Своё название и цель одновременно: цель показываем подсказкой
+  const currentTarget = state.phase !== 'idle' && state.title?.trim() && state.taskId ? titleOf(state.taskId) : null;
   const startLabel = normDone ? 'Ещё блок' : `Начать ${blockLabel(nextBlock).toLowerCase()}`;
 
   const dots = (
@@ -255,10 +291,13 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({ tasks, onLogSessio
       </span>
     );
   } else if (state.phase === 'work') {
+    // Секундомер показывает прошедшее, отсчёт — оставшееся (на паузе — прошедшее)
     status = (
       <span className="font-mono text-sm font-semibold text-zinc-100">
-        {formatClock(state.running ? view.remainingSec : view.elapsedSec)}
-        <span className="ml-1.5 font-sans text-[10px] uppercase text-zinc-500">{state.running ? 'осталось' : 'пауза'}</span>
+        {formatClock(state.running && !stopwatchRun ? view.remainingSec : view.elapsedSec)}
+        <span className="ml-1.5 font-sans text-[10px] uppercase text-zinc-500">
+          {!state.running ? 'пауза' : stopwatchRun ? 'прошло' : 'осталось'}
+        </span>
       </span>
     );
   } else if (state.phase === 'break' && !view.expired) {
@@ -274,14 +313,18 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({ tasks, onLogSessio
     status = <span className="text-sm font-semibold text-zinc-100">{normDone ? 'Норма дня выполнена' : blockLabel(nextBlock)}</span>;
   }
 
+  const plan =
+    settings.timerType === 'stopwatch'
+      ? 'Секундомер: без лимита, «Стоп» запишет время'
+      : `Работа ${formatMinutes(settings.workMin)}, затем отдых ${settings.breakMin} мин`;
   const sub =
     state.phase === 'work'
-      ? `Слепой режим · ${blockLabel(state.blockIndex)}`
+      ? `Слепой режим · ${stopwatchRun ? 'секундомер · ' : ''}${blockLabel(state.blockIndex)}`
       : state.phase === 'break' && !view.expired
-        ? `Отдых ${BREAK_MIN} мин после блока ${state.blockIndex}`
+        ? `Отдых ${state.targetMin} мин после блока ${state.blockIndex}`
         : normDone
-          ? `${BLOCKS_PER_DAY} блока по 2 ч сделаны`
-          : 'Работа 2 ч, затем отдых 20 мин';
+          ? `${BLOCKS_PER_DAY} блока сделаны`
+          : plan;
 
   if (recovery && state.phase !== 'work') {
     return (
@@ -308,7 +351,7 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({ tasks, onLogSessio
             <button
               onClick={() => setPeek(!peek)}
               className="p-1 rounded-lg text-zinc-500 hover:text-zinc-200"
-              title={peek ? 'Скрыть время (слепой режим)' : 'Показать оставшееся время'}
+              title={peek ? 'Скрыть время (слепой режим)' : stopwatchRun ? 'Показать прошедшее время' : 'Показать оставшееся время'}
               aria-label={peek ? 'Скрыть время' : 'Показать время'}
             >
               {peek ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
@@ -325,10 +368,11 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({ tasks, onLogSessio
           <button
             onClick={() => setPickerOpen(true)}
             className="order-last sm:order-none basis-full sm:basis-auto flex items-center gap-1.5 min-w-0 max-w-full sm:max-w-xs px-2.5 py-1 rounded-xl bg-white/[0.03] border border-white/[0.07] text-xs text-zinc-300 hover:border-white/[0.14]"
-            title="Сменить задачу блока"
+            title="Сменить название или цель блока"
           >
             <Tag className="w-3 h-3 text-zinc-500 shrink-0" />
             <span className="truncate">{currentTitle}</span>
+            {currentTarget && <span className="truncate text-zinc-500">· {currentTarget}</span>}
           </button>
         )}
 
@@ -349,12 +393,28 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({ tasks, onLogSessio
             <button
               onClick={handleFinishEarly}
               className="h-8 px-2.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.09] text-xs text-zinc-300 flex items-center gap-1.5"
-              title="Закончить блок сейчас: время запишется, начнётся отдых"
+              title={stopwatchRun ? 'Стоп: блок закончится, время запишется' : 'Закончить блок сейчас: время запишется, начнётся отдых'}
             >
               <Square className="w-3 h-3 fill-current" />
-              <span className="hidden sm:inline">Завершить</span>
+              <span className="hidden sm:inline">{stopwatchRun ? 'Стоп' : 'Завершить'}</span>
             </button>
           )}
+          <div className="relative" ref={settingsRef}>
+            <button
+              onClick={() => setSettingsOpen(!settingsOpen)}
+              className={`w-8 h-8 rounded-xl flex items-center justify-center ${
+                settingsOpen ? 'bg-white/[0.1] text-zinc-100' : 'bg-white/[0.05] hover:bg-white/[0.09] text-zinc-400 hover:text-zinc-200'
+              }`}
+              title="Настройка таймера: минуты фокуса и отдыха, секундомер"
+              aria-label="Настройка таймера"
+              aria-expanded={settingsOpen}
+            >
+              {settings.timerType === 'stopwatch' ? <Timer className="w-3.5 h-3.5" /> : <Settings2 className="w-3.5 h-3.5" />}
+            </button>
+            {settingsOpen && (
+              <TimerSettingsPanel settings={settings} onChange={saveSettings} blockRunning={state.phase === 'work'} />
+            )}
+          </div>
           {state.phase !== 'work' && (
             <button
               onClick={() => setPickerOpen(true)}
@@ -373,9 +433,11 @@ export const TogglTimerBar: React.FC<TogglTimerBarProps> = ({ tasks, onLogSessio
 
       {pickerOpen && (
         <TaskPicker
-          title={state.phase === 'work' ? `${blockLabel(state.blockIndex)}: сменить задачу` : startLabel}
+          title={state.phase === 'work' ? `${blockLabel(state.blockIndex)}: название и цель` : startLabel}
           groups={groups}
-          selectedRef={state.taskId ?? null}
+          selectedRef={state.phase === 'work' ? (state.taskId ?? null) : null}
+          initialName={state.phase === 'work' ? (state.title ?? '') : ''}
+          editing={state.phase === 'work'}
           onPick={handlePick}
           onClose={() => setPickerOpen(false)}
         />

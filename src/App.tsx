@@ -44,7 +44,7 @@ import { triggerLevelUpConfetti } from './utils/confetti';
 import { createGoogleCalendarTimeLogEvent } from './utils/googleCalendarApi';
 import { selectRegularTasks, selectShoppingTasks, makeTask, type TaskKind } from './utils/taskFilters';
 import { todayStr } from '@shared/time';
-import { WORK_MIN } from '@shared/timer';
+import { isFullBlock } from '@shared/timer';
 import { ACHIEVEMENTS, type ApplyResult } from '@shared/gamification';
 import { applyGame, syncGameFacts, logSessionOnce, resetGameStats, GAME_EVENT } from './sections/progress/game';
 import { 
@@ -393,7 +393,8 @@ export function App() {
         kind: 'focus_block',
         ref: entry.id,
         minutes: entry.actualMinutes,
-        full: entry.actualMinutes >= (entry.targetMinutes || WORK_MIN),
+        // Полный блок — от 120 мин отработанного, не от выбранной длительности
+        full: isFullBlock(entry.actualMinutes),
       });
     }
 

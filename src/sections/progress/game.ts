@@ -14,7 +14,7 @@ import {
 } from '@shared/gamification';
 import type { AchievementRow, BigDataDay, Channel, FocusSession, GameEvent, GameStats, Goal, GoalWeek, Video } from '@shared/types';
 import { isRecoveryDay, monthKey, todayStr } from '@shared/time';
-import { WORK_MIN } from '@shared/timer';
+import { isFullBlock } from '@shared/timer';
 import { currentWeekIndex, goalPct, weeksFor } from '@shared/goals';
 import { initialStats } from '../../data/initialData';
 import { isWorkSessionOf } from '../today/daySummary';
@@ -114,7 +114,7 @@ interface TaskLike {
 export function dayFactsFor(date: string, s: Store = defaultStore): DayFacts {
   const work = s.items<FocusSession>('focus_sessions').filter((x) => isWorkSessionOf(x, date));
   const focusMin = work.reduce((sum, x) => sum + (Number(x.minutes) || 0), 0);
-  const blocks = work.filter((x) => (Number(x.minutes) || 0) >= (Number(x.targetMinutes) || WORK_MIN)).length;
+  const blocks = work.filter((x) => isFullBlock(x.minutes)).length;
   const bd = s.get<BigDataDay>('bigdata_days', date);
   const habitsFallback = s
     .items<TaskLike>('tasks2')

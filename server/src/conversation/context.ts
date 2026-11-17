@@ -4,6 +4,7 @@ import { influenceFactors } from '../../../shared/bigdata';
 import { goalProgress, weeksFor, currentWeekIndex } from '../../../shared/goals';
 import { effectiveStatus, lastPublishedOf } from '../../../shared/channels';
 import { addDays, dayOfWeek, monthKey, weekStart } from '../../../shared/time';
+import { isFullBlock } from '../../../shared/timer';
 import type { FocusSession, Goal } from '../../../shared/types';
 import type { ConversationStore } from './store';
 
@@ -48,7 +49,7 @@ export async function buildPayload(store: ConversationStore, kind: 'day' | 'week
   for (const s of sessions.filter(isWork)) {
     const f = (focusByDay[s.date] ??= { min: 0, blocks: 0 });
     f.min += Number(s.minutes) || 0;
-    if ((Number(s.minutes) || 0) >= (Number(s.targetMinutes) || 120)) f.blocks += 1;
+    if (isFullBlock(s.minutes)) f.blocks += 1;
   }
 
   const month = monthKey(date);

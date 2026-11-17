@@ -5,12 +5,51 @@
 // Нумерация: blockIndex — номер текущего или последнего законченного блока за день `date` (1..),
 // 0 — блоков сегодня ещё не было. В отдыхе после блока N следующий — N+1
 // (так же считает server/src/timerWatch.ts: «Отдых закончился. Можно начинать блок blockIndex+1»).
-import type { TimerState, TimerPhase } from './types';
+import type { TimerState, TimerPhase, TimerSettings, TimerType } from './types';
 import { isRecoveryDay } from './time';
 
+/** Длительность фокуса и отдыха по умолчанию (настраиваются, см. TimerSettings) */
 export const WORK_MIN = 120;
 export const BREAK_MIN = 20;
 export const BLOCKS_PER_DAY = 3;
+/**
+ * Порог полного блока для серии и наград: ровно 120 мин отработанного, какую бы длительность
+ * ни выбрал пользователь (решение пользователя). Сайт и сервер считают полный блок только так.
+ */
+export const FULL_BLOCK_MIN = 120;
+
+/** Пределы настроек (как в старом окне «Настройка таймера») */
+export const WORK_MIN_RANGE = { min: 5, max: 360 } as const;
+export const BREAK_MIN_RANGE = { min: 1, max: 120 } as const;
+export const WORK_PRESETS = [45, 60, 90, 120] as const;
+export const BREAK_PRESETS = [10, 15, 20, 30] as const;
+
+export const DEFAULT_TIMER_SETTINGS: TimerSettings = { workMin: WORK_MIN, breakMin: BREAK_MIN, timerType: 'countdown' };
+
+function clampInt(v: unknown, lo: number, hi: number, fallback: number): number {
+  const n = Math.round(Number(v));
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  return Math.min(hi, Math.max(lo, n));
+}
+
+/** Привести настройки к допустимым значениям (мусор и пустое — значения по умолчанию) */
+export function normalizeTimerSettings(v: Partial<TimerSettings> | null | undefined): TimerSettings {
+  return {
+    workMin: clampInt(v?.workMin, WORK_MIN_RANGE.min, WORK_MIN_RANGE.max, WORK_MIN),
+    breakMin: clampInt(v?.breakMin, BREAK_MIN_RANGE.min, BREAK_MIN_RANGE.max, BREAK_MIN),
+    timerType: v?.timerType === 'stopwatch' ? 'stopwatch' : 'countdown',
+  };
+}
+
+/** Полный блок — от 120 мин отработанного (FULL_BLOCK_MIN), не от выбранной длительности */
+export function isFullBlock(minutes: unknown): boolean {
+  return (Number(minutes) || 0) >= FULL_BLOCK_MIN;
+}
+
+/** Блок идёт секундомером: без лимита, сам на отдых не переходит */
+export function isStopwatch(s: Pick<TimerState, 'phase' | 'timerType'>): boolean {
+  return s.phase === 'work' && s.timerType === 'stopwatch';
+}
 
 export const IDLE_TIMER: TimerState = {
   phase: 'idle',
@@ -39,7 +78,7 @@ export interface BlockRecord {
   endedAt: string;
   minutes: number;
   taskId: string | null;
-  /** Блок отработан целиком (120 мин) */
+  /** Полный блок: отработано от FULL_BLOCK_MIN (120 мин) */
   full: boolean;
 }
 
@@ -64,6 +103,10 @@ function elapsedExact(s: TimerState, now: number): number {
 /** Сколько прошло и осталось в текущем отрезке (работа или отдых) */
 export function computeTimer(state: TimerState, now: number): TimerView {
   if (state.phase === 'idle') return { phase: 'idle', elapsedSec: 0, remainingSec: 0, expired: false };
+  if (isStopwatch(state)) {
+    // Секундомер не истекает: «осталось» не бывает, только прошедшее
+    return { phase: 'work', elapsedSec: Math.floor(elapsedExact(state, now)), remainingSec: 0, expired: false };
+  }
   const target = targetSec(state);
   const elapsedSec = Math.floor(elapsedExact(state, now));
   return {
@@ -76,6 +119,7 @@ export function computeTimer(state: TimerState, now: number): TimerView {
 
 /** Момент окончания отрезка: истёк — когда истёк, иначе сейчас (досрочно) */
 function segmentEnd(state: TimerState, now: number): number {
+  if (isStopwatch(state)) return now;
   const target = targetSec(state);
   const exact = elapsedExact(state, now);
   const st = startedMs(state);
@@ -96,23 +140,33 @@ export function canStartBlock(state: TimerState, today: string): boolean {
   return !isRecoveryDay(today) && state.phase !== 'work';
 }
 
-/** Начать блок работы (из ожидания или досрочно из отдыха). В пятницу — без изменений. */
+/**
+ * Начать блок работы (из ожидания или досрочно из отдыха). В пятницу — без изменений.
+ * Длительность, отдых и тип берутся из настроек на момент старта и живут в самом блоке:
+ * смена настроек посреди блока его не меняет.
+ */
 export function startBlock(
   state: TimerState,
   now: number,
-  opts: { today: string; taskId: string | null },
+  opts: { today: string; taskId: string | null; settings?: Partial<TimerSettings> | null; title?: string | null },
 ): TimerState {
   if (!canStartBlock(state, opts.today)) return state;
+  const cfg = normalizeTimerSettings(opts.settings);
+  const timerType: TimerType = cfg.timerType;
+  const title = opts.title?.trim() || null;
   return {
     phase: 'work',
     running: true,
     startedAt: new Date(now).toISOString(),
     accumulatedSec: 0,
-    targetMin: WORK_MIN,
+    targetMin: cfg.workMin,
     blockIndex: nextBlockNumber(state, opts.today),
     taskId: opts.taskId,
     date: opts.today,
     notifiedEnd: false,
+    timerType,
+    breakMin: cfg.breakMin,
+    title,
   };
 }
 
@@ -135,11 +189,13 @@ export function cancelBlock(state: TimerState): TimerState {
 }
 
 /**
- * Переход после отрезка. Работа → отдых 20 мин с момента окончания работы (истёкшей или
- * законченной досрочно). Отдых → ожидание следующего блока (работа сама не стартует).
+ * Переход после отрезка. Работа → отдых (breakMin блока, по умолчанию 20 мин) с момента окончания
+ * работы (истёкшей или законченной досрочно). Секундомер после «Стоп» — сразу ожидание, без отдыха
+ * (и без «пора на отдых» от бота). Отдых → ожидание следующего блока (работа сама не стартует).
  * Отдых, который к `now` уже истёк, помечается notifiedEnd: сообщать о нём поздно.
  */
 export function nextAfterExpire(state: TimerState, now: number): TimerState {
+  if (isStopwatch(state)) return { ...IDLE_TIMER, blockIndex: state.blockIndex, date: state.date };
   if (state.phase === 'work') {
     const end = segmentEnd(state, now);
     const brk: TimerState = {
@@ -147,7 +203,7 @@ export function nextAfterExpire(state: TimerState, now: number): TimerState {
       running: true,
       startedAt: new Date(end).toISOString(),
       accumulatedSec: 0,
-      targetMin: BREAK_MIN,
+      targetMin: Number(state.breakMin) > 0 ? Number(state.breakMin) : BREAK_MIN,
       blockIndex: state.blockIndex,
       taskId: state.taskId ?? null,
       date: state.date,
@@ -162,7 +218,7 @@ export function nextAfterExpire(state: TimerState, now: number): TimerState {
 }
 
 /**
- * Привести состояние к `now`: истёкшая работа становится отдыхом.
+ * Привести состояние к `now`: истёкшая работа становится отдыхом (секундомер не истекает никогда).
  * Истёкший отдых остаётся как есть — сайт предлагает следующий блок, сервер шлёт «отдых закончился».
  */
 export function settleTimer(state: TimerState, now: number): TimerState {
@@ -175,21 +231,25 @@ export function blockSessionId(state: TimerState): string {
   return `focus-${state.date ?? 'none'}-b${state.blockIndex}`;
 }
 
-/** Итог блока работы по фактическому времени (не больше 120 мин) */
+/**
+ * Итог блока работы по фактическому времени: отсчёт — не больше выбранной длительности,
+ * секундомер — сколько набежало. Полный — от FULL_BLOCK_MIN (120 мин), не от длительности.
+ */
 export function blockRecord(state: TimerState, now: number): BlockRecord | null {
   if (state.phase !== 'work') return null;
-  const target = targetSec(state);
-  const worked = Math.min(target, elapsedExact(state, now));
+  const exact = elapsedExact(state, now);
+  const worked = isStopwatch(state) ? exact : Math.min(targetSec(state), exact);
   const end = segmentEnd(state, now);
+  const minutes = Math.round(worked / 60);
   return {
     id: blockSessionId(state),
     date: state.date ?? '',
     blockIndex: state.blockIndex,
     startedAt: new Date(end - worked * 1000).toISOString(),
     endedAt: new Date(end).toISOString(),
-    minutes: Math.round(worked / 60),
+    minutes,
     taskId: state.taskId ?? null,
-    full: worked >= target,
+    full: isFullBlock(minutes),
   };
 }
 

@@ -3,9 +3,8 @@
 // вставка прошла. Иначе бот и сайт применили бы один и тот же день дважды.
 import { applyEvent, dayCloseEvent, pendingDayCloses, withRulesStart, type ApplyResult, type DayFacts, type GameEventInput } from '../../../shared/gamification';
 import type { GameStats } from '../../../shared/types';
+import { isFullBlock } from '../../../shared/timer';
 import type { ConversationStore } from './store';
-
-const WORK_MIN = 120;
 
 /** Стартовые статы, если сайт ещё ни разу не писал game_stats */
 export const START_STATS: GameStats = { level: 1, exp: 0, maxExp: 100, hp: 100, maxHp: 100, gold: 0, streak: 0 };
@@ -43,7 +42,8 @@ export async function applyGame(store: ConversationStore, input: GameEventInput,
 export async function dayFactsFor(store: ConversationStore, date: string): Promise<DayFacts> {
   const work = (await store.listFocusSessions(date, date)).filter((s) => s.mode !== 'break');
   const focusMin = work.reduce((sum, s) => sum + (Number(s.minutes) || 0), 0);
-  const blocks = work.filter((s) => (Number(s.minutes) || 0) >= (Number(s.targetMinutes) || WORK_MIN)).length;
+  // Полный блок — от 120 мин отработанного (FULL_BLOCK_MIN), какую бы длительность ни выбрали
+  const blocks = work.filter((s) => isFullBlock(s.minutes)).length;
   const day = await store.getDay(date);
   let habitsTotal = typeof day?.habitsTotal === 'number' ? day.habitsTotal : NaN;
   if (Number.isNaN(habitsTotal)) {

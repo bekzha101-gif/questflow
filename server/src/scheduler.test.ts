@@ -216,6 +216,34 @@ describe('scheduler: таймер — сообщение один раз (notifi
     expect(w.sent).toEqual(['Пора на отдых. Ты проработал 2ч 00м.', 'Отдых закончился. Можно начинать блок 1 из 3.']);
   });
 
+  it('секундомер: без лимита — ни «пора на отдых», ни «отдых закончился», даже через 5 ч', async () => {
+    const w = makeWorld({
+      settings: { chatId: '100', morningHm: '08:00', eveningHm: '21:00', reminderLimit: 3, lastSent: { morning: '2026-11-17' } },
+      timer: {
+        phase: 'work', running: true, startedAt: workStart, accumulatedSec: 0,
+        targetMin: 120, blockIndex: 1, date: '2026-11-17', notifiedEnd: false, timerType: 'stopwatch',
+      },
+    });
+    const d = deps(w);
+    await runRange(d, '2026-11-17', '10:55', '11:30');
+    await runTick(d, bishkek('2026-11-17', '14:00'));
+    expect(w.sent).toEqual([]);
+    expect(w.notified).toEqual([]);
+  });
+
+  it('выбранная длительность 45 мин: «пора на отдых, ты проработал 0ч 45м», отдых — свои 10 мин', async () => {
+    const w = makeWorld({
+      settings: { chatId: '100', morningHm: '08:00', eveningHm: '21:00', reminderLimit: 3, lastSent: { morning: '2026-11-17' } },
+      timer: {
+        phase: 'work', running: true, startedAt: workStart, accumulatedSec: 0,
+        targetMin: 45, breakMin: 10, blockIndex: 1, date: '2026-11-17', notifiedEnd: false,
+      },
+    });
+    const d = deps(w);
+    await runRange(d, '2026-11-17', '09:44', '09:56');
+    expect(w.sent).toEqual(['Пора на отдых. Ты проработал 0ч 45м.', 'Отдых закончился. Можно начинать блок 2 из 3.']);
+  });
+
   it('если notified_end не сохранился в базе, повторного сообщения всё равно нет', async () => {
     const w = makeWorld({
       settings: { chatId: '100', morningHm: '08:00', eveningHm: '21:00', reminderLimit: 3, lastSent: { morning: '2026-11-17' } },

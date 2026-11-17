@@ -3,6 +3,7 @@
 import type { AiResult } from '../ai';
 import { goalProgress, monthLabel, weeksFor, currentWeekIndex } from '../../../shared/goals';
 import { addDays, monthKey, weekStart } from '../../../shared/time';
+import { isFullBlock } from '../../../shared/timer';
 import type { Goal, GoalWeek } from '../../../shared/types';
 import { buildPayload, dateLabel, formatMin } from './context';
 import type { StepRow } from './store';
@@ -34,7 +35,7 @@ export async function dayFactsText(ctx: Ctx, date: string): Promise<string> {
   const [day, sessions, tasks] = await Promise.all([store.getDay(date), store.listFocusSessions(date, date), store.listTasks()]);
   const work = sessions.filter((s) => s.mode !== 'break');
   const focus = work.reduce((s, x) => s + (Number(x.minutes) || 0), 0);
-  const blocks = work.filter((x) => (Number(x.minutes) || 0) >= (Number(x.targetMinutes) || 120)).length;
+  const blocks = work.filter((x) => isFullBlock(x.minutes)).length;
   const done = tasks.filter((t) => t.completed && (t.completedAt ?? '').slice(0, 10) === date && t.kind !== 'shopping' && t.type === 'todo');
   const lines = [`Итог дня ${dateLabel(date)}`];
   lines.push(`Фокус: ${formatMin(focus)}, блоков ${blocks} из 3.`);

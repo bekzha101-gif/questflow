@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { TimerState } from '@shared/types';
-import { IDLE_TIMER } from '@shared/timer';
+import type { TimerSettings, TimerState } from '@shared/types';
+import { IDLE_TIMER, normalizeTimerSettings } from '@shared/timer';
 import { todayStr } from '@shared/time';
 import { useRecord } from '../../store';
 import {
@@ -46,6 +46,21 @@ export function useTimerState(): [TimerState, (next: TimerState) => void] {
   );
 
   return [state, commit];
+}
+
+/** Ключ настроек таймера в kv: синхронизируется между устройствами, как и timer_state */
+export const TIMER_SETTINGS_KEY = 'timer_settings';
+
+/** Настройки таймера (длительность фокуса и отдыха, отсчёт или секундомер) из kv `timer_settings` */
+export function useTimerSettings(): [TimerSettings, (next: TimerSettings) => void] {
+  const { value, save } = useRecord<{ key: string; value?: Partial<TimerSettings> }>('kv', TIMER_SETTINGS_KEY);
+  const raw = value?.value;
+  const settings = useMemo(() => normalizeTimerSettings(raw), [raw]);
+  const update = useCallback(
+    (next: TimerSettings) => save({ key: TIMER_SETTINGS_KEY, value: normalizeTimerSettings(next) }),
+    [save],
+  );
+  return [settings, update];
 }
 
 /** Текущее время, обновляется раз в секунду */

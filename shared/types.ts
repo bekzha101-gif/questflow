@@ -167,6 +167,15 @@ export interface FocusSession {
 }
 
 export type TimerPhase = 'idle' | 'work' | 'break';
+/** Обратный отсчёт (сам переходит на отдых) или секундомер (без лимита, только «Стоп») */
+export type TimerType = 'countdown' | 'stopwatch';
+
+/** Настройки таймера (kv `timer_settings`): одни на все устройства */
+export interface TimerSettings {
+  workMin: number;
+  breakMin: number;
+  timerType: TimerType;
+}
 
 export interface TimerState {
   phase: TimerPhase;
@@ -179,6 +188,12 @@ export interface TimerState {
   taskId?: string | null;
   date?: string;
   notifiedEnd?: boolean;
+  /** Тип текущего блока; нет поля — обратный отсчёт (старые строки). Колонки нет — уходит в extra. */
+  timerType?: TimerType;
+  /** Отдых после этого блока, мин (из настроек на момент старта); extra */
+  breakMin?: number;
+  /** Свободное название блока («Над чем вы работаете?»); extra */
+  title?: string | null;
 }
 
 // ─── Big Data ────────────────────────────────────────────────────────────────
