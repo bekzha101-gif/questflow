@@ -11,9 +11,9 @@ window.STATE =
   "memoryFile": "CLAUDE.md",
   "memoryOwner": "user",
   "skillDir": "C:/Users/Administrator/.claude/skills/autopilot",
-  "baseCommit": null,
+  "baseCommit": "ee0bbf2",
   "startedAt": "2026-11-17T00:05:16-08:00",
-  "updatedAt": "2026-11-17T01:16:51-08:00",
+  "updatedAt": "2026-11-17T01:31:08-08:00",
   "finishedAt": null,
   "stages": [
     {
@@ -42,12 +42,14 @@ window.STATE =
     },
     {
       "id": "plan",
-      "status": "active",
-      "startedAt": "2026-11-17T01:13:05-08:00"
+      "status": "done",
+      "startedAt": "2026-11-17T01:13:05-08:00",
+      "finishedAt": "2026-11-17T01:31:08-08:00"
     },
     {
       "id": "build",
-      "status": "pending"
+      "status": "active",
+      "startedAt": "2026-11-17T01:31:08-08:00"
     },
     {
       "id": "review",
@@ -421,15 +423,23 @@ window.STATE =
     "2026-11-17T01:13:05-08:00",
     "2026-11-17T01:16:43-08:00",
     "2026-11-17T01:16:47-08:00",
-    "2026-11-17T01:16:51-08:00"
+    "2026-11-17T01:16:51-08:00",
+    "2026-11-17T01:21:26-08:00",
+    "2026-11-17T01:21:31-08:00",
+    "2026-11-17T01:31:08-08:00"
   ],
-  "rev": 18,
+  "rev": 21,
   "waiting": null,
   "waits": [
     {
       "kind": "briefing",
       "from": "2026-11-17T00:07:34-08:00",
       "to": "2026-11-17T01:01:31-08:00"
+    },
+    {
+      "kind": "plan",
+      "from": "2026-11-17T01:21:31-08:00",
+      "to": "2026-11-17T01:31:08-08:00"
     }
   ],
   "log": [
@@ -549,6 +559,23 @@ window.STATE =
       "g": "G3",
       "ok": true,
       "problems": 0
+    },
+    {
+      "t": "2026-11-17T01:21:31-08:00",
+      "k": "ask",
+      "kind": "plan",
+      "note": "выбор макета A/B/C и «да» на план — по брифу код только после «да»"
+    },
+    {
+      "t": "2026-11-17T01:31:08-08:00",
+      "k": "answered",
+      "kind": "plan"
+    },
+    {
+      "t": "2026-11-17T01:31:08-08:00",
+      "k": "stage",
+      "id": "build",
+      "act": "start"
     }
   ],
   "reqList": [
