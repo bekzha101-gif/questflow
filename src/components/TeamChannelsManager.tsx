@@ -4,7 +4,8 @@ import {
   Trash2, 
   X
 } from 'lucide-react';
-import { Channel } from './ContentProductionBoard';
+import type { Channel } from '@shared/types';
+import { useCollection, useRecord } from '../store';
 
 export interface TeamMember {
   id: string;
@@ -22,23 +23,10 @@ const initialTeam: TeamMember[] = [];
 export const TeamChannelsManager: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'team' | 'channels'>('team');
 
-  const [team, setTeam] = useState<TeamMember[]>(() => {
-    try {
-      const saved = localStorage.getItem('questflow_team_v1');
-      return saved ? JSON.parse(saved) : initialTeam;
-    } catch {
-      return initialTeam;
-    }
-  });
-
-  const [channels, setChannels] = useState<Channel[]>(() => {
-    try {
-      const saved = localStorage.getItem('questflow_channels_v1');
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
+  // Команда лежит в kv (ключ team), каналы в channels2: напрямую localStorage не трогаем
+  const teamRecord = useRecord<{ key: string; value: TeamMember[] }>('kv', 'team');
+  const team: TeamMember[] = teamRecord.value?.value ?? initialTeam;
+  const { items: channels, upsert: upsertChannel, remove: removeChannel } = useCollection<Channel>('channels2');
 
   const [isMemberModalOpen, setIsMemberModalOpen] = useState(false);
   const [isChannelModalOpen, setIsChannelModalOpen] = useState(false);
@@ -55,13 +43,7 @@ export const TeamChannelsManager: React.FC = () => {
   const [channelAvatar, setChannelAvatar] = useState('🎬');
 
   const saveTeam = (items: TeamMember[]) => {
-    setTeam(items);
-    localStorage.setItem('questflow_team_v1', JSON.stringify(items));
-  };
-
-  const saveChannels = (items: Channel[]) => {
-    setChannels(items);
-    localStorage.setItem('questflow_channels_v1', JSON.stringify(items));
+    teamRecord.save({ key: 'team', value: items });
   };
 
   const handleAddMember = (e: React.FormEvent) => {
@@ -75,7 +57,7 @@ export const TeamChannelsManager: React.FC = () => {
       email: memberEmail.trim(),
       avatar: memberRole === 'Video Editor' ? '👨‍💻' : memberRole === 'Script Writer' ? '✍️' : '🔍',
       pricePerVideo: memberPrice,
-      assignedChannels: ['chan-1'],
+      assignedChannels: [],
     };
 
     saveTeam([newM, ...team]);
@@ -89,12 +71,14 @@ export const TeamChannelsManager: React.FC = () => {
     const newC: Channel = {
       id: `chan-${Date.now()}`,
       name: channelName.trim(),
+      status: 'active',
+      cadencePerDay: 1,
       handle: channelHandle.trim(),
       avatar: channelAvatar,
       color: '#71717a',
     };
 
-    saveChannels([...channels, newC]);
+    upsertChannel(newC);
     setIsChannelModalOpen(false);
   };
 
@@ -205,15 +189,15 @@ export const TeamChannelsManager: React.FC = () => {
                 className="bg-[#111115] border border-white/[0.08] rounded-2xl p-4 space-y-2 flex items-center justify-between"
               >
                 <div className="flex items-center gap-2.5">
-                  <span className="text-2xl">{c.avatar}</span>
+                  <span className="text-2xl">{String(c.avatar ?? '')}</span>
                   <div>
                     <h3 className="font-bold text-xs text-zinc-200">{c.name}</h3>
-                    <p className="text-[10px] text-zinc-500 font-mono">{c.handle}</p>
+                    <p className="text-[10px] text-zinc-500 font-mono">{String(c.handle ?? '')}</p>
                   </div>
                 </div>
 
                 <button
-                  onClick={() => saveChannels(channels.filter((ch) => ch.id !== c.id))}
+                  onClick={() => removeChannel(c.id)}
                   className="p-1 rounded bg-zinc-900 text-zinc-500 hover:text-red-400"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
