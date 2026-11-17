@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
 import { Target, Timer } from 'lucide-react';
 import type { TaskItem, TimeLogEntry } from '../../types';
-import { todayStr } from '@shared/time';
-import { loadPersistentTimerSession, calculateCurrentTimerState } from '../../utils/timerStorage';
+import { todayStr, isRecoveryDay } from '@shared/time';
+import { BLOCKS_PER_DAY, computeTimer, dayNormDone, nextBlockNumber } from '@shared/timer';
 import { pickMainTask, focusHoursToday, FOCUS_HOURS_NORM } from './mainTask';
+import { useNow, useTimerState } from '../../components/timer/useTimerState';
 
 function formatClock(totalSeconds: number): string {
   const m = Math.floor(totalSeconds / 60);
@@ -11,22 +11,20 @@ function formatClock(totalSeconds: number): string {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
-function readTimerLabel(): string {
-  const session = loadPersistentTimerSession();
-  if (!session || !session.isRunning) return 'Таймер остановлен';
-  // Во время работы цифры скрыты («слепой фокус», CLAUDE.md п.5), в отдыхе виден остаток
-  if (session.mode === 'work') return 'Фокус идёт';
-  return `Отдых ${formatClock(calculateCurrentTimerState(session).timeLeft)}`;
-}
-
-// Состояние таймера для строки. Сам таймер живёт в TogglTimerBar над экраном.
+// Состояние таймера для строки (timer_state). Сам таймер живёт в TogglTimerBar над экраном.
 function useTimerLabel(): string {
-  const [label, setLabel] = useState(readTimerLabel);
-  useEffect(() => {
-    const id = window.setInterval(() => setLabel(readTimerLabel()), 1000);
-    return () => window.clearInterval(id);
-  }, []);
-  return label;
+  const [state] = useTimerState();
+  const now = useNow();
+  const today = todayStr(new Date(now));
+  const v = computeTimer(state, now);
+  if (state.phase === 'work') {
+    // Во время работы цифры скрыты («слепой фокус», CLAUDE.md п.5)
+    return state.running ? `Фокус идёт · блок ${state.blockIndex} из ${BLOCKS_PER_DAY}` : 'Фокус на паузе';
+  }
+  if (state.phase === 'break' && !v.expired) return `Отдых ${formatClock(v.remainingSec)}`;
+  if (isRecoveryDay(today)) return 'Пятница: восстановление';
+  if (dayNormDone(state, today)) return 'Норма дня выполнена';
+  return `Блок ${nextBlockNumber(state, today)} из ${BLOCKS_PER_DAY} не начат`;
 }
 
 function formatHours(h: number): string {

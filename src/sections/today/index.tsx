@@ -2,13 +2,15 @@ import React from 'react';
 import { CommandCenterToday } from '../../components/CommandCenterToday';
 import type { SectionContext } from '../types';
 import { FocusStrip } from './FocusStrip';
+import { DaySummaryCard } from './DaySummaryCard';
 
-// «Сегодня»: строка «главная задача · таймер · часы фокуса» и прежние 4 колонки
+// «Сегодня»: строка «главная задача · таймер · часы фокуса», «Итог дня» и прежние 4 колонки
 // Привычки · Ежедневные · Задачи · Награды (раскладка не меняется, CLAUDE.md п.16).
 export function TodaySection({ ctx }: { ctx: SectionContext }) {
   return (
     <div className="flex flex-col h-full min-h-0">
       <FocusStrip tasks={ctx.tasks} timeLogs={ctx.timeLogs} />
+      <DaySummaryCard />
       <div className="flex-1 min-h-0">
         <CommandCenterToday
           tasks={ctx.tasks}

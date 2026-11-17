@@ -1,15 +1,22 @@
-// Offline-First Persistent Timer Storage & Multi-tab BroadcastChannel
+// Таймер: связь вкладок и перенос старой сессии.
+// Само состояние таймера живёт в store (`timer_state`, Supabase + локальный кеш) — см. shared/timer.ts.
+// Здесь: BroadcastChannel, чтобы соседняя вкладка видела переход сразу (store не синхронизирует
+// вкладки между собой), «захват» события, чтобы блок записала и уведомила только одна вкладка,
+// и перевод старой сессии questflow_timer_session_v1 в TimerState.
+import type { TimerState } from '@shared/types';
+import { BREAK_MIN, WORK_MIN } from '@shared/timer';
 
 export type TimerMode = 'work' | 'break';
 // Встроенный звук убран (музыку включает расширение Brain.fm); поле осталось для совместимости сохранённых сессий
 export type AmbientSound = 'none' | 'brown' | 'gamma' | 'alpha';
 
+/** Старый формат (до QuestFlow 2.0): только для переноса */
 export interface PersistentTimerSession {
   mode: TimerMode;
   isRunning: boolean;
-  startTime: number | null; // Timestamp (Date.now()) when the current running segment began
-  accumulatedSeconds: number; // Total seconds tracked prior to the current segment
-  targetMinutes: number; // Configured minutes (e.g. 120 for work, 20 for break)
+  startTime: number | null;
+  accumulatedSeconds: number;
+  targetMinutes: number;
   title: string;
   selectedTaskId: string | null;
   ambientSound: AmbientSound;
@@ -17,127 +24,97 @@ export interface PersistentTimerSession {
   lastUpdated: number;
 }
 
-const STORAGE_KEY = 'questflow_timer_session_v1';
-const CHANNEL_NAME = 'questflow_timer_channel_v1';
+const LEGACY_KEY = 'questflow_timer_session_v1';
+const CHANNEL_NAME = 'questflow_timer_channel_v2';
+const CLAIMS_KEY = 'questflow_timer_claims_v1';
+/** Старая подстановка по умолчанию — не задача пользователя */
+const LEGACY_DEFAULT_TASK_ID = 'task-notebook-ideas';
 
-let broadcastChannel: BroadcastChannel | null = null;
-function getBroadcastChannel(): BroadcastChannel | null {
-  if (typeof window === 'undefined' || !('BroadcastChannel' in window)) return null;
-  if (!broadcastChannel) {
-    try {
-      broadcastChannel = new BroadcastChannel(CHANNEL_NAME);
-    } catch {
-      broadcastChannel = null;
-    }
-  }
-  return broadcastChannel;
-}
+const hasWindow = () => typeof window !== 'undefined';
 
 export function loadPersistentTimerSession(): PersistentTimerSession | null {
-  if (typeof window === 'undefined') return null;
+  if (!hasWindow()) return null;
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw) as PersistentTimerSession;
-  } catch (e) {
-    console.warn('Failed to load persistent timer session:', e);
+    const raw = localStorage.getItem(LEGACY_KEY);
+    return raw ? (JSON.parse(raw) as PersistentTimerSession) : null;
+  } catch {
     return null;
   }
 }
 
-export function savePersistentTimerSession(session: PersistentTimerSession): void {
-  if (typeof window === 'undefined') return;
-  try {
-    const updated = { ...session, lastUpdated: Date.now() };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-    broadcastTimerSession(updated);
-  } catch (e) {
-    console.warn('Failed to save persistent timer session:', e);
-  }
-}
-
 export function clearPersistentTimerSession(): void {
-  if (typeof window === 'undefined') return;
+  if (!hasWindow()) return;
   try {
-    localStorage.removeItem(STORAGE_KEY);
-    broadcastTimerSession(null);
-  } catch (e) {
-    console.warn('Failed to clear persistent timer session:', e);
+    localStorage.removeItem(LEGACY_KEY);
+  } catch {
+    // ignore
   }
 }
 
-export function broadcastTimerSession(session: PersistentTimerSession | null): void {
-  const ch = getBroadcastChannel();
-  if (ch) {
-    try {
-      ch.postMessage({ type: 'TIMER_SESSION_SYNC', session });
-    } catch {
-      // Ignored
-    }
-  }
-}
-
-export function subscribeTimerChannel(
-  callback: (session: PersistentTimerSession | null) => void
-): () => void {
-  if (typeof window === 'undefined') return () => {};
-
-  const handleMessage = (event: MessageEvent) => {
-    if (event.data && event.data.type === 'TIMER_SESSION_SYNC') {
-      callback(event.data.session);
-    }
-  };
-
-  const handleStorage = (event: StorageEvent) => {
-    if (event.key === STORAGE_KEY) {
-      if (event.newValue) {
-        try {
-          callback(JSON.parse(event.newValue));
-        } catch {
-          callback(null);
-        }
-      } else {
-        callback(null);
-      }
-    }
-  };
-
-  const ch = getBroadcastChannel();
-  if (ch) {
-    ch.addEventListener('message', handleMessage);
-  }
-  window.addEventListener('storage', handleStorage);
-
-  return () => {
-    if (ch) {
-      ch.removeEventListener('message', handleMessage);
-    }
-    window.removeEventListener('storage', handleStorage);
-  };
-}
-
-export function calculateCurrentTimerState(session: PersistentTimerSession): {
-  elapsedSeconds: number;
-  timeLeft: number;
-  isExpired: boolean;
-  expiredMinutes: number;
-} {
-  const now = Date.now();
-  let currentSegmentSeconds = 0;
-  if (session.isRunning && session.startTime) {
-    currentSegmentSeconds = Math.max(0, Math.floor((now - session.startTime) / 1000));
-  }
-  const elapsedSeconds = session.accumulatedSeconds + currentSegmentSeconds;
-  const targetSeconds = session.targetMinutes * 60;
-  const isCountdown = session.timerType === 'countdown';
-  const timeLeft = Math.max(0, targetSeconds - elapsedSeconds);
-  const isExpired = session.isRunning && isCountdown && elapsedSeconds >= targetSeconds;
-  const expiredMinutes = Math.max(1, Math.round(elapsedSeconds / 60));
-
+/** Старая сессия → TimerState. null — переносить нечего (работа не начата). */
+export function legacyToTimerState(s: PersistentTimerSession, today: string): TimerState | null {
+  const acc = Math.max(0, Number(s.accumulatedSeconds) || 0);
+  const running = Boolean(s.isRunning && s.startTime);
+  if (!running && acc === 0) return null;
+  const phase = s.mode === 'break' ? 'break' : 'work';
+  const taskId = s.selectedTaskId && s.selectedTaskId !== LEGACY_DEFAULT_TASK_ID ? s.selectedTaskId : null;
   return {
-    elapsedSeconds,
-    timeLeft,
-    isExpired,
-    expiredMinutes,
+    phase,
+    running,
+    startedAt: running ? new Date(Number(s.startTime)).toISOString() : null,
+    accumulatedSec: acc,
+    targetMin: Number(s.targetMinutes) > 0 ? Number(s.targetMinutes) : phase === 'work' ? WORK_MIN : BREAK_MIN,
+    blockIndex: 1,
+    taskId,
+    date: today,
+    notifiedEnd: false,
   };
+}
+
+// ─── Вкладки ────────────────────────────────────────────────────────────────
+let channel: BroadcastChannel | null = null;
+function getChannel(): BroadcastChannel | null {
+  if (!hasWindow() || !('BroadcastChannel' in window)) return null;
+  if (!channel) {
+    try {
+      channel = new BroadcastChannel(CHANNEL_NAME);
+    } catch {
+      channel = null;
+    }
+  }
+  return channel;
+}
+
+export function broadcastTimerState(state: TimerState): void {
+  try {
+    getChannel()?.postMessage({ type: 'TIMER_STATE', state });
+  } catch {
+    // ignore
+  }
+}
+
+export function subscribeTimerState(cb: (state: TimerState) => void): () => void {
+  const ch = getChannel();
+  if (!ch) return () => {};
+  const onMessage = (e: MessageEvent) => {
+    if (e.data && e.data.type === 'TIMER_STATE' && e.data.state) cb(e.data.state as TimerState);
+  };
+  ch.addEventListener('message', onMessage);
+  return () => ch.removeEventListener('message', onMessage);
+}
+
+/**
+ * Захватить событие таймера (конец блока, конец отдыха): true — только у первой вкладки.
+ * Помнит последние 30 событий.
+ */
+export function claimTimerEvent(key: string): boolean {
+  if (!hasWindow()) return true;
+  try {
+    const list: string[] = JSON.parse(localStorage.getItem(CLAIMS_KEY) || '[]');
+    if (list.includes(key)) return false;
+    localStorage.setItem(CLAIMS_KEY, JSON.stringify([...list, key].slice(-30)));
+    return true;
+  } catch {
+    return true;
+  }
 }
