@@ -4,13 +4,19 @@ import { ShoppingListView } from '../../components/ShoppingListView';
 import { LifeAnalyticsHub } from '../../components/LifeAnalyticsHub';
 import { SubTabs } from '../SubTabs';
 import { goalsViewFor, type GoalsView, type TabType } from '../routes';
+import { GoalsMonth } from './GoalsMonth';
+import { GoalsArchive } from './GoalsArchive';
 import type { SectionContext } from '../types';
 
-// «Цели»: задачи · покупки (на своей вкладке) · календарь. Цели месяца добавит таск 04 в эту же папку.
+type View = GoalsView | 'goals' | 'archive';
+// Цели месяца открываются по умолчанию; старый id «tasks» открывает вкладку задач
+const initialView = (tab: TabType): View => (tab === 'tasks' || tab === 'shopping' || tab === 'calendar' ? goalsViewFor(tab) : 'goals');
+
+// «Цели»: цели месяца · архив · задачи · покупки (на своей вкладке) · календарь.
 export function GoalsSection({ ctx, tab }: { ctx: SectionContext; tab: TabType }) {
-  const [view, setView] = useState<GoalsView>(goalsViewFor(tab));
+  const [view, setView] = useState<View>(initialView(tab));
   // Старая ссылка (например, «покупки») открывает свою вкладку, в том числе при переходе из палитры
-  useEffect(() => setView(goalsViewFor(tab)), [tab]);
+  useEffect(() => setView(initialView(tab)), [tab]);
 
   return (
     <div className="max-w-7xl mx-auto py-2 px-2 sm:px-4 space-y-3 animate-fade-in">
@@ -19,11 +25,16 @@ export function GoalsSection({ ctx, tab }: { ctx: SectionContext; tab: TabType }
         active={view}
         onChange={setView}
         items={[
+          { id: 'goals', label: 'Цели месяца' },
+          { id: 'archive', label: 'Архив' },
           { id: 'tasks', label: 'Задачи', badge: ctx.tasks.filter((t) => t.type === 'todo' && !t.completed).length },
           { id: 'shopping', label: 'Покупки', badge: ctx.shoppingCount },
           { id: 'calendar', label: 'Календарь' },
         ]}
       />
+
+      {view === 'goals' && <GoalsMonth />}
+      {view === 'archive' && <GoalsArchive onSetGoal={() => setView('goals')} />}
 
       {view === 'tasks' && (
         <TodoistTaskList
