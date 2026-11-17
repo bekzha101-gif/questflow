@@ -243,6 +243,44 @@ export function AuthGate({ children }: AuthGateProps) {
     }
   };
 
+  // Вход по ссылке из письма: пароль не нужен. Новых аккаунтов не создаёт — приложение личное
+  const handleMagicLink = async () => {
+    if (!supabase) return;
+    if (!email.trim()) {
+      setError('Впишите email, на него придёт ссылка для входа.');
+      return;
+    }
+    setIsLoading(true);
+    setError(null);
+    setSuccessMessage(null);
+    try {
+      const { error } = await supabase.auth.signInWithOtp({
+        email: email.trim(),
+        options: { shouldCreateUser: false, emailRedirectTo: window.location.origin + window.location.pathname },
+      });
+      if (error) setError(`Письмо не отправлено: ${error.message}`);
+      else setSuccessMessage('Письмо отправлено. Откройте ссылку из него в этом же браузере — вход произойдёт сам.');
+    } catch {
+      setError('Сервер Supabase не отвечает. Попробуйте позже.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Смена пароля, когда вход уже выполнен (например, по ссылке из письма)
+  const [newPassword, setNewPassword] = useState('');
+  const [passwordNote, setPasswordNote] = useState<string | null>(null);
+  const handleChangePassword = async () => {
+    if (!supabase) return;
+    if (newPassword.length < 8) {
+      setPasswordNote('Пароль — минимум 8 символов.');
+      return;
+    }
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    setPasswordNote(error ? `Не удалось: ${error.message}` : 'Пароль изменён.');
+    if (!error) setNewPassword('');
+  };
+
   const handleSignOut = async () => {
     if (supabase) {
       try {
@@ -388,6 +426,28 @@ export function AuthGate({ children }: AuthGateProps) {
                 <span>Скачать резервную копию задач (JSON)</span>
               </button>
 
+              {session && (
+                <div className="space-y-1.5">
+                  <div className="flex gap-2">
+                    <input
+                      type="password"
+                      autoComplete="new-password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="Новый пароль (от 8 символов)"
+                      className="flex-1 bg-zinc-900 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-purple-500"
+                    />
+                    <button
+                      onClick={handleChangePassword}
+                      className="px-3 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-semibold text-xs cursor-pointer"
+                    >
+                      Сменить пароль
+                    </button>
+                  </div>
+                  {passwordNote && <p className="text-[11px] text-zinc-400">{passwordNote}</p>}
+                </div>
+              )}
+
               {session ? (
                 <button
                   onClick={handleSignOut}
@@ -517,6 +577,15 @@ export function AuthGate({ children }: AuthGateProps) {
                 {isLoading ? 'Проверка...' : authMode === 'signin' ? 'Войти в аккаунт' : 'Зарегистрироваться'}
               </button>
             </form>
+
+            <button
+              type="button"
+              onClick={handleMagicLink}
+              disabled={isLoading}
+              className="w-full py-2.5 rounded-xl bg-purple-950/50 hover:bg-purple-900/60 border border-purple-500/30 text-purple-200 hover:text-white font-semibold text-xs transition-all cursor-pointer disabled:opacity-60"
+            >
+              Забыли пароль? Войти по ссылке из письма
+            </button>
 
             <div className="flex items-center justify-between text-xs text-zinc-500 pt-1">
               <button
