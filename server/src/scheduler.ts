@@ -61,6 +61,8 @@ const ALARM_WINDOW_MIN = 15;
 const BACKUP_HM = '03:00';
 /** Сколько после начала отдыха ещё можно сказать «пора на отдых», если сайт сам перевёл таймер */
 const BREAK_START_GRACE_SEC = 180;
+/** Событие таймера старше этого (бот был выключен) — не сообщать задним числом */
+const STALE_TIMER_EVENT_MS = 5 * 60_000;
 
 // Память в процессе — на случай, если запись в базу не прошла (не слать дважды)
 const memory = new WeakMap<SchedulerDeps, Set<string>>();
@@ -305,7 +307,12 @@ async function checkTimer(
 
   if (settledHere) {
     const id = `work:${t.startedAt}`;
-    if (!t.notifiedEnd && !done('timer_last', id)) {
+    // Отдых начинается в момент конца работы: если это было давно, «пора на отдых» уже не к месту
+    const staleWorkEnd = !!s.startedAt && nowMs - Date.parse(s.startedAt) > STALE_TIMER_EVENT_MS;
+    if (!t.notifiedEnd && !done('timer_last', id) && staleWorkEnd) {
+      await mark('timer_last', id);
+      await mark('timer_work_end', now.toISOString());
+    } else if (!t.notifiedEnd && !done('timer_last', id)) {
       const workedSec = (Number(t.targetMin) > 0 ? Number(t.targetMin) : WORK_MIN) * 60;
       await once('Таймер', 'timer_last', id, async () => {
         const ok = await deps.send(TEXT.workOver(workedSec));
@@ -341,6 +348,12 @@ async function checkTimer(
     const id = `break:${breakStarted}`;
     // notified_end строки в базе относится к ней самой: у отдыха, посчитанного здесь, его ещё нет
     if ((!settledHere && t.notifiedEnd) || done('timer_last', id)) return;
+    // Отдых, который к этому тику уже давно кончился (бот был выключен), — без сообщения
+    const breakEndMs = Date.parse(breakStarted) + (Number(s.targetMin) > 0 ? Number(s.targetMin) : 20) * 60_000;
+    if (settledHere && nowMs - breakEndMs > STALE_TIMER_EVENT_MS) {
+      await mark('timer_last', id);
+      return;
+    }
     await once('Таймер', 'timer_last', id, async () => {
       const ok = await deps.send(TEXT.breakOver((s.blockIndex ?? 0) + 1, BLOCKS_PER_DAY));
       if (ok && !settledHere) await deps.db.markTimerNotified(breakStarted);

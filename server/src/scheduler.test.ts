@@ -393,6 +393,31 @@ describe('scheduler: таймер без сайта и долгий разгов
     expect(breakOverAt).toBe(1);
   });
 
+  it('бот был выключен дольше отдыха → ни «пора на отдых», ни «отдых закончился» задним числом', async () => {
+    const w = makeWorld({
+      settings: { chatId: '100', morningHm: '08:00', eveningHm: '21:00', reminderLimit: 3, lastSent: { morning: '2026-11-17' } },
+      timer: {
+        phase: 'work', running: true, startedAt: bishkek('2026-11-17', '09:00').toISOString(), accumulatedSec: 0,
+        targetMin: 120, blockIndex: 1, date: '2026-11-17', notifiedEnd: false,
+      },
+    });
+    // работа кончилась в 11:00, отдых в 11:20; бот поднялся только в 11:35
+    await runRange(deps(w), '2026-11-17', '11:35', '11:40');
+    expect(w.sent).toEqual([]);
+  });
+
+  it('бот поднялся через 3 мин после конца работы → «пора на отдых» одно, отдых закончится вовремя', async () => {
+    const w = makeWorld({
+      settings: { chatId: '100', morningHm: '08:00', eveningHm: '21:00', reminderLimit: 3, lastSent: { morning: '2026-11-17' } },
+      timer: {
+        phase: 'work', running: true, startedAt: bishkek('2026-11-17', '09:00').toISOString(), accumulatedSec: 0,
+        targetMin: 120, blockIndex: 1, date: '2026-11-17', notifiedEnd: false,
+      },
+    });
+    await runRange(deps(w), '2026-11-17', '11:03', '11:25');
+    expect(w.sent.map((t) => t.split('.')[0])).toEqual([expect.stringMatching(/^Пора на отдых/), 'Отдых закончился']);
+  });
+
   it('разговор занят долгим анализом → тик не ждёт дольше предела, таймер-уведомление выходит', async () => {
     const w = makeWorld({
       settings: { chatId: '100', morningHm: '08:00', eveningHm: '21:00', reminderLimit: 3, lastSent: { morning: '2026-11-17' } },
