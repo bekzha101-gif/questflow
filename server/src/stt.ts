@@ -13,7 +13,7 @@ export interface Stt {
 export interface SttOptions {
   /** Интерпретатор Python с faster-whisper (WHISPER_PYTHON; по умолчанию venv server/stt/.venv, затем `python`) */
   python?: string;
-  /** Модель (WHISPER_MODEL): small | medium | large-v3-turbo; по умолчанию medium */
+  /** Модель (WHISPER_MODEL): small | medium | large-v3-turbo | large-v3; по умолчанию large-v3 (самая точная) */
   model?: string;
   /** cuda | cpu (WHISPER_DEVICE) */
   device?: string;
@@ -47,13 +47,15 @@ export function createStt(opts: SttOptions = {}): Stt {
   return {
     async transcribe(oggPath) {
       const python = opts.python ?? defaultPython();
-      const args = [sttScriptPath(), oggPath, '--model', opts.model ?? 'medium', '--device', opts.device ?? 'cuda'];
+      const args = [sttScriptPath(), oggPath, '--model', opts.model ?? 'large-v3', '--device', opts.device ?? 'cuda'];
       try {
         const out = await run(python, args, opts.timeoutMs ?? 120_000);
         const line = out.trim().split(/\r?\n/).reverse().find((l) => l.trim().startsWith('{'));
         if (!line) return null;
-        const j = JSON.parse(line) as { text?: unknown; error?: unknown };
+        const j = JSON.parse(line) as { text?: unknown; error?: unknown; device?: unknown };
         if (typeof j.error === 'string') log(`Whisper: ${j.error}`);
+        // Модель не влезла в видеокарту и ушла на процессор — медленно, стоит знать
+        if (typeof j.device === 'string' && j.device.startsWith('cpu')) log(`Whisper работает на процессоре (${j.device}): видеокарта недоступна`);
         const text = typeof j.text === 'string' ? j.text.trim() : '';
         return text || null;
       } catch (e) {

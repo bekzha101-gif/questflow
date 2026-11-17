@@ -1,6 +1,6 @@
 """Расшифровка голосового сообщения Telegram (ogg/opus) через faster-whisper.
 
-Вызов: python transcribe.py <файл> [--model medium] [--device cuda] [--language ru]
+Вызов: python transcribe.py <файл> [--model large-v3] [--device cuda] [--language ru]
 Ответ: одна строка JSON в stdout: {"text": "...", "language": "ru", "seconds": 3.2}
 или {"text": "", "error": "..."} — сервер тогда просит написать текстом.
 Модель берётся из кеша Hugging Face (~/.cache/huggingface); первый запуск скачивает её.
@@ -51,7 +51,7 @@ def load_audio(path: str):
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("path")
-    parser.add_argument("--model", default="medium")
+    parser.add_argument("--model", default="large-v3")
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--language", default="ru")
     args = parser.parse_args()
@@ -65,20 +65,34 @@ def main() -> int:
         return 2
 
     try:
-        compute = "float16" if args.device == "cuda" else "int8"
         model = None
-        # Сначала модель из кеша без сети (быстрее), потом с докачкой; без CUDA — на процессоре
-        for device, ctype, local in ((args.device, compute, True), (args.device, compute, False), ("cpu", "int8", False)):
+        used = ""
+        # Сначала модель из кеша без сети (быстрее), потом с докачкой.
+        # На видеокарте: float16 (точнее), при нехватке видеопамяти — int8_float16; без CUDA — процессор.
+        if args.device == "cuda":
+            attempts = [("cuda", "float16", True), ("cuda", "int8_float16", True), ("cuda", "float16", False), ("cpu", "int8", False)]
+        else:
+            attempts = [(args.device, "int8", True), (args.device, "int8", False)]
+        for device, ctype, local in attempts:
             try:
                 model = WhisperModel(args.model, device=device, compute_type=ctype, local_files_only=local)
+                used = f"{device}/{ctype}"
                 break
             except Exception:
                 continue
         if model is None:
             raise RuntimeError(f"модель {args.model} не загрузилась")
-        segments, info = model.transcribe(load_audio(args.path), language=args.language or None, vad_filter=True, beam_size=5)
+        segments, info = model.transcribe(
+            load_audio(args.path),
+            language=args.language or None,
+            vad_filter=True,
+            beam_size=5,
+            # Подсказка задаёт стиль: русский текст с пунктуацией и заглавными буквами
+            initial_prompt="Привет. Сегодня я сделал задачи, поработал над каналом и записал видео.",
+            condition_on_previous_text=False,
+        )
         text = " ".join(s.text.strip() for s in segments).strip()
-        out = {"text": text, "language": info.language, "seconds": round(time.time() - started, 1)}
+        out = {"text": text, "language": info.language, "model": args.model, "device": used, "seconds": round(time.time() - started, 1)}
     except Exception as e:
         out = {"text": "", "error": str(e)[:300]}
     sys.stdout.reconfigure(encoding="utf-8")

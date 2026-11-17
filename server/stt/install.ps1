@@ -1,7 +1,7 @@
 ﻿# Установка распознавания голоса (faster-whisper) в server/stt/.venv.
-# Запуск: powershell -ExecutionPolicy Bypass -File server\stt\install.ps1 [-Model medium]
-# Модель (~1.5 ГБ для medium) скачивается один раз в кеш Hugging Face при первой проверке.
-param([string]$Model = "medium")
+# Запуск: powershell -ExecutionPolicy Bypass -File server\stt\install.ps1 [-Model large-v3]
+# Модель (~3 ГБ для large-v3) скачивается один раз в кеш Hugging Face при первой проверке.
+param([string]$Model = "large-v3")
 $ErrorActionPreference = "Stop"
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $venv = Join-Path $here ".venv"

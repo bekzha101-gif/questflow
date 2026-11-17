@@ -231,9 +231,13 @@ export function createConversation(deps: ConversationDeps): Conversation {
 
     let state = await load();
     let text = msg.text;
+    // В лог — только тип сообщения и время, без текста владельца
+    log(`Входящее: ${msg.voiceFileId ? 'голос' : msg.photoFileId ? 'фото' : data ? 'кнопка' : 'текст'}`);
     if (msg.voiceFileId) {
       const file = deps.files ? await safe('скачать голосовое', () => deps.files!.download(msg.voiceFileId!, 'voice'), null) : null;
+      const t0 = Date.now();
       const heard = file ? await deps.stt.transcribe(file) : null;
+      if (file) log(`Голос: ${heard ? `расшифрован за ${((Date.now() - t0) / 1000).toFixed(1)} с, ${heard.length} симв.` : 'не расшифрован'}`);
       if (file) await deps.files?.release?.(file).catch(() => {});
       if (!heard) {
         await deps.send(CONV_TEXT.voiceFailed);
