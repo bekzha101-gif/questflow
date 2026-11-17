@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QuestFlow 2.0 — вариант B</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+:root{--bg:#09090c;--c1:#0e0e13;--c2:#101014;--c3:#121218;--c4:#16161f;--b:rgba(255,255,255,.07);--b2:rgba(255,255,255,.12);
+--t:#f4f4f5;--t2:#a1a1aa;--t3:#71717a;--t4:#52525b;--pu:#a78bfa;--pu-bg:rgba(139,92,246,.12);--am:#fbbf24;--am-bg:rgba(251,191,36,.10);
+--em:#34d399;--em-bg:rgba(52,211,153,.10);--ro:#fb7185;--ro-bg:rgba(251,113,133,.10);
+--mono:ui-monospace,'SF Mono',SFMono-Regular,Menlo,Consolas,monospace}
+*{box-sizing:border-box}
+html,body{margin:0;background:#040406;color:var(--t);font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+-webkit-font-smoothing:antialiased;letter-spacing:-.01em;font-size:14px;line-height:1.4}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;padding:0;letter-spacing:inherit}
+a{color:inherit;text-decoration:none}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums;letter-spacing:0}
+.i{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.dim{color:var(--t3)}
+::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:9px}
+
+/* мокап-обвязка */
+.mk{flex-wrap:wrap;position:sticky;top:0;z-index:50;display:flex;align-items:center;gap:12px;padding:10px 20px;background:rgba(4,4,6,.85);
+backdrop-filter:blur(12px);border-bottom:1px solid var(--b)}
+.mk-back{color:var(--t3);font-size:13px}.mk-back:hover{color:var(--t)}
+.mk-title{font-weight:600;font-size:13px;margin-right:auto}
+.seg{display:inline-flex;padding:3px;background:var(--c2);border:1px solid var(--b);border-radius:10px;gap:2px}
+.seg button{white-space:nowrap;padding:5px 12px;border-radius:7px;color:var(--t3);font-size:12.5px;font-weight:500}
+.seg button.on{background:var(--c4);color:var(--t);box-shadow:inset 0 0 0 1px var(--b2)}
+.stage{padding:28px 24px 60px}
+.device{width:1440px;min-height:900px;margin:0 auto;background:var(--bg);border:1px solid var(--b);border-radius:20px;overflow:clip;position:relative}
+.device.m{width:390px;min-height:844px;border-radius:36px}
+.toast{position:fixed;left:50%;bottom:28px;transform:translate(-50%,20px);opacity:0;pointer-events:none;transition:.2s;
+background:var(--c4);border:1px solid var(--b2);padding:10px 14px;border-radius:12px;font-size:13px;color:var(--t2);z-index:60}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+
+/* базовые элементы */
+.card{background:var(--c2);border:1px solid var(--b);border-radius:20px}
+.eyebrow{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--t3)}
+.icon-btn{width:32px;height:32px;display:inline-grid;place-items:center;border-radius:10px;color:var(--t2);border:1px solid var(--b);background:var(--c3);transition:.15s}
+.icon-btn:hover{color:var(--t);border-color:var(--b2);background:var(--c4)}
+.icon-btn:active,.btn:active,.hb:active,.chk:active{transform:scale(.96)}
+.icon-btn.sm{width:24px;height:24px;border-radius:8px;border-color:transparent;background:none}
+.icon-btn.sm .i{width:14px;height:14px}
+.btn{height:32px;padding:0 14px;border-radius:10px;font-size:13px;font-weight:500;background:var(--c4);border:1px solid var(--b2);transition:.15s;display:inline-flex;align-items:center;gap:6px}
+.btn:hover{background:#1c1c26}
+.btn.pri{background:#f4f4f5;color:#09090c;border-color:transparent}
+.kbd{font-family:var(--mono);font-size:11px;color:var(--t3);border:1px solid var(--b);border-radius:5px;padding:1px 5px}
+.tag{display:inline-flex;align-items:center;height:20px;padding:0 7px;border-radius:6px;font-size:11.5px;font-weight:500;background:rgba(255,255,255,.05);color:var(--t2)}
+.tag.pu{background:var(--pu-bg);color:var(--pu)}.tag.am{background:var(--am-bg);color:var(--am)}.tag.em{background:var(--em-bg);color:var(--em)}
+
+/* строка прогресса */
+.stats{display:flex;align-items:center;gap:18px;font-size:12.5px;color:var(--t2);white-space:nowrap}
+.st{display:inline-flex;align-items:center;gap:7px}
+.st b{font-weight:500;color:var(--t)}
+.lbl{color:var(--t3)}
+.bar{width:56px;height:4px;border-radius:9px;background:rgba(255,255,255,.07);overflow:hidden;display:inline-block}
+.bar i{display:block;height:100%;border-radius:9px}
+.bar.xp i{background:var(--pu)}.bar.hp i{background:var(--ro)}
+.coin{width:8px;height:8px;border-radius:50%;background:var(--am);box-shadow:0 0 0 3px var(--am-bg)}
+.st .fl{color:var(--am);width:14px;height:14px}
+.xpline{height:2px;background:rgba(255,255,255,.04)}.xpline i{display:block;height:100%;width:62%;background:linear-gradient(90deg,rgba(167,139,250,.2),var(--pu))}
+
+/* фокус-строка */
+.focus{display:grid;grid-template-columns:1.4fr 1fr 1fr;align-items:stretch;padding:0;overflow:hidden}
+.focus.two{grid-template-columns:1.6fr 1fr}
+.focus>div{padding:18px 22px}
+.focus>div+div{border-left:1px solid var(--b)}
+.f-title{font-size:19px;font-weight:600;letter-spacing:-.02em;margin:6px 0 10px}
+.f-meta{display:flex;gap:8px;align-items:center;font-size:12.5px;color:var(--t3);flex-wrap:wrap}
+.f-meta .sep{width:3px;height:3px;border-radius:50%;background:var(--t4)}
+.f-timer{display:flex;flex-direction:column;justify-content:center;gap:10px}
+.tm-row{display:flex;align-items:center;gap:10px}
+.pulse{width:8px;height:8px;border-radius:50%;background:var(--em);position:relative;flex:none}
+.pulse:after{content:"";position:absolute;inset:-4px;border-radius:50%;border:2px solid var(--em);opacity:.6;animation:pl 1.6s ease-out infinite}
+@keyframes pl{0%{transform:scale(.5);opacity:.7}100%{transform:scale(1.8);opacity:0}}
+.tm-st{font-size:17px;font-weight:600}
+.tm-val{display:none;font-size:17px;font-weight:500}
+.timer.reveal .tm-val{display:inline}.timer.reveal .tm-st{display:none}
+.timer .eye.on{color:var(--t);border-color:var(--b2)}
+.tm-sub{font-size:12.5px;color:var(--t3)}
+.tm-act{display:flex;gap:8px;margin-left:auto}
+.big{font-size:20px;font-weight:500;margin:6px 0 12px}
+.big .dim{font-size:15px}
+.fbar{height:6px;border-radius:9px;background:rgba(255,255,255,.06);overflow:hidden}
+.fbar i{display:block;height:100%;width:33.3%;background:var(--em);border-radius:9px}
+.blocks{display:flex;gap:6px;margin-top:12px;align-items:center;font-size:12.5px;color:var(--t3)}
+.blocks i{width:22px;height:6px;border-radius:3px;background:rgba(255,255,255,.08)}
+.blocks i.d{background:var(--em)}.blocks i.r{background:rgba(52,211,153,.4)}
+.blocks span{margin-left:6px}
+
+/* 4 колонки */
+.cols{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;align-items:start}
+.col{background:var(--c1);border:1px solid rgba(255,255,255,.06);border-radius:20px;padding:8px}
+.col-h{display:flex;align-items:center;gap:8px;padding:8px 8px 10px}
+.col-t{font-weight:600;font-size:13.5px}
+.cnt{font-size:11.5px;color:var(--t3)}
+.col-h .icon-btn{margin-left:auto}
+.add{display:flex;align-items:center;gap:8px;height:36px;padding:0 10px;margin-bottom:6px;border-radius:12px;color:var(--t4);font-size:13px;border:1px dashed rgba(255,255,255,.07)}
+.add .i{width:14px;height:14px}
+.item{display:flex;align-items:center;gap:10px;padding:10px;border-radius:14px;background:var(--c3);border:1px solid var(--b);margin-top:6px;transition:.15s}
+.item:hover{background:var(--c4);border-color:var(--b2)}
+.it-b{flex:1;min-width:0}
+.it-t{font-size:13.5px;font-weight:500}
+.it-s{font-size:12px;color:var(--t3);margin-top:3px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.mini{height:3px;border-radius:9px;background:rgba(255,255,255,.06);margin-top:8px;overflow:hidden}
+.mini i{display:block;height:100%;background:var(--pu);border-radius:9px}
+.hb{width:28px;height:28px;border-radius:9px;display:grid;place-items:center;background:rgba(255,255,255,.04);color:var(--t3);border:1px solid var(--b);flex:none}
+.hb:hover{color:var(--t)}.hb.p:hover{color:var(--em);border-color:rgba(52,211,153,.3)}.hb.n:hover{color:var(--ro);border-color:rgba(251,113,133,.3)}
+.hb .i{width:14px;height:14px}
+.chk{width:20px;height:20px;border-radius:7px;border:1.5px solid rgba(255,255,255,.18);display:grid;place-items:center;flex:none;color:transparent;transition:.15s}
+.chk .i{width:12px;height:12px;stroke-width:2.5}
+.done .chk{background:var(--em);border-color:var(--em);color:#06281b}
+.item.done .it-t{color:var(--t3);text-decoration:line-through;text-decoration-color:var(--t4)}
+.item.main{box-shadow:inset 2px 0 0 var(--pu)}
+.price{font-size:13px;color:var(--am);display:inline-flex;align-items:center;gap:6px}
+.buy{height:26px;padding:0 10px;border-radius:8px;font-size:12px;font-weight:500;border:1px solid var(--b2);color:var(--t2)}
+.buy:hover{color:var(--t);background:var(--c4)}
+.col-f{padding:10px 8px 4px;font-size:12px;color:var(--t4);display:flex;justify-content:space-between}
+.col-tabs{display:none}
+
+/* каналы */
+.pill{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border-radius:999px;font-size:12px;font-weight:500;white-space:nowrap}
+.pill i{width:6px;height:6px;border-radius:50%;background:currentColor}
+.pill.ok{color:var(--em);background:var(--em-bg)}.pill.wait{color:var(--am);background:var(--am-bg)}.pill.dead{color:var(--ro);background:var(--ro-bg)}
+.legend{display:flex;gap:6px;flex-wrap:wrap}
+.chip{display:inline-flex;align-items:center;gap:7px;height:30px;padding:0 11px;border-radius:10px;border:1px solid var(--b);background:var(--c2);font-size:12.5px;color:var(--t2)}
+.chip.on{background:var(--c4);color:var(--t);border-color:var(--b2)}
+.chip .d{width:6px;height:6px;border-radius:50%}
+.chip .mono{color:var(--t3);font-size:11.5px}
+.av{width:36px;height:36px;border-radius:11px;display:grid;place-items:center;font-size:12px;font-weight:600;background:#1a1a22;border:1px solid var(--b2);color:var(--t2);flex:none;letter-spacing:.02em}
+.ch-n{font-weight:600;font-size:14.5px;letter-spacing:-.01em}
+.ch-sub{font-size:12.5px;color:var(--t3);margin-top:2px}
+.today-l{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:500;padding:9px 11px;border-radius:12px;background:rgba(255,255,255,.03);border:1px solid var(--b)}
+.today-l .i{width:15px;height:15px}
+.today-l.ok{color:var(--em)}.today-l.am{color:var(--am)}.today-l.ne{color:var(--t2)}
+.today-l small{white-space:nowrap;margin-left:auto;color:var(--t3);font-weight:400;font-size:12px}
+.pipe{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--t4)}
+.pipe span{display:inline-flex;align-items:center;gap:6px}
+.pipe span:before{content:"";width:7px;height:7px;border-radius:50%;border:1.5px solid var(--t4)}
+.pipe .d{color:var(--t3)}.pipe .d:before{background:var(--t3);border-color:var(--t3)}
+.pipe .c{color:var(--t)}.pipe .c:before{background:var(--pu);border-color:var(--pu);box-shadow:0 0 0 3px var(--pu-bg)}
+.pipe .c.pub:before{background:var(--em);border-color:var(--em);box-shadow:0 0 0 3px var(--em-bg)}
+.pipe .ln{width:14px;height:1px;background:var(--b2)}.pipe .ln:before{display:none}
+.cl{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+.cl li{display:flex;align-items:center;gap:10px;padding:6px 4px;font-size:13px;color:var(--t2);border-radius:8px;cursor:pointer}
+.cl li:hover{background:rgba(255,255,255,.03)}
+.cl li.done{color:var(--t3)}
+.cl li .chk{width:18px;height:18px;border-radius:6px}
+.cl li em{font-style:normal;margin-left:auto;font-size:12px;color:var(--am)}
+.cl li.now{color:var(--t)}
+.cl li.now .chk{border-color:var(--pu)}
+.prog{font-size:12px;color:var(--t3)}
+
+/* нижняя навигация (телефон) */
+.bnav{display:none}
+.m .bnav{display:grid;grid-template-columns:repeat(2,1fr) 56px repeat(3,1fr);align-items:center;position:sticky;bottom:0;z-index:20;
+padding:8px 8px 22px;background:rgba(9,9,12,.92);backdrop-filter:blur(14px);border-top:1px solid var(--b)}
+.bnav button{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:10.5px;color:var(--t3);padding:4px 0}
+.bnav button .i{width:20px;height:20px}
+.bnav button.on{color:var(--t)}
+.bnav .fab{width:44px;height:44px;border-radius:14px;background:#f4f4f5;color:#09090c;justify-self:center;display:grid;place-items:center}
+.bnav .fab .i{width:20px;height:20px;stroke-width:2}
+
+/* общие мобильные правила */
+.m .stats{gap:8px 14px;font-size:12px;flex-wrap:wrap}
+.m .bar{width:36px}
+.m .focus{grid-template-columns:1fr}
+.m .focus>div{padding:16px}
+.m .focus>div+div{border-left:0;border-top:1px solid var(--b)}
+.m .f-title{font-size:17px}
+.m .col-tabs{display:flex;gap:6px;overflow-x:auto;margin:4px 0 10px}
+.m .col-tabs button{height:30px;padding:0 12px;border-radius:10px;border:1px solid var(--b);background:var(--c2);font-size:12.5px;color:var(--t2);white-space:nowrap;display:inline-flex;gap:6px;align-items:center}
+.m .col-tabs button.on{background:var(--c4);color:var(--t);border-color:var(--b2)}
+.m .col-tabs .mono{font-size:11px;color:var(--t3)}
+.m .cols{display:grid;grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:88%;overflow-x:auto;scroll-snap-type:x mandatory;gap:10px;scrollbar-width:none}
+.m .cols::-webkit-scrollbar{display:none}
+.m .col{scroll-snap-align:start}
+.m .desk{display:none!important}
+.mob{display:none!important}
+.m .mob{display:revert!important}
+.m .f-timer.mob{display:flex!important}
+
+.hdr{display:flex;align-items:center;gap:24px;height:56px;padding:0 40px;border-bottom:1px solid var(--b)}
+.brand{display:flex;align-items:center;gap:10px;font-weight:600}
+.logo{width:24px;height:24px;border-radius:7px;background:linear-gradient(135deg,#f4f4f5,#a1a1aa);display:grid;place-items:center;color:#09090c;font-weight:700;font-size:12px}
+.tabs{display:flex;gap:4px;height:100%}
+.tab{position:relative;display:flex;align-items:center;gap:8px;padding:0 12px;color:var(--t3);font-size:13.5px;font-weight:500;height:100%}
+.tab:hover{color:var(--t)}
+.tab.on{color:var(--t)}
+.tab.on:after{content:"";position:absolute;left:10px;right:10px;bottom:-1px;height:2px;border-radius:2px;background:var(--t)}
+.tab .n{font-family:var(--mono);font-size:11px;color:var(--am)}
+.hdr-r{margin-left:auto;display:flex;align-items:center;gap:10px}
+.sub{display:flex;align-items:center;justify-content:space-between;padding:12px 40px;border-bottom:1px solid var(--b);background:#0b0b0f}
+.sub .date{font-size:13px;color:var(--t3)}
+.content{padding:28px 40px 48px;display:flex;flex-direction:column;gap:18px}
+.ph{display:flex;align-items:flex-end;justify-content:space-between;gap:16px}
+.ph h2{margin:0;font-size:24px;font-weight:600;letter-spacing:-.02em}
+.ph p{margin:4px 0 0;color:var(--t3);font-size:13px}
+/* каналы строками */
+.rows{display:flex;flex-direction:column;gap:10px}
+.rowh{display:grid;grid-template-columns:300px 300px minmax(0,1fr) 260px;gap:24px;padding:0 20px;font-size:11px;color:var(--t4);font-weight:600;letter-spacing:.06em;text-transform:uppercase}
+.chr{display:grid;grid-template-columns:300px 300px minmax(0,1fr) 260px;gap:24px;align-items:center;padding:16px 20px}
+.chr-id{display:flex;gap:12px;align-items:center}
+.chr-id .pill{margin-top:6px}
+.steps{display:flex;gap:6px}
+.stp{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;cursor:pointer}
+.stp b{height:4px;border-radius:9px;background:rgba(255,255,255,.08)}
+.stp span{font-size:11.5px;color:var(--t4);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stp.done b{background:var(--em)}.stp.done span{color:var(--t3)}
+.stp.now b{background:var(--pu)}.stp.now span{color:var(--t)}
+.stp.fix b{background:var(--am)}.stp.fix span{color:var(--am)}
+.chr-st{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.chr-st .prog{font-size:12px}
+.m .hdr{height:52px;padding:0 16px}
+.m .tabs{display:none}
+.m .sub{flex-direction:column;align-items:flex-start;gap:8px;padding:10px 16px}
+.m .sub .stats{width:100%}
+.m .content{padding:16px 12px 24px;gap:12px}
+.m .ph{flex-direction:column;align-items:flex-start}
+.m .ph h2{font-size:20px}
+.m .rowh{display:none}
+.m .chr{grid-template-columns:1fr;gap:14px;padding:16px}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><symbol id="i-today" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></symbol><symbol id="i-goals" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/></symbol><symbol id="i-channels" viewBox="0 0 24 24"><rect x="2.5" y="5" width="19" height="14" rx="4"/><path d="m10 9.5 4.5 2.5-4.5 2.5z"/></symbol><symbol id="i-health" viewBox="0 0 24 24"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></symbol><symbol id="i-progress" viewBox="0 0 24 24"><path d="M18 20V10M12 20V4M6 20v-6"/></symbol><symbol id="i-settings" viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></symbol><symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol><symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol><symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></symbol><symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol><symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol><symbol id="i-flame" viewBox="0 0 24 24"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14-.22-4.05 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.43-2.29 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></symbol><symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></symbol><symbol id="i-pause" viewBox="0 0 24 24"><path d="M9 5v14M15 5v14"/></symbol><symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol><symbol id="i-chev" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol></svg>
+<div class="mk">
+<a class="mk-back" href="index.html">Все варианты</a>
+<span class="mk-title">Вариант B · Верхние вкладки</span>
+<div class="seg"><button data-screen="today">Сегодня</button><button data-screen="channels">Каналы</button></div>
+<div class="seg"><button data-w="1440">Mac 1440</button><button data-w="390">Android 390</button></div>
+</div>
+<div class="stage"><div class="device" id="dev">
+<div class="xpline"><i></i></div>
+<header class="hdr"><div class="brand"><div class="logo">Q</div>QuestFlow</div><nav class="tabs"><button class="tab" data-screen="today">Сегодня</button><button class="tab" data-soon="goals">Цели</button><button class="tab" data-screen="channels">Каналы<span class="n">3</span></button><button class="tab" data-soon="health">Здоровье</button><button class="tab" data-soon="progress">Прогресс</button></nav>
+<div class="hdr-r"><button class="icon-btn" data-soon="settings" title="Поиск"><svg class="i"><use href="#i-search"/></svg></button><button class="icon-btn" data-soon="settings" title="Настройки"><svg class="i"><use href="#i-settings"/></svg></button><button class="btn pri desk" data-soon="add"><svg class="i"><use href="#i-plus"/></svg>Добавить</button></div></header>
+<div class="sub"><div class="stats">
+<span class="st"><span class="lbl">Уровень</span><b class="mono">4</b><span class="bar xp"><i style="width:62%"></i></span></span>
+<span class="st"><span class="lbl">HP</span><b class="mono">82<span class="dim">/100</span></b><span class="bar hp"><i style="width:82%"></i></span></span>
+<span class="st"><span class="coin"></span><b class="mono">427</b><span class="lbl">золото</span></span>
+<span class="st"><svg class="i fl"><use href="#i-flame"/></svg><b class="mono">5</b><span class="lbl">дней подряд</span></span>
+</div><span class="date desk">Вторник, 17 ноября</span></div>
+<section class="screen" id="s-today"><div class="content">
+<div class="ph"><div><h2>Сегодня</h2><p>11 дел · идёт блок фокуса 2 из 3</p></div></div>
+<section class="card focus"><div class="f-main">
+<div class="eyebrow">Главная задача дня</div>
+<div class="f-title">Выложить 2 видео BEATIFUL MAN</div>
+<div class="f-meta"><span class="tag pu">BEATIFUL MAN</span><span>0 из 2 выложено</span><span class="sep"></span><span>монтаж 3–5 ч</span></div>
+</div><div class="timer f-timer ">
+<div class="eyebrow">Таймер фокуса</div>
+<div class="tm-row"><span class="pulse"></span><span class="tm-st">Работает</span><span class="tm-val mono">00:47:12</span>
+<div class="tm-act"><button class="icon-btn eye" title="Показать время на секунду"><svg class="i"><use href="#i-eye"/></svg></button><button class="icon-btn" title="Пауза"><svg class="i"><use href="#i-pause"/></svg></button></div></div>
+<div class="tm-sub">Слепой режим · блок 2 из 3</div>
+</div><div class="f-day">
+<div class="eyebrow">Фокус сегодня</div>
+<div class="big mono">2ч 00м <span class="dim">/ 6ч</span></div>
+<div class="fbar"><i></i></div>
+<div class="blocks"><i class="d"></i><i class="r"></i><i></i><span>Блок 2 из 3</span></div>
+</div></section><div class="col-tabs"><button class="on">Привычки <span class="mono">4</span></button><button>Ежедневные <span class="mono">4</span></button><button>Задачи <span class="mono">3</span></button><button>Награды <span class="mono">6</span></button></div><div class="cols"><div class="col"><div class="col-h"><span class="col-t">Привычки</span><span class="cnt mono">4</span>
+<button class="icon-btn sm" data-soon="add"><svg class="i"><use href="#i-plus"/></svg></button></div>
+<div class="add"><svg class="i"><use href="#i-plus"/></svg>Новая привычка</div><div class="item"><button class="hb n" title="Минус"><svg class="i"><use href="#i-minus"/></svg></button>
+<div class="it-b"><div class="it-t">2 л воды</div><div class="it-s"><span class="mono">1,2 / 2 л</span><span class="dim">·</span><span>серия <span class="mono">5</span></span></div>
+<div class="mini"><i style="width:60%"></i></div></div>
+<button class="hb p" title="Плюс"><svg class="i"><use href="#i-plus"/></svg></button></div><div class="item"><button class="hb n" title="Минус"><svg class="i"><use href="#i-minus"/></svg></button>
+<div class="it-b"><div class="it-t">Медитация 20 мин</div><div class="it-s"><span class="mono">0 / 20 мин</span><span class="dim">·</span><span>серия <span class="mono">3</span></span></div>
+<div class="mini"><i style="width:0%"></i></div></div>
+<button class="hb p" title="Плюс"><svg class="i"><use href="#i-plus"/></svg></button></div><div class="item"><button class="hb n" title="Минус"><svg class="i"><use href="#i-minus"/></svg></button>
+<div class="it-b"><div class="it-t">Erinamax 4 таб.</div><div class="it-s"><span class="mono">2 / 4</span><span class="dim">·</span><span>серия <span class="mono">5</span></span></div>
+<div class="mini"><i style="width:50%"></i></div></div>
+<button class="hb p" title="Плюс"><svg class="i"><use href="#i-plus"/></svg></button></div><div class="item"><button class="hb n" title="Минус"><svg class="i"><use href="#i-minus"/></svg></button>
+<div class="it-b"><div class="it-t">Tiger Milk 8 таб.</div><div class="it-s"><span class="mono">3 / 8</span><span class="dim">·</span><span>серия <span class="mono">4</span></span></div>
+<div class="mini"><i style="width:37%"></i></div></div>
+<button class="hb p" title="Плюс"><svg class="i"><use href="#i-plus"/></svg></button></div></div><div class="col"><div class="col-h"><span class="col-t">Ежедневные</span><span class="cnt mono">4</span>
+<button class="icon-btn sm" data-soon="add"><svg class="i"><use href="#i-plus"/></svg></button></div>
+<div class="add"><svg class="i"><use href="#i-plus"/></svg>Новая ежедневная</div><div class="item done"><button class="chk"><svg class="i"><use href="#i-check"/></svg></button><div class="it-b"><div class="it-t">Выложить видео AKKDLASA</div><div class="it-s"><span class="tag em">выложено</span></div></div></div><div class="item"><button class="chk"><svg class="i"><use href="#i-check"/></svg></button><div class="it-b"><div class="it-t">Проверить статистику каналов</div><div class="it-s"><span class="mono">5</span> каналов</div></div></div><div class="item"><button class="chk"><svg class="i"><use href="#i-check"/></svg></button><div class="it-b"><div class="it-t">Отметить Big Data самоконтроль</div><div class="it-s">сон, БАДы, оценка дня</div></div></div><div class="item"><button class="chk"><svg class="i"><use href="#i-check"/></svg></button><div class="it-b"><div class="it-t">План на завтра</div><div class="it-s"><span class="mono">21:00</span></div></div></div><div class="col-f"><span>1 из 4</span><span class="mono">+40 EXP</span></div></div><div class="col"><div class="col-h"><span class="col-t">Задачи</span><span class="cnt mono">3</span>
+<button class="icon-btn sm" data-soon="add"><svg class="i"><use href="#i-plus"/></svg></button></div>
+<div class="add"><svg class="i"><use href="#i-plus"/></svg>Новая задача</div><div class="item main"><button class="chk"><svg class="i"><use href="#i-check"/></svg></button><div class="it-b"><div class="it-t">Выложить 2 видео BEATIFUL MAN</div><div class="it-s"><span class="tag pu">главная</span><span>шаг недели</span></div></div></div><div class="item"><button class="chk"><svg class="i"><use href="#i-check"/></svg></button><div class="it-b"><div class="it-t">Сменить текст на 2 превью AGENT CODE</div><div class="it-s"><span class="tag">AGENT CODE</span><span>шаг недели</span></div></div></div><div class="item"><button class="chk"><svg class="i"><use href="#i-check"/></svg></button><div class="it-b"><div class="it-t">Монтаж ARMY ANALITICS</div><div class="it-s"><span class="tag">ARMY ANALITICS</span><span>до завтра</span></div></div></div><div class="col-f"><span>Из шагов недели</span><span class="mono">0 / 3</span></div></div><div class="col"><div class="col-h"><span class="col-t">Награды</span><span class="cnt mono">6</span>
+<button class="icon-btn sm" data-soon="add"><svg class="i"><use href="#i-plus"/></svg></button></div>
+<div class="add"><svg class="i"><use href="#i-plus"/></svg>Новая награда</div><div class="item"><div class="it-b"><div class="it-t">Шаурма</div></div>
+<span class="price mono"><span class="coin"></span>60</span><button class="buy">Купить</button></div><div class="item"><div class="it-b"><div class="it-t">Пицца</div></div>
+<span class="price mono"><span class="coin"></span>90</span><button class="buy">Купить</button></div><div class="item"><div class="it-b"><div class="it-t">Чалап</div></div>
+<span class="price mono"><span class="coin"></span>30</span><button class="buy">Купить</button></div><div class="item"><div class="it-b"><div class="it-t">Натуральный сок</div></div>
+<span class="price mono"><span class="coin"></span>40</span><button class="buy">Купить</button></div><div class="item"><div class="it-b"><div class="it-t">Серия «Блича»</div></div>
+<span class="price mono"><span class="coin"></span>50</span><button class="buy">Купить</button></div><div class="item"><div class="it-b"><div class="it-t">Серия «Доктора Стоуна»</div></div>
+<span class="price mono"><span class="coin"></span>50</span><button class="buy">Купить</button></div><div class="col-f"><span>Баланс</span><span class="mono">427 золота</span></div></div></div></div></section><section class="screen" id="s-channels" hidden><div class="content">
+<div class="ph"><div><h2>Каналы</h2><p><span class="mono">4</span> выкладки сегодня · выложено <span class="mono">1</span> · ещё <span class="mono">3</span></p></div><div class="legend">
+<span class="chip on">Все <span class="mono">5</span></span>
+<span class="chip"><span class="d" style="background:var(--em)"></span>Веду <span class="mono">5</span></span>
+<span class="chip"><span class="d" style="background:var(--am)"></span>Пауза до даты <span class="mono">0</span></span>
+<span class="chip"><span class="d" style="background:var(--ro)"></span>Заброшен <span class="mono">0</span></span>
+</div></div>
+<div class="rows"><div class="rowh"><span>Канал</span><span>Сегодня</span><span>Чек-лист видео</span><span>Этап</span></div>
+<article class="card chr">
+<div class="chr-id"><div class="av">AK</div><div style="flex:1;min-width:0"><div class="ch-n">AKKDLASA</div><div class="ch-sub">Шахматы · 1 видео в день</div></div><span class="pill ok"><i></i>Веду</span></div>
+<div class="today-l ok"><svg class="i"><use href="#i-check"/></svg>Сегодня выложено</div>
+<div><div class="steps"><div class="stp done"><b></b><span>Контент-план</span></div><div class="stp done"><b></b><span>Заголовок</span></div><div class="stp done"><b></b><span>Превью</span></div><div class="stp done"><b></b><span>Монтаж</span></div><div class="stp done"><b></b><span>Выкладка</span></div></div></div>
+<div class="chr-st"><div class="pipe"><span class="d">Монтаж</span><span class="ln"></span><span class="d">Проверка</span><span class="ln"></span><span class="c pub">Опубликовано</span></div><span class="prog">Видео на сегодня · <span class="mono">5/5</span></span></div>
+</article><article class="card chr">
+<div class="chr-id"><div class="av">BM</div><div style="flex:1;min-width:0"><div class="ch-n">BEATIFUL MAN</div><div class="ch-sub">Выборы США · 2 видео в день</div></div><span class="pill ok"><i></i>Веду</span></div>
+<div class="today-l am"><svg class="i"><use href="#i-clock"/></svg>Сегодня нужно выложить 2<small>монтаж 3–5 ч</small></div>
+<div><div class="steps"><div class="stp done"><b></b><span>Контент-план</span></div><div class="stp done"><b></b><span>Заголовок</span></div><div class="stp done"><b></b><span>Превью</span></div><div class="stp now"><b></b><span>Монтаж</span></div><div class="stp "><b></b><span>Выкладка</span></div></div></div>
+<div class="chr-st"><div class="pipe"><span class="c">Монтаж</span><span class="ln"></span><span class="">Проверка</span><span class="ln"></span><span class="">Опубликовано</span></div><span class="prog">Видео 1 из 2 · <span class="mono">3/5</span></span></div>
+</article><article class="card chr">
+<div class="chr-id"><div class="av">AC</div><div style="flex:1;min-width:0"><div class="ch-n">AGENT CODE</div><div class="ch-sub">Трамп и покупки · 1 видео в день</div></div><span class="pill ok"><i></i>Веду</span></div>
+<div class="today-l am"><svg class="i"><use href="#i-clock"/></svg>Сменить текст на 2 превью</div>
+<div><div class="steps"><div class="stp done"><b></b><span>Контент-план</span></div><div class="stp done"><b></b><span>Заголовок</span></div><div class="stp fix"><b></b><span>Превью ×2</span></div><div class="stp done"><b></b><span>Монтаж</span></div><div class="stp "><b></b><span>Выкладка</span></div></div></div>
+<div class="chr-st"><div class="pipe"><span class="d">Монтаж</span><span class="ln"></span><span class="c">Проверка</span><span class="ln"></span><span class="">Опубликовано</span></div><span class="prog">Видео на сегодня · <span class="mono">3/5</span></span></div>
+</article><article class="card chr">
+<div class="chr-id"><div class="av">AA</div><div style="flex:1;min-width:0"><div class="ch-n">ARMY ANALITICS</div><div class="ch-sub">Вооружение · 1 раз в 2 дня</div></div><span class="pill ok"><i></i>Веду</span></div>
+<div class="today-l ne"><svg class="i"><use href="#i-clock"/></svg>Завтра: осталось только монтаж</div>
+<div><div class="steps"><div class="stp done"><b></b><span>Контент-план</span></div><div class="stp done"><b></b><span>Заголовок</span></div><div class="stp done"><b></b><span>Превью</span></div><div class="stp now"><b></b><span>Монтаж</span></div><div class="stp "><b></b><span>Выкладка</span></div></div></div>
+<div class="chr-st"><div class="pipe"><span class="c">Монтаж</span><span class="ln"></span><span class="">Проверка</span><span class="ln"></span><span class="">Опубликовано</span></div><span class="prog">Видео на завтра · <span class="mono">3/5</span></span></div>
+</article><article class="card chr">
+<div class="chr-id"><div class="av">TR</div><div style="flex:1;min-width:0"><div class="ch-n">TRIHGOK</div><div class="ch-sub">Звёздные войны · 1 раз в 2 дня</div></div><span class="pill ok"><i></i>Веду</span></div>
+<div class="today-l ne"><svg class="i"><use href="#i-clock"/></svg>Следующее видео: 19 ноября</div>
+<div><div class="steps"><div class="stp done"><b></b><span>Контент-план</span></div><div class="stp "><b></b><span>Заголовок</span></div><div class="stp "><b></b><span>Превью</span></div><div class="stp "><b></b><span>Монтаж</span></div><div class="stp "><b></b><span>Выкладка</span></div></div></div>
+<div class="chr-st"><div class="pipe"><span class="">Монтаж</span><span class="ln"></span><span class="">Проверка</span><span class="ln"></span><span class="">Опубликовано</span></div><span class="prog">Видео на 19 ноября · <span class="mono">1/5</span></span></div>
+</article></div>
+</div></section>
+<nav class="bnav"><button data-screen="today"><svg class="i"><use href="#i-today"/></svg><span>Сегодня</span></button><button data-soon="goals"><svg class="i"><use href="#i-goals"/></svg><span>Цели</span></button><button class="fab" data-soon="add" aria-label="Добавить"><svg class="i"><use href="#i-plus"/></svg></button><button data-screen="channels"><svg class="i"><use href="#i-channels"/></svg><span>Каналы</span></button><button data-soon="health"><svg class="i"><use href="#i-health"/></svg><span>Здоровье</span></button><button data-soon="progress"><svg class="i"><use href="#i-progress"/></svg><span>Прогресс</span></button></nav>
+</div></div>
+<div class="toast" id="toast"></div>
+<script>
+const dev=document.getElementById('dev'),toastEl=document.getElementById('toast');
+function setScreen(s){document.querySelectorAll('[data-screen]').forEach(b=>b.classList.toggle('on',b.dataset.screen===s));
+document.querySelectorAll('.screen').forEach(x=>x.hidden=x.id!=='s-'+s);try{history.replaceState(null,'','#'+s)}catch(e){}}
+function fit(){const w=dev.classList.contains('m')?390:1440;dev.style.zoom=Math.min(1,(innerWidth-48)/w)}
+function setW(w){dev.classList.toggle('m',w===390);document.querySelectorAll('[data-w]').forEach(b=>b.classList.toggle('on',+b.dataset.w===w));fit()}
+let tt;function toast(t){toastEl.textContent=t;toastEl.classList.add('on');clearTimeout(tt);tt=setTimeout(()=>toastEl.classList.remove('on'),2200)}
+const SOON={goals:'«Цели»: вкладки Цели и Покупки. В макете открыты только «Сегодня» и «Каналы».',health:'«Здоровье» в этом макете не нарисовано.',progress:'«Прогресс» в этом макете не нарисован.',settings:'Настройки открываются из шапки.',add:'Одна кнопка «+»: задача, привычка, видео.'};
+document.addEventListener('click',e=>{
+ const s=e.target.closest('[data-screen]');if(s){setScreen(s.dataset.screen);return}
+ const w=e.target.closest('[data-w]');if(w){setW(+w.dataset.w);return}
+ const so=e.target.closest('[data-soon]');if(so){toast(SOON[so.dataset.soon]||'');return}
+ const eye=e.target.closest('.eye');if(eye){const t=eye.closest('.timer');t.classList.toggle('reveal');eye.classList.toggle('on');return}
+ const ct=e.target.closest('.col-tabs button');if(ct){const sc=ct.closest('.screen');const i=[...ct.parentNode.children].indexOf(ct);
+  ct.parentNode.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b===ct));const c=sc.querySelectorAll('.cols>.col')[i];c&&c.parentNode.scrollTo({left:c.offsetLeft-c.parentNode.offsetLeft,behavior:'smooth'});return}
+ const ck=e.target.closest('.chk, .cl li');if(ck){const r=ck.closest('.item, li');r&&r.classList.toggle('done')}
+});
+addEventListener('resize',fit);
+setScreen(location.hash==='#channels'?'channels':'today');setW(1440);
+</script>
+</body>
+</html>

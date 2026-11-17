@@ -27,3 +27,4 @@ dist-ssr
 docs/antigravity/
 __pycache__/
 docs/CONVERSATION-CONTEXT.md
+.autopilot/serve.*
