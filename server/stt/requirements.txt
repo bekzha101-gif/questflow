@@ -1,0 +1,6 @@
+# Голос для бота QuestFlow: faster-whisper на RTX 2060 (CUDA 12).
+# Ставит server/stt/install.ps1 в отдельное окружение server/stt/.venv
+faster-whisper>=1.1,<2
+# CUDA-библиотеки для ctranslate2 (без них Whisper работает на процессоре)
+nvidia-cublas-cu12; sys_platform == "win32" or sys_platform == "linux"
+nvidia-cudnn-cu12>=9,<10; sys_platform == "win32" or sys_platform == "linux"

@@ -1,10 +1,14 @@
 // Точка входа сервера: бот + расписания. Запуск: npm start (после npm run build).
+import os from 'node:os';
 import path from 'node:path';
 import { envFilePath, loadEnvFile, readConfig, redact, serverRoot } from './config';
 import { createDb, createSupabaseClient } from './db';
 import { createBotService } from './bot';
 import { startScheduler, type ConversationApi } from './scheduler';
-import { createConversationStub } from './conversationStub';
+import { createAi } from './ai';
+import { createStt } from './stt';
+import { createConversation, createSupabaseStore } from './conversation';
+import { createTelegramFiles, toInlineKeyboard } from './conversation/telegram';
 import { createPublicationSource, loadRemindersFor } from './publications';
 import { runBackup } from './backup';
 
@@ -13,7 +17,8 @@ async function main() {
   const config = readConfig();
   const log = (m: string) => console.log(`[${new Date().toISOString()}] ${redact(m, config)}`);
 
-  const db = createDb(createSupabaseClient(config.supabaseUrl, config.supabaseServiceRoleKey), config.ownerUserId);
+  const client = createSupabaseClient(config.supabaseUrl, config.supabaseServiceRoleKey);
+  const db = createDb(client, config.ownerUserId);
 
   // Разговор подключается лениво: бот и разговор ссылаются друг на друга через send
   let conversation: ConversationApi | null = null;
@@ -24,7 +29,23 @@ async function main() {
     log,
   });
   const send = (text: string) => service.send(text);
-  conversation = createConversationStub(send);
+  // Вечерний разговор, голос и AI-аналитик (таск 09)
+  const evening = createConversation({
+    store: createSupabaseStore(client, config.ownerUserId),
+    send: (text, keyboard) => service.send(text, keyboard ? toInlineKeyboard(keyboard) : undefined),
+    ai: createAi({ apiKey: config.anthropicApiKey, model: process.env.ANTHROPIC_MODEL?.trim() || undefined, log }),
+    stt: createStt({
+      python: process.env.WHISPER_PYTHON?.trim() || undefined,
+      model: process.env.WHISPER_MODEL?.trim() || undefined,
+      device: process.env.WHISPER_DEVICE?.trim() || undefined,
+      log,
+    }),
+    files: createTelegramFiles(service.bot.api, config.telegramBotToken, path.join(os.tmpdir(), 'questflow-bot')),
+    log,
+  });
+  conversation = evening;
+  // Повтор анализов, которые не удались (Claude был недоступен или упёрся в лимит)
+  const retryTimer = setInterval(() => void evening.tick().catch((e) => log(`Повтор анализа: ${(e as Error).message}`)), 5 * 60_000);
 
   const stopScheduler = startScheduler({
     db,
@@ -40,6 +61,7 @@ async function main() {
 
   const shutdown = async () => {
     stopScheduler();
+    clearInterval(retryTimer);
     await service.stop().catch(() => {});
     process.exit(0);
   };
