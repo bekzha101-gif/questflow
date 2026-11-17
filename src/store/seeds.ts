@@ -2,6 +2,7 @@
 // Правило проекта: данные пользователя — единственный источник правды. Поэтому:
 //  - цели, каналы, настройки Big Data сеются только в пустые таблицы (удалённые строки тоже считаются);
 //  - привычки сеются, только если своих привычек нет и ни одной привычки из сидов ещё не было;
+//  - будильники здоровья пишутся в health_alarms, только если таблица пуста (бот видит их без «Сохранить»);
 //  - награды сеются, только если ни одной награды из сидов ещё не было (удалённую не возвращаем);
 //  - при подключённом облаке сначала дочитываем его; не прочитали — не сеем (повтор при следующем входе).
 // Метка времени сидов старше любых правок: облако и правки пользователя всегда выигрывают.
@@ -9,6 +10,7 @@ import type { Store } from './core';
 import { store as defaultStore } from './index';
 import type { BigDataConfig, Channel, Goal, Reward } from '@shared/types';
 import { SINGLE_KEY } from './tables';
+import { DEFAULT_HEALTH_ALARMS } from '../utils/healthTracker';
 
 export const SEED_TS = '2000-01-01T00:00:01.000Z';
 
@@ -123,6 +125,10 @@ export async function ensureSeeds(storeArg?: Store): Promise<void> {
   const hasHabits = store.items<{ type?: string }>('tasks2').some((t) => t.type === 'habit');
   if (!hasHabits && !SEED_HABITS.some((h) => store.hasKey('tasks2', h.id))) {
     for (const h of SEED_HABITS) store.upsert('tasks2', h, opts);
+  }
+
+  if (!store.hasAnyRow('health_alarms')) {
+    for (const a of DEFAULT_HEALTH_ALARMS) store.upsert('health_alarms', { ...a, seed: true }, opts);
   }
 
   if (!store.hasKey('bigdata_config', SINGLE_KEY)) {

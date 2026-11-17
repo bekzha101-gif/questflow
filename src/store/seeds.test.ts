@@ -119,4 +119,20 @@ describe('ensureSeeds: стартовые данные из брифинга', (
       expect(channelTodo(c, [], day).dueDate).toBe('2026-11-18');
     }
   });
+
+  it('будильники здоровья: на пустой базе записываются в health_alarms (их видит бот), удалённые не возвращаются', async () => {
+    const store = mk();
+    await ensureSeeds(store);
+    const alarms = store.items<Record<string, unknown>>('health_alarms');
+    expect(alarms.map((a) => a.id)).toEqual(['alarm-meditation', 'alarm-walk', 'alarm-gadgets', 'alarm-sleep']);
+    expect(alarms.every((a) => a.seed === true)).toBe(true);
+    for (const a of alarms) store.remove('health_alarms', String(a.id));
+    await ensureSeeds(store);
+    expect(store.items('health_alarms')).toHaveLength(0);
+
+    const own = mk();
+    own.upsert('health_alarms', { id: 'my-alarm', title: 'Своё', time: '07:00', enabled: true });
+    await ensureSeeds(own);
+    expect(own.items<{ id: string }>('health_alarms').map((a) => a.id)).toEqual(['my-alarm']);
+  });
 });
