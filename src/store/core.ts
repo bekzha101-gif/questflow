@@ -57,6 +57,9 @@ export class Store {
   private lastTs = 0;
   private error: string | null = null;
   private pullError: string | null = null;
+  /** Таблицы, которые не удалось прочитать из облака при подключении (повторяет retryPull) */
+  private failedPull: TableName[] = [];
+  private pullTimer: ReturnType<typeof setTimeout> | null = null;
   private ready: boolean | null = null;
   private readyWaiters: ((ok: boolean) => void)[] = [];
 
@@ -287,8 +290,10 @@ export class Store {
     );
     if (this.remote !== remote) return false;
     const failed = results.filter((r) => r.status === 'rejected') as PromiseRejectedResult[];
+    this.failedPull = TABLE_NAMES.filter((_, i) => results[i].status === 'rejected');
     this.pullError = failed.length ? String(failed[0].reason?.message ?? failed[0].reason) : null;
     this.error = this.pullError;
+    if (failed.length) this.schedulePullRetry();
     for (const t of TABLE_NAMES) {
       this.unsubs.push(remote(t).subscribe((row) => this.applyRemote(t, row)));
     }
@@ -298,7 +303,47 @@ export class Store {
     return failed.length === 0;
   }
 
+  /**
+   * Дочитать таблицы, которые не загрузились при подключении. Зовётся по таймеру, при возврате
+   * сети и при возврате на вкладку. true — облако прочитано полностью.
+   */
+  async retryPull(): Promise<boolean> {
+    const remote = this.remote;
+    if (!remote) return false;
+    if (!this.failedPull.length) return this.ready === true;
+    if (this.pullTimer) clearTimeout(this.pullTimer);
+    this.pullTimer = null;
+    const tables = this.failedPull;
+    const results = await Promise.allSettled(
+      tables.map(async (t) => {
+        const rows = await remote(t).select();
+        for (const r of rows) this.applyRemote(t, r, true);
+      }),
+    );
+    if (this.remote !== remote) return false;
+    const still = tables.filter((_, i) => results[i].status === 'rejected');
+    const firstFail = results.find((r) => r.status === 'rejected') as PromiseRejectedResult | undefined;
+    this.failedPull = still;
+    this.pullError = firstFail ? String(firstFail.reason?.message ?? firstFail.reason) : null;
+    this.error = this.pullError;
+    if (still.length) this.schedulePullRetry();
+    else this.setReady(true);
+    this.notify();
+    return still.length === 0;
+  }
+
+  private schedulePullRetry() {
+    if (this.pullTimer || this.flushDelayMs < 0) return;
+    this.pullTimer = setTimeout(() => {
+      this.pullTimer = null;
+      void this.retryPull();
+    }, RETRY_MS);
+  }
+
   disconnect() {
+    if (this.pullTimer) clearTimeout(this.pullTimer);
+    this.pullTimer = null;
+    this.failedPull = [];
     for (const u of this.unsubs) u();
     this.unsubs = [];
     this.remote = null;

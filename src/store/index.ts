@@ -23,7 +23,14 @@ const browserStorage =
 export const store = new Store({ storage: browserStorage });
 
 if (typeof window !== 'undefined') {
-  window.addEventListener('online', () => void store.flush());
+  window.addEventListener('online', () => {
+    void store.retryPull();
+    void store.flush();
+  });
+  // Вернулись на вкладку — дочитать облако, если первая загрузка сорвалась
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') void store.retryPull();
+  });
   window.addEventListener('offline', () => store.notify());
   // Другая вкладка записала кеш — перечитываем таблицу
   window.addEventListener('storage', (e) => {

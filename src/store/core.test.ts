@@ -191,3 +191,28 @@ describe('store: офлайн-очередь, удаления, ошибки, Re
     expect(store.autoWritesAllowed()).toBe(false);
   });
 });
+
+describe('повтор загрузки из облака после сбоя', () => {
+  it('чтение не удалось → retryPull дочитывает таблицы, ошибка уходит, автозаписи разрешены', async () => {
+    const { cloud, store } = setup();
+    cloud.table('tasks2').set('t1', { id: 't1', title: 'с другого устройства', updated_at: '2026-11-17T07:00:00.000Z', deleted: false });
+    cloud.failing = true;
+    expect(await store.connect(cloud.factory)).toBe(false);
+    expect(store.lastError()).toMatch(/network down/);
+    expect(store.autoWritesAllowed()).toBe(false);
+
+    cloud.failing = false;
+    expect(await store.retryPull()).toBe(true);
+    expect(store.lastError()).toBeNull();
+    expect(store.autoWritesAllowed()).toBe(true);
+    expect(store.get<{ title: string }>('tasks2', 't1')?.title).toBe('с другого устройства');
+    expect(await store.whenReady()).toBe(true);
+  });
+
+  it('без облака или без сбоя retryPull ничего не делает', async () => {
+    const { cloud, store } = setup();
+    expect(await store.retryPull()).toBe(false);
+    await store.connect(cloud.factory);
+    expect(await store.retryPull()).toBe(true);
+  });
+});
