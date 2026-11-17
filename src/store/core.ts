@@ -205,18 +205,35 @@ export class Store {
 
   /**
    * Записать одну запись как setState: next = action(prev ?? fallback).
-   * Если записи нет (или она сама из запасного значения, а облако не прочитано), строка получает
-   * FALLBACK_TS и не может перебить настоящие данные из облака.
+   * Явная правка пользователя (по умолчанию) пишется с обычной меткой «сейчас».
+   * Автозапись (`{auto: true}`): если записи нет (или она сама из запасного значения, а облако
+   * не прочитано), строка получает FALLBACK_TS и не может перебить настоящие данные из облака.
    */
-  writeRecord<T extends object>(table: TableName, fallback: T, action: T | ((prev: T) => T), key: string, item: (v: T) => object) {
+  writeRecord<T extends object>(
+    table: TableName,
+    fallback: T,
+    action: T | ((prev: T) => T),
+    key: string,
+    item: (v: T) => object,
+    opts: { auto?: boolean } = {},
+  ) {
     const row = this.getRow(table, key);
     const live = row && !row.deleted ? row : undefined;
     const prev = live ? fromRow<T>(table, live) : fallback;
     const next = typeof action === 'function' ? (action as (p: T) => T)(prev) : action;
     const obj = item(next);
     if (live && sameContent(toRow(table, obj), live)) return;
-    const derived = !live || (live.updated_at === FALLBACK_TS && this.ready !== true);
+    const derived = opts.auto === true && (!live || (live.updated_at === FALLBACK_TS && this.ready !== true));
     this.upsert(table, obj, derived ? { updatedAt: FALLBACK_TS } : {});
+  }
+
+  /**
+   * Можно ли автозаписям (сброс дня, итоги игры) писать сейчас: облака нет (локальный режим)
+   * или оно прочитано. Пока облако подключено, но не прочитано (или чтение не удалось),
+   * кеш может быть старым — автозапись из него перебила бы свежие строки с другого устройства и бота.
+   */
+  autoWritesAllowed(): boolean {
+    return this.remote === null || this.ready === true;
   }
 
   remove(table: TableName, key: string) {

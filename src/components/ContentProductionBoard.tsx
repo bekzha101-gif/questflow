@@ -16,8 +16,6 @@ const LANE_DOT: Record<VideoStage, string> = {
 };
 
 interface ContentProductionBoardProps {
-  /** Не используется: награду за публикацию начисляют правила (shared/gamification, RULES.videoPublished) */
-  onPublishReward?: (exp: number, gold: number) => void;
   /** Показывать видео только одного канала */
   channelId?: string | null;
 }

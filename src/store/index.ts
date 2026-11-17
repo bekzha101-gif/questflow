@@ -79,6 +79,11 @@ export function useRecord<T extends object>(table: TableName, key: string = SING
   return { value, save };
 }
 
+/** Можно ли автозаписям писать: облака нет или оно прочитано (обновляется после чтения облака) */
+export function useAutoWritesAllowed(): boolean {
+  return useSyncExternalStore(subscribe, () => store.autoWritesAllowed());
+}
+
 export function useSyncStatus(): SyncStatus {
   return useSyncExternalStore(subscribe, () => store.status());
 }

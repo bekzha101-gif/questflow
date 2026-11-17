@@ -2,7 +2,8 @@ import { Target, Timer } from 'lucide-react';
 import type { TaskItem, TimeLogEntry } from '../../types';
 import { todayStr, isRecoveryDay } from '@shared/time';
 import { BLOCKS_PER_DAY, computeTimer, dayNormDone, nextBlockNumber } from '@shared/timer';
-import { pickMainTask, focusHoursToday, FOCUS_HOURS_NORM } from './mainTask';
+import { mainTaskFor, focusHoursToday, FOCUS_HOURS_NORM, type DayPlan } from './mainTask';
+import { useRecord } from '../../store';
 import { useNow, useTimerState } from '../../components/timer/useTimerState';
 
 function formatClock(totalSeconds: number): string {
@@ -34,7 +35,9 @@ function formatHours(h: number): string {
 // Строка над четырьмя колонками: главная задача дня · таймер · часы фокуса сегодня / 6
 export function FocusStrip({ tasks, timeLogs }: { tasks: TaskItem[]; timeLogs: TimeLogEntry[] }) {
   const today = todayStr();
-  const main = pickMainTask(tasks, today);
+  // Вечерний план бота (kv plan:<дата>) важнее правил: утром в Telegram и на сайте одна главная задача
+  const plan = useRecord<{ key: string; value?: DayPlan }>('kv', `plan:${today}`).value?.value;
+  const main = mainTaskFor(tasks, today, plan);
   const hours = focusHoursToday(timeLogs, today);
   const timerLabel = useTimerLabel();
   const pct = Math.min(100, Math.round((hours / FOCUS_HOURS_NORM) * 100));

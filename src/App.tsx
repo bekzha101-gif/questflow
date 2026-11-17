@@ -10,7 +10,8 @@ import {
   setupBroadcastSync,
   CloudSyncState
 } from './utils/cloudSync';
-import { useCollectionState, useRecordState, syncNow, type Converter } from './store';
+import { useAutoWritesAllowed, useCollectionState, useRecordState, syncNow, type Converter } from './store';
+import { runDailyReset } from './sections/today/dailyReset';
 import { timeLogConverter } from './store/adapters';
 import { AuthGate } from './components/AuthGate';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -45,7 +46,7 @@ import { selectRegularTasks, selectShoppingTasks, makeTask, type TaskKind } from
 import { todayStr } from '@shared/time';
 import { WORK_MIN } from '@shared/timer';
 import { ACHIEVEMENTS, type ApplyResult } from '@shared/gamification';
-import { applyGame, syncGameFacts, logSessionOnce, GAME_EVENT } from './sections/progress/game';
+import { applyGame, syncGameFacts, logSessionOnce, resetGameStats, GAME_EVENT } from './sections/progress/game';
 import { 
   loadRecoveryCycleConfig, 
   getDayCycleInfo, 
@@ -104,16 +105,15 @@ export function App() {
   const { syncStatus } = useSupabaseSync();
 
   // ─── Auto Daily Reset at Midnight ────────────────────────────────────────
+  // Автозапись: ждёт, пока облако прочитано (иначе старый кеш воскресил бы удалённые задачи)
+  const autoWritesAllowed = useAutoWritesAllowed();
   useEffect(() => {
+    if (!autoWritesAllowed) return;
     const LAST_RESET_KEY = 'questflow_last_daily_reset';
     const today = todayStr();
     const lastReset = localStorage.getItem(LAST_RESET_KEY);
 
-    if (lastReset !== today) {
-      // Reset daily tasks
-      setTasks((prev) =>
-        prev.map((t) => (t.type === 'daily' && t.completed ? { ...t, completed: false } : t))
-      );
+    if (runDailyReset(today, lastReset)) {
       // Серию считает итог дня (shared/gamification), а не открытие сайта
       localStorage.setItem(LAST_RESET_KEY, today);
       setNotifications((prev) => [
@@ -128,7 +128,7 @@ export function App() {
         ...prev,
       ]);
     }
-  }, []);
+  }, [autoWritesAllowed]);
 
   // ─── Safe 1-Click Export & Backup ─────────────────────────────────────────
   const handleExportData = useCallback(() => {
@@ -281,22 +281,6 @@ export function App() {
     setStats((prev) => ({ ...prev, ...patch }));
   };
 
-  // Handle HP damage with notification (used for detox violations)
-  const handleDamageHp = (amount: number, reason: string) => {
-    applyGame({ kind: 'bonus', ref: `damage:${Date.now()}`, hp: -Math.abs(amount), note: reason });
-    setNotifications((prev) => [
-      {
-        id: `dmg-${Date.now()}`,
-        title: '💔 Штраф по HP',
-        message: `${reason}: персонаж потерял -${amount} HP!`,
-        time: new Date().toLocaleTimeString(),
-        type: 'damage',
-        read: false,
-      },
-      ...prev,
-    ]);
-  };
-
   // ─── 7+1 Active Recovery Cycle Notification Check ──────────────────────────
   useEffect(() => {
     const today = getTodayStr();
@@ -390,11 +374,13 @@ export function App() {
   }, [stats.soundEnabled]);
 
   // Итоги прошедших дней, цели, публикации, ачивки по фактам — при открытии и раз в минуту
+  // Автозапись: syncGameFacts сам ничего не пишет, пока облако не прочитано; после чтения — сразу
   useEffect(() => {
+    if (!autoWritesAllowed) return;
     syncGameFacts();
     const t = window.setInterval(() => syncGameFacts(), 60_000);
     return () => window.clearInterval(t);
-  }, []);
+  }, [autoWritesAllowed]);
 
   // Handle Session Logged from Toggl Timer
   const handleLogSession = async (entry: TimeLogEntry) => {
@@ -442,20 +428,10 @@ export function App() {
   const handleResetAllProgress = () => {
     const freshStats: UserStats = { ...initialStats };
 
-    setStats(freshStats);
-    // Чистый лист: ничего не возвращаем из зашитых списков (задачи пользователя — единственный источник правды)
-    setTasks([]);
-    setRewards([]);
-    
-    // Clear localStorage
+    // Сбрасываются только статы (уровень, EXP, золото), как обещает окно подтверждения.
+    // Задачи и награды не трогаем: они в облаке и у бота (задачи пользователя — единственный источник правды)
+    resetGameStats(freshStats);
     localStorage.removeItem('questflow_stats_v1');
-    localStorage.removeItem('questflow_tasks_v1');
-    localStorage.removeItem('questflow_rewards_v1');
-    localStorage.removeItem('questflow_bigdata_entries_v1');
-    localStorage.removeItem('questflow_bigdata_v1');
-    localStorage.removeItem('questflow_bigdata_v3_cleaned');
-    localStorage.removeItem('questflow_content_videos_v1');
-
 
     setNotifications((prev) => [
       {
@@ -709,13 +685,6 @@ export function App() {
     onBuyReward: handleBuyReward,
     onAddReward: handleAddReward,
     onUpdateStats: handleUpdateStats,
-    // Старые места с готовыми числами (вне таблицы правил) — через журнал как «bonus»
-    onAwardRewards: (exp, gold, hp) => {
-      applyGame({ kind: 'bonus', ref: `bonus:${Date.now()}:${exp}:${gold}:${hp ?? 0}`, exp, gold, hp });
-    },
-    onAddGoldReward: (gold) => {
-      applyGame({ kind: 'bonus', ref: `gold:${Date.now()}:${gold}`, gold });
-    },
     onAddNotification: (n) => setNotifications((prev) => [n, ...prev]),
     onSyncCalendar: () => {
       setCalendarConfig((prev) => ({ ...prev, lastSyncedAt: new Date().toLocaleTimeString() }));
@@ -762,7 +731,6 @@ export function App() {
         projects={projects}
         onLogSession={handleLogSession}
         onCompleteTask={handleToggleTask}
-        onDamageHp={handleDamageHp}
         isCalendarConnected={Boolean(calendarConfig.connected && calendarConfig.accessToken)}
       />
 

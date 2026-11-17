@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { Store } from './core';
+import { FALLBACK_TS, Store } from './core';
 import { FakeCloud, MemoryStorage } from './testing';
 
 interface Todo {
@@ -145,8 +145,8 @@ describe('store: офлайн-очередь, удаления, ошибки, Re
     const { store } = setup();
     const fallback = { level: 4, gold: 427, streak: 0 };
 
-    // Новый браузер: эффект «новый день» пишет streak+1 поверх запасных статов, облако ещё не подключено
-    store.writeRecord('game_stats', fallback, (p: typeof fallback) => ({ ...p, streak: p.streak + 1 }), 'me', (v) => v);
+    // Новый браузер: автозапись «новый день» пишет streak+1 поверх запасных статов, облако ещё не подключено
+    store.writeRecord('game_stats', fallback, (p: typeof fallback) => ({ ...p, streak: p.streak + 1 }), 'me', (v) => v, { auto: true });
     await store.connect(cloud.factory);
 
     expect(store.get('game_stats', 'me')).toMatchObject({ level: 7, gold: 900, streak: 10 });
@@ -156,5 +156,38 @@ describe('store: офлайн-очередь, удаления, ошибки, Re
     store.writeRecord('game_stats', fallback, (p: typeof fallback) => ({ ...p, streak: p.streak + 1 }), 'me', (v) => v);
     await store.flush();
     expect(cloud.rows('game_stats')[0]).toMatchObject({ level: 7, streak: 11 });
+  });
+
+  it('явная правка пользователя без записи и до чтения облака пишется с обычной меткой и не затирается облаком', async () => {
+    const cloud = new FakeCloud();
+    cloud.emit('game_stats', { level: 7, gold: 900, sound_enabled: true, updated_at: '2000-01-01T00:00:00.000Z', deleted: false, extra: {} });
+    const { store } = setup();
+    const fallback = { level: 4, gold: 427, soundEnabled: true };
+
+    store.writeRecord('game_stats', fallback, (p: typeof fallback) => ({ ...p, soundEnabled: false }), 'me', (v) => v);
+    expect(store.getRow('game_stats', 'me')?.updated_at).not.toBe(FALLBACK_TS);
+
+    await store.connect(cloud.factory);
+    expect(store.get<{ soundEnabled: boolean }>('game_stats', 'me')?.soundEnabled).toBe(false);
+  });
+
+  it('автозаписи запрещены, пока облако подключено, но не прочитано или чтение не удалось', async () => {
+    const { store, cloud } = setup();
+    expect(store.autoWritesAllowed()).toBe(true); // локальный режим
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    const slow: typeof cloud.factory = (t) => {
+      const base = cloud.factory(t);
+      return { ...base, select: async () => (await gate, base.select()) };
+    };
+    const connecting = store.connect(slow);
+    expect(store.autoWritesAllowed()).toBe(false);
+    release();
+    await connecting;
+    expect(store.autoWritesAllowed()).toBe(true);
+
+    cloud.failing = true;
+    await store.connect(cloud.factory);
+    expect(store.autoWritesAllowed()).toBe(false);
   });
 });

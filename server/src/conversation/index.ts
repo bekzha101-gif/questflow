@@ -123,7 +123,7 @@ export function createConversation(deps: ConversationDeps): Conversation {
       addPending(state, 'day', state.date, now);
     }
     if (state.flags.week) await sendWeek(state, state.date, now);
-    if (state.flags.month) await sendMonth(state, state.date, now);
+    if (state.flags.month) await sendMonth(state, state.flags.monthDate ?? state.date, now);
   }
 
   /** Задать текущий вопрос; шаги, где спрашивать нечего, пропускаются. fresh — новый вопрос (сброс курсора). */
@@ -184,7 +184,7 @@ export function createConversation(deps: ConversationDeps): Conversation {
       }
       // Отчёты недели/месяца прошлого вечера не дошли — отправить сейчас
       if (prev.flags.week) await safe('отчёт недели', () => sendWeek(carry, prev.date, now), undefined);
-      if (prev.flags.month) await safe('отчёт месяца', () => sendMonth(carry, prev.date, now), undefined);
+      if (prev.flags.month) await safe('отчёт месяца', () => sendMonth(carry, prev.flags.monthDate ?? prev.date, now), undefined);
     }
     if (dayOfWeek(date) === 6) {
       const friday = addDays(date, -1);
@@ -193,15 +193,22 @@ export function createConversation(deps: ConversationDeps): Conversation {
     dates.push(date);
 
     const sunday = dayOfWeek(date) === 0;
-    const monthEnd = monthKey(addDays(date, 1)) !== monthKey(date);
+    // Конец месяца — сегодня; или вчера, если это была пятница (в пятницу бот молчит):
+    // тогда отчёт месяца и вопрос о желаниях — в субботнем разговоре, за прошлый месяц
+    const monthDate =
+      monthKey(addDays(date, 1)) !== monthKey(date)
+        ? date
+        : dayOfWeek(date) === 6 && monthKey(addDays(date, -1)) !== monthKey(date)
+          ? addDays(date, -1)
+          : null;
     const queue: Step[] = dates.flatMap(daySteps);
     const onboarding = await store.getKv<{ done?: boolean }>(NEW_CHANNELS_KEY);
     if (!onboarding?.done) queue.push({ id: 'new_channels', date });
     if (sunday) queue.push({ id: 'week_channels', date }, { id: 'income', date });
-    if (monthEnd) queue.push({ id: 'wishes', date });
+    if (monthDate) queue.push({ id: 'wishes', date: monthDate });
     queue.push({ id: 'plan_main', date }, { id: 'plan_videos', date }, { id: 'final', date });
 
-    const state: ConvState = { ...carry, queue, flags: { week: sunday, month: monthEnd } };
+    const state: ConvState = { ...carry, queue, flags: { week: sunday, month: monthDate !== null, ...(monthDate ? { monthDate } : {}) } };
     await save(state);
     await deps.send([CONV_TEXT.greeting, ...notes].join('\n'));
     await askCurrent(state, now, true);
@@ -289,6 +296,8 @@ export function createConversation(deps: ConversationDeps): Conversation {
   }
 
   async function retryPending(now: Date) {
+    // Пятница — день восстановления: бот молчит, повтор ждёт субботы
+    if (isRecoveryDay(todayStr(now))) return;
     const state = await load();
     if (!state || !state.pendingAi.length) return;
     const rc = reportCtx(now);

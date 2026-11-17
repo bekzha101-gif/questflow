@@ -391,10 +391,14 @@ begin
   foreach t in array tables loop
     execute format('alter table public.%I enable row level security', t);
     execute format('drop policy if exists %I on public.%I', t || '_owner', t);
-    execute format(
-      'create policy %I on public.%I for all using (auth.uid() = user_id) with check (auth.uid() = user_id)',
-      t || '_owner', t
-    );
+    -- game_events — журнал: только чтение и вставка (политики ниже). Иначе сайт мог бы
+    -- перезаписать upsert'ом строку бота, и дедуп по уникальному ключу (23505) обходился бы.
+    if t <> 'game_events' then
+      execute format(
+        'create policy %I on public.%I for all using (auth.uid() = user_id) with check (auth.uid() = user_id)',
+        t || '_owner', t
+      );
+    end if;
 
     execute format('drop trigger if exists %I on public.%I', t || '_guard_updated_at', t);
     execute format(
@@ -412,3 +416,11 @@ begin
   end loop;
 end;
 $$;
+
+-- game_events: только select и insert; update и delete для сайта запрещены
+drop policy if exists game_events_owner_select on public.game_events;
+create policy game_events_owner_select on public.game_events
+  for select using (auth.uid() = user_id);
+drop policy if exists game_events_owner_insert on public.game_events;
+create policy game_events_owner_insert on public.game_events
+  for insert with check (auth.uid() = user_id);

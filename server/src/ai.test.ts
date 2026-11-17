@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createAi, type CliRun } from './ai';
+import { DEFAULT_API_MODEL, createAi, type CliRun } from './ai';
 
 const goodJson = JSON.stringify({
   summary: 'День ровный',
@@ -70,5 +70,52 @@ describe('ai.analyze', () => {
   it('ответ без JSON → null', async () => {
     const ai = createAi({ runCli: async () => envelope('не могу') });
     expect(await ai.analyze('day', {})).toBeNull();
+  });
+
+  it('текст: инструменты, MCP, скиллы и настройки (глобальный CLAUDE.md) отключены', async () => {
+    let args: string[] = [];
+    const ai = createAi({
+      runCli: async (a) => {
+        args = a;
+        return envelope(goodJson);
+      },
+    });
+    await ai.analyze('day', { date: '2026-11-17' });
+    const line = args.join(' ');
+    expect(args[args.indexOf('--tools') + 1]).toBe('');
+    expect(args).toContain('--strict-mcp-config');
+    expect(JSON.parse(args[args.indexOf('--mcp-config') + 1])).toEqual({ mcpServers: {} });
+    expect(args).toContain('--disable-slash-commands');
+    expect(args[args.indexOf('--setting-sources') + 1]).toBe('');
+    expect(line).not.toContain('--bare');
+    expect(line).not.toContain('Read');
+  });
+
+  it('скриншот: из инструментов только Read, MCP отключены', async () => {
+    let args: string[] = [];
+    const ai = createAi({
+      runCli: async (a) => {
+        args = a;
+        return envelope('{"sleepMin": 452}');
+      },
+    });
+    await ai.analyze('sleep_screenshot', { imagePath: 'C:/tmp/qf/sleep.jpg' });
+    expect(args[args.indexOf('--tools') + 1]).toBe('Read');
+    expect(args).toContain('--strict-mcp-config');
+  });
+
+  it('запрос к Claude API идёт с таймаутом (AbortSignal)', async () => {
+    let signal: AbortSignal | undefined;
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      signal = init?.signal ?? undefined;
+      return new Response(JSON.stringify({ content: [{ type: 'text', text: goodJson }] }), { status: 200 });
+    });
+    const ai = createAi({ runCli: async () => envelope('', true), apiKey: 'test-key', fetch: fetchMock as unknown as typeof fetch });
+    await ai.analyze('day', {});
+    expect(signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('модель API по умолчанию — claude-sonnet-5-5', () => {
+    expect(DEFAULT_API_MODEL).toBe('claude-sonnet-5-5');
   });
 });

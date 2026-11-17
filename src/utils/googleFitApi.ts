@@ -1,3 +1,4 @@
+import { todayStr } from '@shared/time';
 export interface GoogleFitSleepSession {
   id: string;
   name: string;
@@ -121,8 +122,8 @@ export async function fetchGoogleFitSleepData(
       const durationMins = Math.max(0, Math.round(durationMs / (1000 * 60)));
       
       const sessionDate = new Date(sEnd); // wake up day
-      const dayOfMonth = sessionDate.getDate();
-      const dateStr = sessionDate.toISOString().split('T')[0];
+      const dayOfMonth = Number(todayStr(sessionDate).slice(8, 10));
+      const dateStr = todayStr(sessionDate); // дата пробуждения по Бишкеку
 
       const hours = Math.floor(durationMins / 60);
       const mins = durationMins % 60;

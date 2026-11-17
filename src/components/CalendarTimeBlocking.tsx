@@ -10,7 +10,6 @@ import {
   CheckCircle2,
   Circle,
   Plus,
-  Copy,
   Check,
   CalendarDays,
   X,
@@ -32,6 +31,7 @@ import {
   RecoveryActivity,
 } from '../utils/recoveryCycle';
 import { todayStr as todayBishkek } from '@shared/time';
+import { rewardRecoveryActivity } from '../sections/progress/game';
 
 interface CalendarTimeBlockingProps {
   tasks: TaskItem[];
@@ -43,7 +43,6 @@ interface CalendarTimeBlockingProps {
   onOpenQuickAdd: () => void;
   onToggleTask?: (taskId: string) => void;
   onUpdateStats?: (newStats: Partial<UserStats>) => void;
-  onAwardRewards?: (exp: number, gold: number, hp?: number) => void;
 }
 
 export const CalendarTimeBlocking: React.FC<CalendarTimeBlockingProps> = ({
@@ -55,8 +54,6 @@ export const CalendarTimeBlocking: React.FC<CalendarTimeBlockingProps> = ({
   onOpenCalendarModal,
   onOpenQuickAdd,
   onToggleTask,
-  onUpdateStats,
-  onAwardRewards,
 }) => {
   const [viewDate, setViewDate] = useState<Date>(() => new Date());
   const [viewMode, setViewMode] = useState<'month' | 'day_timeline' | 'life_calendar'>('month');
@@ -68,7 +65,6 @@ export const CalendarTimeBlocking: React.FC<CalendarTimeBlockingProps> = ({
   } | null>(null);
 
 
-  const [copiedFeed, setCopiedFeed] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
 
   // Пятница — день восстановления (shared/time). Отметки активностей — useRecoveryDay.
@@ -80,15 +76,12 @@ export const CalendarTimeBlocking: React.FC<CalendarTimeBlockingProps> = ({
     setIsPushGranted(await requestDesktopNotificationPermission());
   };
 
-  const handleRecoveryReward = (act: RecoveryActivity) => {
+  // Награда по правилам (recovery_activity, ref `${дата}:${активность}`), только за сегодняшнюю пятницу
+  const handleRecoveryReward = (date: string, act: RecoveryActivity) => {
+    if (!rewardRecoveryActivity(date, act.id)?.applied) return;
     playQuestCompleteSound();
     playCoinSound();
     triggerQuestConfetti();
-    if (onAwardRewards) {
-      onAwardRewards(act.expReward, act.goldReward, act.hpReward);
-    } else if (onUpdateStats) {
-      onUpdateStats({ hp: act.hpReward });
-    }
   };
 
   const prevMonth = () => {
@@ -128,12 +121,6 @@ export const CalendarTimeBlocking: React.FC<CalendarTimeBlockingProps> = ({
       onSyncCalendar();
       setIsSyncing(false);
     }, 600);
-  };
-
-  const handleCopyFeedUrl = () => {
-    navigator.clipboard.writeText('webcal://questflow.app/api/calendar/feed-demo.ics');
-    setCopiedFeed(true);
-    setTimeout(() => setCopiedFeed(false), 2000);
   };
 
   const handleTaskCheck = (t: TaskItem, e: React.MouseEvent) => {
@@ -426,7 +413,7 @@ export const CalendarTimeBlocking: React.FC<CalendarTimeBlockingProps> = ({
           <div className="space-y-1.5">
             {Array.from({ length: 15 }, (_, i) => i + 8).map((hour) => {
               const hourStr = `${hour.toString().padStart(2, '0')}:00`;
-              const targetDayStr = viewDate.toISOString().split('T')[0];
+              const targetDayStr = todayBishkek(viewDate);
 
               const matching = tasks.filter((t) => {
                 if (!t.dueTime) return false;
@@ -435,7 +422,7 @@ export const CalendarTimeBlocking: React.FC<CalendarTimeBlockingProps> = ({
               });
 
               const matchingLogs = timeLogs.filter((tl) => {
-                if (!tl.startedAt.startsWith(targetDayStr)) return false;
+                if (todayBishkek(new Date(tl.startedAt)) !== targetDayStr) return false;
                 const logHour = new Date(tl.startedAt).getHours();
                 return logHour === hour;
               });
@@ -516,9 +503,13 @@ export const CalendarTimeBlocking: React.FC<CalendarTimeBlockingProps> = ({
             </div>
 
             <div className="flex-1 overflow-y-auto space-y-2 pr-1">
-              {/* Статус дня: пятница — восстановление, активности с наградой раз в день */}
-              {getDayCycleInfo(selectedDayTasks.dateStr).isRecoveryDay ? (
-                <RecoveryChecklist key={selectedDayTasks.dateStr} dateStr={selectedDayTasks.dateStr} onReward={handleRecoveryReward} />
+              {/* Статус дня: чек-лист с наградой — только для сегодняшней пятницы */}
+              {selectedDayTasks.dateStr === todayStr && getDayCycleInfo(selectedDayTasks.dateStr).isRecoveryDay ? (
+                <RecoveryChecklist
+                  key={selectedDayTasks.dateStr}
+                  dateStr={selectedDayTasks.dateStr}
+                  onReward={(act) => handleRecoveryReward(selectedDayTasks.dateStr, act)}
+                />
               ) : null}
 
               {selectedDayTasks.tasks.length === 0 ? (

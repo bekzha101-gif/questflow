@@ -6,9 +6,9 @@ import { APP_TZ, addDays, bishkekHM, dayOfWeek, isRecoveryDay, monthKey, todaySt
 import type { BotSettings, Task } from '../../shared/types';
 import type { Db } from './db';
 import { TEXT, morningMessage } from './messages';
-import { BLOCKS_PER_DAY, WORK_MIN, timerProgress } from './timerWatch';
+import { BLOCKS_PER_DAY, WORK_MIN, computeTimer, settleTimer } from '../../shared/timer';
 
-/** Точки вызова вечернего разговора и отчётов (наполняет таск 09, см. conversationStub.ts) */
+/** Точки вызова вечернего разговора и отчётов (реализация — src/conversation) */
 export interface ConversationApi {
   startEvening(date: string): Promise<void>;
   /** 22:00 — одно напоминание, если вечер пропущен */
@@ -42,7 +42,15 @@ export interface SchedulerDeps {
   remindersFor(today: string): Promise<PublicationReminder[]>;
   backup(now: Date): Promise<void>;
   log?(message: string): void;
+  /**
+   * Сколько тик ждёт вызов разговора (startEvening, отчёты, напоминание), мс. Разговор может стоять
+   * в своём замке за долгим анализом Claude; дольше тик не ждёт — вызов идёт дальше в фоне,
+   * а следующие тики (таймер, будильники) выходят вовремя.
+   */
+  conversationWaitMs?: number;
 }
+
+export const CONVERSATION_WAIT_MS = 20_000;
 
 /** Абсолютный потолок напоминаний о публикациях в день («3 максмум») */
 export const MAX_PUBLICATION_REMINDERS = 3;
@@ -111,14 +119,42 @@ export async function runTick(deps: SchedulerDeps, now: Date = new Date()): Prom
   const lastSent: Record<string, string> = { ...(settings?.lastSent ?? {}) };
 
   const done = (key: string, value = today) => lastSent[key] === value || mem!.has(`${key}=${value}`);
-  const mark = async (key: string, value = today) => {
-    mem!.add(`${key}=${value}`);
-    lastSent[key] = value;
+  const persist = async () => {
     try {
       await deps.db.saveBotSettings({ lastSent: { ...lastSent } });
     } catch (e) {
       log(`Не удалось сохранить last_sent: ${(e as Error).message}`);
     }
+  };
+  const mark = async (key: string, value = today) => {
+    mem!.add(`${key}=${value}`);
+    lastSent[key] = value;
+    await persist();
+  };
+  /** Снять отметку: вернуть прежнее значение ключа */
+  const unmark = async (key: string, value: string, prev: string | undefined) => {
+    mem!.delete(`${key}=${value}`);
+    if (lastSent[key] !== value) return;
+    if (prev === undefined) delete lastSent[key];
+    else lastSent[key] = prev;
+    await persist();
+  };
+  /**
+   * Отметить «сделано» и выполнить. Отметка ставится до отправки (второй тик не пошлёт дубль),
+   * но при `send() === false` или ошибке снимается — следующий тик в окне повторит.
+   */
+  const once = async (name: string, key: string, value: string, fn: () => Promise<boolean | void>): Promise<boolean> => {
+    const prev = lastSent[key];
+    await mark(key, value);
+    let ok = false;
+    try {
+      ok = (await fn()) !== false;
+      if (!ok) log(`${name}: не доставлено, повторю следующим тиком`);
+    } catch (e) {
+      log(`${name}: ${(e as Error).message}`);
+    }
+    if (!ok) await unmark(key, value, prev);
+    return ok;
   };
   const step = async (name: string, fn: () => Promise<void>) => {
     try {
@@ -127,11 +163,41 @@ export async function runTick(deps: SchedulerDeps, now: Date = new Date()): Prom
       log(`${name}: ${(e as Error).message}`);
     }
   };
+  const waitMs = deps.conversationWaitMs ?? CONVERSATION_WAIT_MS;
+  /**
+   * Вызов разговора с пределом ожидания. Не успел — тик идёт дальше, вызов продолжается в фоне;
+   * если он потом упадёт, отметка снимается по свежим настройкам (следующий тик повторит).
+   */
+  const conversationCall = (name: string, key: string, fn: () => Promise<void>) =>
+    once(name, key, today, async () => {
+      const call = fn();
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const waited = await Promise.race([
+        call.then(() => 'done' as const),
+        new Promise<'late'>((resolve) => (timer = setTimeout(() => resolve('late'), waitMs))),
+      ]).finally(() => clearTimeout(timer));
+      if (waited === 'late') {
+        log(`${name}: разговор занят, продолжаю в фоне`);
+        call.catch(async (e) => {
+          log(`${name}: ${(e as Error).message}`);
+          mem!.delete(`${key}=${today}`);
+          try {
+            const fresh = await deps.db.getBotSettings();
+            const ls = { ...(fresh?.lastSent ?? {}) };
+            if (ls[key] === today) {
+              delete ls[key];
+              await deps.db.saveBotSettings({ lastSent: ls });
+            }
+          } catch (e2) {
+            log(`Не удалось снять отметку ${key}: ${(e2 as Error).message}`);
+          }
+        });
+      }
+    });
 
   // 03:00 — бэкап (в любой день, это не сообщение)
   if (inWindow(nowMin, hmToMin(BACKUP_HM, BACKUP_HM), 60) && !done('backup')) {
-    await mark('backup');
-    await step('Бэкап', () => deps.backup(now));
+    await once('Бэкап', 'backup', today, () => deps.backup(now));
   }
 
   // Пятница — тишина. Без привязанного чата писать некому.
@@ -143,8 +209,7 @@ export async function runTick(deps: SchedulerDeps, now: Date = new Date()): Prom
   // Утро: одно короткое сообщение без вопросов
   if (inWindow(nowMin, morningMin, MORNING_WINDOW_MIN)) {
     if (!done('morning')) {
-      await step('Утро', async () => {
-        await mark('morning');
+      await once('Утро', 'morning', today, async () => {
         const plan = (await deps.db.getKv<DayPlan>(`plan:${today}`)) ?? {};
         let mainTask = plan.mainTask ?? null;
         if (!mainTask) {
@@ -152,7 +217,7 @@ export async function runTick(deps: SchedulerDeps, now: Date = new Date()): Prom
           const byId = plan.mainTaskId ? tasks.find((t) => t.id === plan.mainTaskId) : null;
           mainTask = (byId ?? pickMainTask(tasks, today))?.title ?? null;
         }
-        await deps.send(
+        return deps.send(
           morningMessage({ mainTask, firstBlockTask: plan.firstBlockTask, blocksPerDay: BLOCKS_PER_DAY, workMin: WORK_MIN }),
         );
       });
@@ -166,17 +231,21 @@ export async function runTick(deps: SchedulerDeps, now: Date = new Date()): Prom
       const reminders = await deps.remindersFor(today);
       for (const r of reminders) {
         if (sentIds.length >= limit) break;
-        if (sentIds.includes(r.channelId) || mem!.has(`pub=${today}|${r.channelId}`)) continue;
-        mem!.add(`pub=${today}|${r.channelId}`);
+        const memKey = `pub=${today}|${r.channelId}`;
+        if (sentIds.includes(r.channelId) || mem!.has(memKey)) continue;
+        mem!.add(memKey);
         sentIds.push(r.channelId);
-        await mark('publications', `${today}|${sentIds.join(',')}`);
-        await deps.send(r.text);
+        const ok = await once('Публикации', 'publications', `${today}|${sentIds.join(',')}`, () => deps.send(r.text));
+        if (!ok) {
+          mem!.delete(memKey);
+          sentIds.pop();
+        }
       }
     });
   }
 
   // Таймер: конец работы / отдыха — один раз
-  await step('Таймер', () => checkTimer(deps, now, today, lastSent, done, mark, mem!));
+  await step('Таймер', () => checkTimer(deps, now, today, lastSent, done, mark, once, mem!));
 
   // Будильники здоровья
   await step('Будильники', async () => {
@@ -187,8 +256,7 @@ export async function runTick(deps: SchedulerDeps, now: Date = new Date()): Prom
       const key = `alarm:${a.id}`;
       if (done(key)) continue;
       if (a.repeatDaily === false && lastSent[key]) continue;
-      await mark(key);
-      await deps.send(TEXT.healthAlarm(a.title));
+      await once('Будильник', key, today, () => deps.send(TEXT.healthAlarm(a.title)));
     }
   });
 
@@ -196,29 +264,26 @@ export async function runTick(deps: SchedulerDeps, now: Date = new Date()): Prom
   if (inWindow(nowMin, eveningMin, EVENING_WINDOW_MIN)) {
     const dow = dayOfWeek(today);
     if (dow === 4 && !done('thursday')) {
-      await mark('thursday');
-      await step('Четверг', async () => void (await deps.send(TEXT.thursday)));
+      await once('Четверг', 'thursday', today, () => deps.send(TEXT.thursday));
     }
     if (!done('evening')) {
-      await mark('evening');
-      await step('Вечер', () => deps.conversation.startEvening(today));
+      await conversationCall('Вечер', 'evening', () => deps.conversation.startEvening(today));
     }
     if (dow === 0 && !done('weekly')) {
-      await mark('weekly');
-      await step('Отчёт недели', () => deps.conversation.weeklyReport(today));
+      await conversationCall('Отчёт недели', 'weekly', () => deps.conversation.weeklyReport(today));
     }
     if (monthKey(addDays(today, 1)) !== monthKey(today) && !done('monthly')) {
-      await mark('monthly');
-      await step('Отчёт месяца', () => deps.conversation.monthlyReport(today));
+      await conversationCall('Отчёт месяца', 'monthly', () => deps.conversation.monthlyReport(today));
     }
   }
 
   // 22:00 — одно напоминание о пропущенном вечере (решает разговор)
   if (inWindow(nowMin, eveningMin + EVENING_WINDOW_MIN, 60) && !done('evening_reminder')) {
-    await mark('evening_reminder');
-    await step('Напоминание 22:00', () => deps.conversation.eveningReminder(today));
+    await conversationCall('Напоминание 22:00', 'evening_reminder', () => deps.conversation.eveningReminder(today));
   }
 }
+
+type Once = (name: string, key: string, value: string, fn: () => Promise<boolean | void>) => Promise<boolean>;
 
 async function checkTimer(
   deps: SchedulerDeps,
@@ -227,44 +292,60 @@ async function checkTimer(
   lastSent: Record<string, string>,
   done: (key: string, value?: string) => boolean,
   mark: (key: string, value?: string) => Promise<void>,
+  once: Once,
   mem: Set<string>,
 ): Promise<void> {
   const t = await deps.db.getTimerState();
-  if (!t) return;
-  const p = timerProgress(t, now.getTime());
-  if (!p) return;
+  if (!t || !t.running || t.phase === 'idle' || !t.startedAt || Number.isNaN(Date.parse(t.startedAt))) return;
+  const nowMs = now.getTime();
 
-  if (t.phase === 'work' && p.expired) {
+  // Сайт закрыт — бот сам «доводит» таймер, как сайт: истёкшая работа становится отдыхом (shared/timer)
+  const s = settleTimer(t, nowMs);
+  const settledHere = s !== t;
+
+  if (settledHere) {
     const id = `work:${t.startedAt}`;
-    if (t.notifiedEnd || done('timer_last', id)) return;
-    await mark('timer_last', id);
-    await mark('timer_work_end', now.toISOString());
-    await deps.send(TEXT.workOver(p.targetSec));
-    await deps.db.markTimerNotified(t.startedAt);
-    return;
+    if (!t.notifiedEnd && !done('timer_last', id)) {
+      const workedSec = (Number(t.targetMin) > 0 ? Number(t.targetMin) : WORK_MIN) * 60;
+      await once('Таймер', 'timer_last', id, async () => {
+        const ok = await deps.send(TEXT.workOver(workedSec));
+        if (!ok) return false;
+        await mark('timer_work_end', now.toISOString());
+        await deps.db.markTimerNotified(t.startedAt);
+        return true;
+      });
+    }
+  }
+  if (s.phase !== 'break' || !s.startedAt) return;
+  const v = computeTimer(s, nowMs);
+  const breakStarted = s.startedAt;
+
+  if (!settledHere) {
+    // Сайт сам перевёл таймер в отдых, а бот ещё не сказал «пора на отдых»
+    const startedMs = Date.parse(breakStarted);
+    const announced = lastSent.timer_work_end ? Date.parse(lastSent.timer_work_end) : NaN;
+    const freshBreak = nowMs - startedMs <= BREAK_START_GRACE_SEC * 1000;
+    const alreadyAnnounced = !Number.isNaN(announced) && announced >= startedMs - 5 * 60_000;
+    const breakStartId = `breakstart:${breakStarted}`;
+    if (freshBreak && !alreadyAnnounced && !v.expired && !mem.has(breakStartId)) {
+      mem.add(breakStartId);
+      const sessions = await deps.db.listFocusSessions(s.date ?? today).catch(() => []);
+      const last = sessions.sort((a, b) => (a.startedAt ?? '').localeCompare(b.startedAt ?? '')).at(-1);
+      const ok = await deps.send(TEXT.workOver((last?.minutes ?? WORK_MIN) * 60));
+      if (ok) await mark('timer_work_end', now.toISOString());
+      else mem.delete(breakStartId);
+    }
   }
 
-  if (t.phase === 'break') {
-    const startedMs = t.startedAt ? Date.parse(t.startedAt) : NaN;
-    // Сайт сам перевёл таймер в отдых, а бот ещё не сказал «пора на отдых»
-    const announced = lastSent.timer_work_end ? Date.parse(lastSent.timer_work_end) : NaN;
-    const freshBreak = !Number.isNaN(startedMs) && now.getTime() - startedMs <= BREAK_START_GRACE_SEC * 1000;
-    const alreadyAnnounced = !Number.isNaN(announced) && announced >= startedMs - 5 * 60_000;
-    const breakStartId = `breakstart:${t.startedAt}`;
-    if (freshBreak && !alreadyAnnounced && !p.expired && !mem.has(breakStartId)) {
-      mem.add(breakStartId);
-      await mark('timer_work_end', now.toISOString());
-      const sessions = await deps.db.listFocusSessions(t.date ?? today).catch(() => []);
-      const last = sessions.sort((a, b) => (a.startedAt ?? '').localeCompare(b.startedAt ?? '')).at(-1);
-      await deps.send(TEXT.workOver((last?.minutes ?? WORK_MIN) * 60));
-    }
-    if (p.expired) {
-      const id = `break:${t.startedAt}`;
-      if (t.notifiedEnd || done('timer_last', id)) return;
-      await mark('timer_last', id);
-      await deps.send(TEXT.breakOver((t.blockIndex ?? 0) + 1, BLOCKS_PER_DAY));
-      await deps.db.markTimerNotified(t.startedAt);
-    }
+  if (v.expired) {
+    const id = `break:${breakStarted}`;
+    // notified_end строки в базе относится к ней самой: у отдыха, посчитанного здесь, его ещё нет
+    if ((!settledHere && t.notifiedEnd) || done('timer_last', id)) return;
+    await once('Таймер', 'timer_last', id, async () => {
+      const ok = await deps.send(TEXT.breakOver((s.blockIndex ?? 0) + 1, BLOCKS_PER_DAY));
+      if (ok && !settledHere) await deps.db.markTimerNotified(breakStarted);
+      return ok;
+    });
   }
 }
 

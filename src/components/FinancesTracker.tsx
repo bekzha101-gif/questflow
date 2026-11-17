@@ -60,12 +60,8 @@ const initialTransactions: Transaction[] = [
   },
 ];
 
-interface FinancesTrackerProps {
-  /** Не используется: золото за финансы не начисляется. Доход каналов (USD → EXP) — «Прогресс» → «Доход» */
-  onAddGoldReward?: (gold: number) => void;
-}
-
-export const FinancesTracker: React.FC<FinancesTrackerProps> = () => {
+// Золото за финансы не начисляется. Доход каналов (USD → EXP) — «Прогресс» → «Доход»
+export const FinancesTracker: React.FC = () => {
   const [transactions, setTransactions] = useState<Transaction[]>(() => {
     try {
       const saved = localStorage.getItem('questflow_finances_v1');

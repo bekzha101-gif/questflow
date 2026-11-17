@@ -47,11 +47,29 @@ export interface AiOptions {
   /** Модель для запасного API (ANTHROPIC_MODEL) */
   model?: string;
   fetch?: typeof fetch;
+  /** Предел на один вызов `claude -p`, мс */
   timeoutMs?: number;
+  /** Предел на запрос к Claude API, мс */
+  apiTimeoutMs?: number;
   log?(message: string): void;
 }
 
-export const DEFAULT_API_MODEL = 'claude-sonnet-4-5';
+/**
+ * Флаги, которые отключают общий контекст Claude Code: MCP-серверы, скиллы и слэш-команды,
+ * файлы настроек (вместе с ними — глобальный CLAUDE.md и хуки). Вход в подписку остаётся.
+ * --bare не используется: он требует ключ API вместо входа пользователя.
+ */
+export const CLI_ISOLATION_ARGS = [
+  '--strict-mcp-config',
+  '--mcp-config',
+  '{"mcpServers":{}}',
+  '--disable-slash-commands',
+  '--setting-sources',
+  '',
+  '--no-session-persistence',
+];
+
+export const DEFAULT_API_MODEL = 'claude-sonnet-5-5';
 const API_URL = 'https://api.anthropic.com/v1/messages';
 
 export function defaultClaudePath(): string {
@@ -197,14 +215,15 @@ export function createAi(opts: AiOptions = {}): Ai {
   const log = opts.log ?? (() => {});
   const run = opts.runCli ?? spawnCli(opts.claudePath ?? defaultClaudePath());
   const timeoutMs = opts.timeoutMs ?? 240_000;
+  const apiTimeoutMs = opts.apiTimeoutMs ?? 90_000;
   const doFetch = opts.fetch ?? (globalThis.fetch as typeof fetch | undefined);
 
   async function viaCli(kind: AiKind, prompt: string, payload: unknown): Promise<string | null> {
     const image = kind === 'sleep_screenshot';
-    const args = ['-p', '--output-format', 'json'];
+    const args = ['-p', '--output-format', 'json', ...CLI_ISOLATION_ARGS];
     // Картинку CLI читает своим инструментом Read; для текста инструменты не нужны
-    if (image) args.push('--allowedTools', 'Read', '--max-turns', '4');
-    else args.push('--max-turns', '2');
+    if (image) args.push('--tools', 'Read', '--allowedTools', 'Read', '--max-turns', '4');
+    else args.push('--tools', '', '--max-turns', '2');
     const imagePath = image ? (payload as { imagePath?: string })?.imagePath : undefined;
     const cwd = imagePath ? path.dirname(imagePath) : os.tmpdir();
     const out = await run(args, prompt, { cwd, timeoutMs });
@@ -229,6 +248,8 @@ export function createAi(opts: AiOptions = {}): Ai {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-api-key': opts.apiKey, 'anthropic-version': '2023-06-01' },
       body: JSON.stringify({ model: opts.model || DEFAULT_API_MODEL, max_tokens: 2000, messages: [{ role: 'user', content }] }),
+      // Без таймаута зависший запрос держал бы замок разговора (и планировщик) бесконечно
+      signal: AbortSignal.timeout(apiTimeoutMs),
     });
     if (!res.ok) throw new Error(`Claude API: HTTP ${res.status}`);
     const body = (await res.json()) as { content?: { type?: string; text?: string }[] };

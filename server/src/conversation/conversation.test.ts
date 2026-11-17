@@ -345,4 +345,41 @@ describe('вечерний разговор', () => {
     expect(w.sent.some((s) => s.text.includes('с опозданием') && s.text.includes('Что хорошо:'))).toBe(true);
     expect((w.data.conversation as { pendingAi: unknown[] }).pendingAi).toEqual([]);
   });
+
+  it('повтор отложенного анализа в пятницу ничего не шлёт; в субботу — шлёт', async () => {
+    const w = world(basics());
+    w.now = at('2026-11-19', '21:00'); // четверг
+    w.aiUp = false;
+    await w.conv.startEvening('2026-11-19');
+    await skipUntil(w, '__конец__', 30).catch(() => {});
+    expect((w.data.conversation as { pendingAi: unknown[] }).pendingAi).toHaveLength(1);
+
+    w.aiUp = true;
+    const before = w.sent.length;
+    await w.conv.tick(at('2026-11-20', '10:00')); // пятница — тишина
+    await w.conv.tick(at('2026-11-20', '18:00'));
+    expect(w.sent.length).toBe(before);
+    expect((w.data.conversation as { pendingAi: unknown[] }).pendingAi).toHaveLength(1);
+
+    await w.conv.tick(at('2026-11-21', '09:00')); // суббота
+    expect(w.sent.some((x) => x.text.includes('с опозданием'))).toBe(true);
+  });
+
+  it('месяц кончился в пятницу: субботний разговор спрашивает о желаниях и шлёт отчёт прошлого месяца', async () => {
+    const w = world({
+      ...basics(),
+      rewards: [{ id: 'r1', title: 'Шаурма', cost: 50 }],
+      goals: [{ id: 'g-apr', month: '2027-04', title: 'Запустить 10 каналов', kind: 'numeric', target: 10, current: 10, status: 'active' }],
+      stats: { level: 1, exp: 0, maxExp: 100, hp: 100, maxHp: 100, gold: 0, streak: 0, rulesSince: '2027-05-01' },
+    });
+    w.now = at('2027-05-01', '21:00'); // суббота; 2027-04-30 — пятница, последний день апреля
+    await w.conv.startEvening('2027-05-01');
+    expect((w.data.conversation as { flags: { month?: boolean } }).flags.month).toBe(true);
+    await skipUntil(w, 'Не поменялись ли желания');
+    await say(w, 'добавить поездку на Иссык-Куль');
+    expect(w.data.kv['wishes:2027-04']).toMatchObject({ text: 'добавить поездку на Иссык-Куль' });
+    await skipUntil(w, '__конец__', 10).catch(() => {});
+    const month = w.sent.find((x) => x.text.startsWith('Отчёт месяца'));
+    expect(month?.text).toContain('Апрель 2027');
+  });
 });

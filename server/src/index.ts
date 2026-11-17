@@ -1,7 +1,7 @@
 // Точка входа сервера: бот + расписания. Запуск: npm start (после npm run build).
 import os from 'node:os';
 import path from 'node:path';
-import { envFilePath, loadEnvFile, readConfig, redact, serverRoot } from './config';
+import { envFilePath, loadEnvFile, readConfig, redact, serverRoot, type ServerConfig } from './config';
 import { createDb, createSupabaseClient } from './db';
 import { createBotService } from './bot';
 import { startScheduler, type ConversationApi } from './scheduler';
@@ -12,9 +12,19 @@ import { createTelegramFiles, toInlineKeyboard } from './conversation/telegram';
 import { createPublicationSource, loadRemindersFor } from './publications';
 import { runBackup } from './backup';
 
+// Конфиг виден обработчику падения: текст ошибки проходит через redact, если конфиг уже прочитан
+let loadedConfig: ServerConfig | null = null;
+
+/** Строка лога о падении сервера: секреты из конфига скрыты */
+export function crashLine(e: unknown, config: ServerConfig | null, at: Date = new Date()): string {
+  const message = e instanceof Error ? e.message : String(e);
+  return `[${at.toISOString()}] Сервер упал: ${config ? redact(message, config) : message}`;
+}
+
 async function main() {
   loadEnvFile(envFilePath());
   const config = readConfig();
+  loadedConfig = config;
   const log = (m: string) => console.log(`[${new Date().toISOString()}] ${redact(m, config)}`);
 
   const client = createSupabaseClient(config.supabaseUrl, config.supabaseServiceRoleKey);
@@ -73,8 +83,11 @@ async function main() {
   throw new Error('Бот остановился');
 }
 
-main().catch((e) => {
-  // Код выхода ≠ 0 — run.ps1 перезапустит процесс
-  console.error(`[${new Date().toISOString()}] Сервер упал: ${(e as Error).message}`);
-  process.exit(1);
-});
+// Запуск только как программа (node dist/.../index.js), не при импорте в тестах
+if (typeof module !== 'undefined' && typeof require !== 'undefined' && require.main === module) {
+  main().catch((e) => {
+    // Код выхода ≠ 0 — run.ps1 перезапустит процесс
+    console.error(crashLine(e, loadedConfig));
+    process.exit(1);
+  });
+}

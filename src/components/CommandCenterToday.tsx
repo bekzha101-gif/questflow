@@ -31,7 +31,7 @@ import {
 } from '../utils/recoveryCycle';
 import { useHabitDay } from '../utils/bigDataTracker';
 import { RULES, shopLocked } from '@shared/gamification';
-import { applyGame } from '../sections/progress/game';
+import { rewardRecoveryActivity } from '../sections/progress/game';
 
 interface CommandCenterTodayProps {
   tasks: TaskItem[];
@@ -56,7 +56,6 @@ interface CommandCenterTodayProps {
   // Сколько невыполненных покупок (сами покупки на «Сегодня» не показываются)
   shoppingCount?: number;
   onUpdateStats?: (newStats: Partial<UserStats>) => void;
-  onAwardRewards?: (exp: number, gold: number, hp?: number) => void;
 }
 
 // «Сегодня» — по Бишкеку (shared/time), а не по UTC
@@ -467,7 +466,6 @@ export function CommandCenterToday({
   onOpenShoppingTab,
   shoppingCount = 0,
   onUpdateStats,
-  onAwardRewards,
 }: CommandCenterTodayProps) {
   const [todoFilter, setTodoFilter] = useState<TodoFilter>('active');
   const [boughtId, setBoughtId] = useState<string | null>(null);
@@ -486,7 +484,7 @@ export function CommandCenterToday({
       playCoinSound();
       triggerQuestConfetti();
       // Награда по правилам; одна активность — один раз за день
-      applyGame({ kind: 'recovery_activity', ref: `${currentToday}:${act.id}` });
+      rewardRecoveryActivity(currentToday, act.id);
     }
   };
 

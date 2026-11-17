@@ -13,7 +13,7 @@ import {
   type GameEventInput,
 } from '@shared/gamification';
 import type { AchievementRow, BigDataDay, Channel, FocusSession, GameEvent, GameStats, Goal, GoalWeek, Video } from '@shared/types';
-import { monthKey, todayStr } from '@shared/time';
+import { isRecoveryDay, monthKey, todayStr } from '@shared/time';
 import { WORK_MIN } from '@shared/timer';
 import { currentWeekIndex, goalPct, weeksFor } from '@shared/goals';
 import { initialStats } from '../../data/initialData';
@@ -28,15 +28,18 @@ export interface GameOptions {
   store?: Store;
   now?: Date;
   facts?: AchievementFacts;
+  /** Автозапись (итоги дней и т.п.), а не действие пользователя: см. Store.writeRecord */
+  auto?: boolean;
 }
 
 function readStats(s: Store): GameStats {
   return s.get<GameStats>('game_stats', 'me') ?? FALLBACK;
 }
 
-function writeStats(s: Store, next: GameStats) {
-  // writeRecord: пока облако не прочитано и записи нет, строка получает старую метку и не перебьёт облако
-  s.writeRecord<GameStats>('game_stats', FALLBACK, () => next, 'me', (v) => v);
+function writeStats(s: Store, next: GameStats, auto: boolean) {
+  // Автозапись: пока облако не прочитано и записи нет, строка получает старую метку и не перебьёт облако.
+  // Действие пользователя пишется с обычной меткой.
+  s.writeRecord<GameStats>('game_stats', FALLBACK, () => next, 'me', (v) => v, { auto });
 }
 
 /** Применить событие по правилам и записать результат: статы, строки game_events, achievements */
@@ -50,13 +53,37 @@ export function applyGame(input: GameEventInput, opts: GameOptions = {}): ApplyR
     facts: opts.facts ?? factsOf(s),
   });
   if (!r.applied) return r;
-  writeStats(s, r.stats);
+  writeStats(s, r.stats, opts.auto === true);
   for (const e of r.events) s.upsert('game_events', e);
   for (const id of r.unlocked) s.upsert('achievements', { id, unlockedAt: now.toISOString() });
   if (typeof window !== 'undefined' && typeof CustomEvent !== 'undefined') {
     window.dispatchEvent(new CustomEvent(GAME_EVENT, { detail: r }));
   }
   return r;
+}
+
+/**
+ * «Сбросить прогресс»: только статы (уровень, EXP, золото, HP) — как обещает окно подтверждения.
+ * Задачи, награды, журнал и прочие таблицы не трогаются (они в облаке и у бота).
+ */
+export function resetGameStats(fresh: object, opts: GameOptions = {}) {
+  const s = opts.store ?? defaultStore;
+  s.writeRecord<object>('game_stats', FALLBACK, () => ({ ...fresh }), 'me', (v) => v);
+}
+
+/** Заполненный день Big Data — награда по правилам; ref — дата дня, повтор того же дня — 'duplicate' */
+export function rewardBigDataFill(date: string, opts: GameOptions = {}): ApplyResult {
+  return applyGame({ kind: 'bigdata_fill', ref: date }, opts);
+}
+
+/**
+ * Активность пятницы — награда по правилам, только для сегодняшней пятницы (по Бишкеку).
+ * ref = `${date}:${activityId}`: одна активность — одна награда за день. null — не сегодня или не пятница.
+ */
+export function rewardRecoveryActivity(date: string, activityId: string, opts: GameOptions = {}): ApplyResult | null {
+  const today = todayStr(opts.now ?? new Date());
+  if (date !== today || !isRecoveryDay(date)) return null;
+  return applyGame({ kind: 'recovery_activity', ref: `${date}:${activityId}` }, opts);
 }
 
 /** Факты для ачивок «100 видео» и «40 каналов» */
@@ -95,13 +122,15 @@ export function dayFactsFor(date: string, s: Store = defaultStore): DayFacts {
  */
 export function syncGameFacts(opts: GameOptions = {}) {
   const s = opts.store ?? defaultStore;
+  // Облако подключено, но не прочитано (или не прочиталось): кеш может быть старым — ничего не пишем
+  if (!s.autoWritesAllowed()) return;
   const now = opts.now ?? new Date();
   const today = todayStr(now);
-  const o = { store: s, now };
+  const o = { store: s, now, auto: true };
 
   const cur = readStats(s);
   const started = withRulesStart(cur, today);
-  if (started !== cur) writeStats(s, started);
+  if (started !== cur) writeStats(s, started, true);
   const since = String(started.rulesSince);
 
   for (const date of pendingDayCloses(started, today)) applyGame(dayCloseEvent(dayFactsFor(date, s)), o);

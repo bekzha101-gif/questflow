@@ -34,7 +34,6 @@ export function TodaySection({ ctx }: { ctx: SectionContext }) {
           onOpenLifeTab={() => ctx.onOpenTab('health')}
           onOpenShoppingTab={() => ctx.onOpenTab('shopping')}
           onUpdateStats={ctx.onUpdateStats}
-          onAwardRewards={ctx.onAwardRewards}
         />
       </div>
     </div>

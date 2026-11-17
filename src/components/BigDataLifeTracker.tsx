@@ -47,10 +47,7 @@ import {
   initGoogleFitTokenAuth,
 } from '../utils/googleFitApi';
 import { BigDataChart, type ScorePoint } from './BigDataChart';
-
-interface BigDataLifeTrackerProps {
-  onLogReward?: (exp: number, gold: number) => void;
-}
+import { rewardBigDataFill } from '../sections/progress/game';
 
 type Tab = 'days' | 'analytics' | 'notes' | 'settings';
 
@@ -76,7 +73,7 @@ function scoreClass(score: number | null | undefined) {
   return 'text-rose-300 border-rose-500/30 bg-rose-500/[0.06]';
 }
 
-export const BigDataLifeTracker: React.FC<BigDataLifeTrackerProps> = ({ onLogReward }) => {
+export const BigDataLifeTracker: React.FC = () => {
   const today = todayStr();
   const [month, setMonth] = useState(() => monthKey(today));
   const [tab, setTab] = useState<Tab>('days');
@@ -140,8 +137,8 @@ export const BigDataLifeTracker: React.FC<BigDataLifeTrackerProps> = ({ onLogRew
     const before = storedDays.find((d) => d.date === date) ?? null;
     const firstFill = !before?.fillRewarded && isDayFilled({ ...(before ?? { date }), ...patch } as BigDataDay);
     patchDay(date, { ...patch, ...(firstFill ? { fillRewarded: true } : {}) });
-    // Награда за заполненный день — один раз на день
-    if (firstFill && onLogReward) onLogReward(20, 15);
+    // Награда за заполненный день — по правилам (bigdata_fill, ref — дата дня), повтор отклоняет журнал
+    if (firstFill) rewardBigDataFill(date);
     setEditing(null);
   };
 

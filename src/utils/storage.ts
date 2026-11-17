@@ -1,24 +1,10 @@
-import { TaskItem, NotificationItem, GoogleCalendarConfig } from '../types';
+import { NotificationItem, GoogleCalendarConfig } from '../types';
 import { initialCalendarConfig } from '../data/initialData';
 
 const KEYS = {
-  TASKS: 'questflow_tasks_v1',
   NOTIFICATIONS: 'questflow_notifications_v1',
   CALENDAR_CONFIG: 'questflow_calendar_config_v1',
 };
-
-// Задачи пользователя — единственный источник правды: ничего не создаём и не «чиним» сами.
-// Основное хранилище задач — src/store; здесь только чтение старого кеша.
-export function loadTasks(): TaskItem[] {
-  try {
-    const data = localStorage.getItem(KEYS.TASKS);
-    const parsed = data ? JSON.parse(data) : [];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (e) {
-    console.error('Failed to load tasks', e);
-    return [];
-  }
-}
 
 export function loadNotifications(): NotificationItem[] {
   try {

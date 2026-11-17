@@ -39,7 +39,7 @@ export function ChannelsSection({ ctx }: { ctx: SectionContext }) {
         </div>
       )}
 
-      <MediaStudioHub onPublishReward={(exp, gold) => ctx.onAwardRewards(exp, gold)} />
+      <MediaStudioHub />
     </div>
   );
 }

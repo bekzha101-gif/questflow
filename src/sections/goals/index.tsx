@@ -78,8 +78,6 @@ export function GoalsSection({ ctx, tab }: { ctx: SectionContext; tab: TabType }
           onOpenCalendarModal={ctx.onOpenCalendarModal}
           onOpenQuickAdd={() => ctx.onOpenQuickAdd()}
           onToggleTask={ctx.onToggleTask}
-          onAddGoldReward={ctx.onAddGoldReward}
-          onLogReward={(exp, gold) => ctx.onAwardRewards(exp, gold)}
         />
       )}
     </div>

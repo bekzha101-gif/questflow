@@ -1,4 +1,5 @@
 import { Difficulty, Priority, TaskType } from '../types';
+import { addDays, todayStr } from '@shared/time';
 
 export interface ParsedTaskInput {
   title: string;
@@ -70,22 +71,19 @@ export function parseNaturalLanguageTask(input: string): ParsedTaskInput {
   }
 
   // 6. Date parsing (сегодня, завтра, послезавтра, today, tomorrow)
-  const today = new Date();
-  const formatDate = (d: Date) => d.toISOString().split('T')[0];
+  // «Сегодня» — по Бишкеку (shared/time), а не по UTC
+  const today = todayStr();
 
-  if (/\b(?:сегодня|today)\b/i.test(text)) {
-    dueDate = formatDate(today);
-    text = text.replace(/\b(?:сегодня|today)\b/gi, '');
-  } else if (/\b(?:завтра|tomorrow)\b/i.test(text)) {
-    const tomorrow = new Date(today);
-    tomorrow.setDate(today.getDate() + 1);
-    dueDate = formatDate(tomorrow);
-    text = text.replace(/\b(?:завтра|tomorrow)\b/gi, '');
-  } else if (/\b(?:послезавтра)\b/i.test(text)) {
-    const dayAfter = new Date(today);
-    dayAfter.setDate(today.getDate() + 2);
-    dueDate = formatDate(dayAfter);
-    text = text.replace(/\b(?:послезавтра)\b/gi, '');
+  // \b в JS не видит кириллицу: границы слова — через \p{L} (флаг u)
+  if (/(?<![\p{L}\d])(?:сегодня|today)(?![\p{L}\d])/iu.test(text)) {
+    dueDate = today;
+    text = text.replace(/(?<![\p{L}\d])(?:сегодня|today)(?![\p{L}\d])/giu, '');
+  } else if (/(?<![\p{L}\d])(?:завтра|tomorrow)(?![\p{L}\d])/iu.test(text)) {
+    dueDate = addDays(today, 1);
+    text = text.replace(/(?<![\p{L}\d])(?:завтра|tomorrow)(?![\p{L}\d])/giu, '');
+  } else if (/(?<![\p{L}\d])послезавтра(?![\p{L}\d])/iu.test(text)) {
+    dueDate = addDays(today, 2);
+    text = text.replace(/(?<![\p{L}\d])послезавтра(?![\p{L}\d])/giu, '');
   }
 
   // Calculate difficulty & rewards based on priority & duration

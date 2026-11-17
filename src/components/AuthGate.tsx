@@ -4,11 +4,11 @@ import { SupabaseConfigModal } from './SupabaseConfigModal';
 import { connectCloud, disconnectCloud } from '../store';
 import { needsLegacyImport, runLegacyImport, type ImportReport } from '../store/legacyImport';
 import { ensureSeeds } from '../store/seeds';
+import { todayStr } from '@shared/time';
 import { 
   Mail, 
   Lock, 
   Sparkles, 
-  UserCheck, 
   Shield, 
   ExternalLink, 
   ArrowRight, 
@@ -23,6 +23,25 @@ import {
 
 interface AuthGateProps {
   children: React.ReactNode;
+}
+
+export type CloudState = 'none' | 'connecting' | 'ready' | 'failed';
+/** Состояние облака вместе с тем, для кого оно читалось */
+export interface CloudGate {
+  userId: string | null;
+  state: CloudState;
+}
+
+/**
+ * Можно ли монтировать приложение. Вошедший пользователь — только когда его облако прочитано
+ * ('ready') или чтение не удалось ('failed'), и именно его, а не прошлого пользователя.
+ * Без входа — только когда облако уже отключено. Иначе эффекты App (сброс дня, итоги игры)
+ * успели бы записать данные из старого кеша до чтения облака.
+ */
+export function canMountApp(authResolved: boolean, userId: string | null, cloud: CloudGate): boolean {
+  if (!authResolved) return false;
+  if (userId === null) return cloud.userId === null;
+  return cloud.userId === userId && (cloud.state === 'ready' || cloud.state === 'failed');
 }
 
 /**
@@ -74,18 +93,20 @@ export function AuthGate({ children }: AuthGateProps) {
   // Пока облако не прочитано, приложение не монтируется: иначе его эффекты (сброс дня и т.п.)
   // записали бы запасные значения поверх настоящих данных.
   const userId = session?.user.id ?? null;
-  const [cloudState, setCloudState] = useState<'none' | 'connecting' | 'ready' | 'failed'>('none');
+  const [cloud, setCloud] = useState<CloudGate>({ userId: null, state: 'none' });
   const [cloudAttempt, setCloudAttempt] = useState(0);
+  // Состояние облака текущего пользователя: облако прошлого пользователя считается «ещё читаю»
+  const cloudState: CloudState = cloud.userId === userId ? cloud.state : userId ? 'connecting' : 'none';
   useEffect(() => {
     if (!userId || !supabase) {
       disconnectCloud();
-      setCloudState('none');
+      setCloud({ userId: null, state: 'none' });
       return;
     }
     let alive = true;
-    setCloudState('connecting');
+    setCloud({ userId, state: 'connecting' });
     void connectCloud(supabase, userId).then((ok) => {
-      if (alive) setCloudState(ok ? 'ready' : 'failed');
+      if (alive) setCloud({ userId, state: ok ? 'ready' : 'failed' });
     });
     return () => {
       alive = false;
@@ -168,7 +189,7 @@ export function AuthGate({ children }: AuthGateProps) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `questflow-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `questflow-backup-${todayStr()}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -222,33 +243,6 @@ export function AuthGate({ children }: AuthGateProps) {
     }
   };
 
-  const handleQuickLoginBakyt = async () => {
-    if (!supabase) return;
-    setIsLoading(true);
-    setError(null);
-    try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: 'bekzha101@gmail.com',
-        password: 'QuestFlow2026Secure!',
-      });
-      if (error) {
-        setError(
-          'Сервер Supabase на паузе (DNS/NXDOMAIN). Все ваши задачи сохранены локально в браузере. Вы можете пользоваться ими прямо сейчас!'
-        );
-      } else if (data.session) {
-        setSession(data.session);
-        setShowAuthFormModal(false);
-      }
-    } catch (err: any) {
-      setError(
-        'Сервер Supabase сейчас на паузе (бесплатный тариф Supabase ставит проект на паузу после 7 дней без обращений). ' +
-        'Все ваши дела на месте и сохранены в браузере! Нажмите зеленую кнопку ниже, чтобы продолжить работу.'
-      );
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   const handleSignOut = async () => {
     if (supabase) {
       try {
@@ -271,7 +265,7 @@ export function AuthGate({ children }: AuthGateProps) {
   };
 
   // Что показать вместо приложения: проверка входа, чтение облака, перенос старых данных
-  const waitingCloud = !authResolved || (userId !== null && cloudState === 'connecting');
+  const waitingCloud = !canMountApp(authResolved, userId, cloud);
   const gateScreen =
     importStage !== 'done' ? (
       <div className="min-h-screen bg-[#09090c] text-zinc-200 flex items-center justify-center p-4">
@@ -453,19 +447,6 @@ export function AuthGate({ children }: AuthGateProps) {
                 className="w-full py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition-all cursor-pointer shadow"
               >
                 ⚡ Открыть мои задачи (Локальный режим)
-              </button>
-            </div>
-
-            {/* Quick Login Button */}
-            <div className="p-3 rounded-2xl bg-purple-950/40 border border-purple-500/20 space-y-2">
-              <button
-                type="button"
-                onClick={handleQuickLoginBakyt}
-                disabled={isLoading}
-                className="w-full py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs shadow transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
-              >
-                <UserCheck className="w-4 h-4" />
-                <span>Быстрый вход: bekzha101@gmail.com</span>
               </button>
             </div>
 

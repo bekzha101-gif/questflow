@@ -85,7 +85,8 @@ export interface ConvState {
   /** Номер вопроса: кнопки старых вопросов не путают текущий */
   seq: number;
   cur: Cursor;
-  flags: { week?: boolean; month?: boolean };
+  /** month — отчёт месяца в конце разговора; monthDate — дата внутри этого месяца (если месяц кончился вчера в пятницу) */
+  flags: { week?: boolean; month?: boolean; monthDate?: string };
   /** Анализы, которые не удались (Claude недоступен) — повтор позже */
   pendingAi: PendingAi[];
 }

@@ -19,6 +19,24 @@ export function pickMainTask(tasks: TaskItem[], today: string): TaskItem | null 
   return sorted[0] ?? null;
 }
 
+/** kv `plan:<дата>` — вечерний план бота на этот день */
+export interface DayPlan {
+  mainTask?: string;
+  mainTaskId?: string;
+  firstBlockTask?: string;
+}
+
+/**
+ * Главная задача дня с учётом вечернего плана бота: сначала `plan:<today>.mainTaskId`,
+ * если такая задача есть и не выполнена (тогда утром в Telegram и на сайте одна задача);
+ * иначе — pickMainTask.
+ */
+export function mainTaskFor(tasks: TaskItem[], today: string, plan: DayPlan | null | undefined): TaskItem | null {
+  const planned = plan?.mainTaskId ? tasks.find((t) => t.id === plan.mainTaskId) : undefined;
+  if (planned && !planned.completed && !isShoppingTask(planned)) return planned;
+  return pickMainTask(tasks, today);
+}
+
 /** Сколько часов фокуса набрано за день (по Бишкеку); отдых не считается */
 export function focusHoursToday(logs: TimeLogEntry[], today: string): number {
   const minutes = logs

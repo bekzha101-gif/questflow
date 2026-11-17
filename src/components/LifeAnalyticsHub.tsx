@@ -22,8 +22,6 @@ interface LifeAnalyticsHubProps {
   onOpenCalendarModal: () => void;
   onOpenQuickAdd: () => void;
   onToggleTask: (taskId: string) => void;
-  onAddGoldReward: (gold: number) => void;
-  onLogReward: (exp: number, gold: number) => void;
 }
 
 const HEALTH_TABS: { id: HealthTab; label: string }[] = [
@@ -45,8 +43,6 @@ export function LifeAnalyticsHub({
   onOpenCalendarModal,
   onOpenQuickAdd,
   onToggleTask,
-  onAddGoldReward,
-  onLogReward,
 }: LifeAnalyticsHubProps) {
   const [healthTab, setHealthTab] = useState<HealthTab>(initialHealthTab);
 
@@ -76,7 +72,7 @@ export function LifeAnalyticsHub({
             />
           )}
 
-          {healthTab === 'bigdata' && <BigDataLifeTracker onLogReward={onLogReward} />}
+          {healthTab === 'bigdata' && <BigDataLifeTracker />}
         </>
       )}
 
@@ -90,15 +86,10 @@ export function LifeAnalyticsHub({
           onOpenCalendarModal={onOpenCalendarModal}
           onOpenQuickAdd={onOpenQuickAdd}
           onToggleTask={onToggleTask}
-          onUpdateStats={onUpdateStats}
-          onAwardRewards={(exp, gold, hp) => {
-            onLogReward(exp, gold);
-            if (hp) onUpdateStats({ hp: Math.min(stats.maxHp, stats.hp + hp) });
-          }}
         />
       )}
 
-      {view === 'finances' && <FinancesTracker onAddGoldReward={onAddGoldReward} />}
+      {view === 'finances' && <FinancesTracker />}
     </div>
   );
 }

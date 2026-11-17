@@ -1,4 +1,5 @@
 import { TaskItem, TimeLogEntry } from '../types';
+import { todayStr } from '@shared/time';
 
 export interface GoogleCalendarEvent {
   id: string;
@@ -104,7 +105,7 @@ export async function createGoogleCalendarEvent(
   if (!accessToken) return null;
 
   try {
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayStr();
     const dateStr = task.dueDate || today;
     const timeStr = task.dueTime || '10:00';
     const startDateTime = new Date(`${dateStr}T${timeStr}:00`);

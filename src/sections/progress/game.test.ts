@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { Store } from '../../store/core';
-import { MemoryStorage } from '../../store/testing';
+import { FakeCloud, MemoryStorage } from '../../store/testing';
 import type { GameEvent, GameStats } from '@shared/types';
 import { RULES } from '@shared/gamification';
-import { applyGame, logSessionOnce, syncGameFacts } from './game';
+import { applyGame, logSessionOnce, resetGameStats, rewardBigDataFill, rewardRecoveryActivity, syncGameFacts } from './game';
 
 const NOW = new Date('2026-11-17T06:00:00Z'); // вторник, 12:00 по Бишкеку
 
@@ -72,6 +72,85 @@ describe('syncGameFacts: итоги дней, цели, публикации', (
     syncGameFacts({ store: s, now: NOW });
     // 50 → недели 10/20/30/40: при 12 выполнена только первая
     expect(statsOf(s).gold).toBe(RULES.goalWeek.gold + RULES.videoPublished.gold);
+  });
+});
+
+describe('syncGameFacts до чтения облака', () => {
+  it('запись из старого кеша до чтения не перебивает более новую строку облака', async () => {
+    const storage = new MemoryStorage();
+    const old = new Store({ storage, flushDelayMs: -1, now: () => Date.parse('2026-11-15T10:00:00Z') });
+    old.upsert('game_stats', { level: 1, exp: 0, maxExp: 100_000, hp: 100, maxHp: 100, gold: 100, streak: 0, rulesSince: '2026-11-10', lastClosedDate: '2026-11-14' });
+    storage.removeItem('qf2_queue_game_stats'); // тогда же ушло в облако
+
+    // Облако новее: бот закрыл дни и начислил золото
+    const cloud = new FakeCloud();
+    cloud.emit('game_stats', {
+      level: 1, exp: 0, max_exp: 100_000, hp: 100, max_hp: 100, gold: 500, streak: 0,
+      extra: { rulesSince: '2026-11-10', lastClosedDate: '2026-11-16' },
+      deleted: false, updated_at: '2026-11-16T20:00:00.000Z',
+    });
+
+    const s = new Store({ storage, flushDelayMs: -1, now: () => NOW.getTime() });
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    const connecting = s.connect((t) => {
+      const base = cloud.factory(t);
+      return { ...base, select: async () => (await gate, base.select()) };
+    });
+
+    syncGameFacts({ store: s, now: NOW });
+    expect(s.pendingCount()).toBe(0);
+
+    release();
+    await connecting;
+    await s.flush();
+    expect(statsOf(s).gold).toBe(500);
+    expect(cloud.rows('game_stats')[0]).toMatchObject({ gold: 500 });
+  });
+});
+
+describe('resetGameStats («Сбросить прогресс»)', () => {
+  it('сбрасывает только статы: задачи и награды не удаляются', () => {
+    const s = makeStore({ level: 9, exp: 500, gold: 900 });
+    s.upsert('tasks2', { id: 't1', title: 'Монтаж', type: 'todo' });
+    s.upsert('rewards2', { id: 'r1', title: 'Кино', cost: 100 });
+    resetGameStats({ level: 1, exp: 0, maxExp: 100, hp: 100, maxHp: 100, gold: 0, streak: 0 }, { store: s });
+    expect(statsOf(s)).toMatchObject({ level: 1, exp: 0, gold: 0 });
+    expect(s.items('tasks2')).toHaveLength(1);
+    expect(s.items('rewards2')).toHaveLength(1);
+    expect(s.getRow('tasks2', 't1')?.deleted).toBe(false);
+  });
+});
+
+describe('награды со стабильным ref от факта', () => {
+  const FRIDAY = new Date('2026-11-20T06:00:00Z'); // пятница, 12:00 по Бишкеку
+
+  it('день Big Data: ref — дата дня, повтор того же дня — duplicate', () => {
+    const s = makeStore();
+    const first = rewardBigDataFill('2026-11-16', { store: s, now: NOW });
+    expect(first.applied).toBe(true);
+    expect(statsOf(s).gold).toBe(RULES.bigdataFill.gold);
+    const again = rewardBigDataFill('2026-11-16', { store: s, now: NOW });
+    expect(again.rejected).toBe('duplicate');
+    expect(statsOf(s).gold).toBe(RULES.bigdataFill.gold);
+  });
+
+  it('активность пятницы: только сегодняшняя пятница, повтор — duplicate', () => {
+    const s = makeStore();
+    // прошлая пятница — без награды
+    expect(rewardRecoveryActivity('2026-11-13', 'banya', { store: s, now: FRIDAY })).toBeNull();
+    // будущая пятница — без награды
+    expect(rewardRecoveryActivity('2026-11-27', 'banya', { store: s, now: FRIDAY })).toBeNull();
+    // сегодня не пятница
+    expect(rewardRecoveryActivity('2026-11-17', 'banya', { store: s, now: NOW })).toBeNull();
+    expect(statsOf(s).gold).toBe(0);
+
+    const r = rewardRecoveryActivity('2026-11-20', 'banya', { store: s, now: FRIDAY });
+    expect(r?.applied).toBe(true);
+    expect(statsOf(s).gold).toBe(RULES.recoveryActivity.gold);
+    expect(s.items<GameEvent>('game_events').map((e) => e.id)).toContain('recovery_activity:2026-11-20:banya');
+    expect(rewardRecoveryActivity('2026-11-20', 'banya', { store: s, now: FRIDAY })?.rejected).toBe('duplicate');
+    expect(statsOf(s).gold).toBe(RULES.recoveryActivity.gold);
   });
 });
 

@@ -7,8 +7,6 @@ import type { TabType } from '../routes';
 import type { SectionContext } from '../types';
 import { ProgressOverview } from './Overview';
 import { IncomePanel } from './IncomePanel';
-import { applyGame } from './game';
-import { todayStr } from '@shared/time';
 
 // «Прогресс»: обзор (уровень, серия, графики, ачивки, правила), доход по каналам, магазин наград, финансы.
 type View = 'overview' | 'income' | 'rewards' | 'finances';
@@ -60,9 +58,6 @@ export function ProgressSection({ ctx, tab }: { ctx: SectionContext; tab: TabTyp
           onOpenCalendarModal={ctx.onOpenCalendarModal}
           onOpenQuickAdd={() => ctx.onOpenQuickAdd()}
           onToggleTask={ctx.onToggleTask}
-          onAddGoldReward={ctx.onAddGoldReward}
-          // Заполненный день Big Data — награда по правилам, один раз за день
-          onLogReward={() => applyGame({ kind: 'bigdata_fill', ref: todayStr() })}
         />
       )}
     </div>

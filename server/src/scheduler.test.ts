@@ -211,7 +211,9 @@ describe('scheduler: таймер — сообщение один раз (notifi
     expect(w.sent).toEqual(['Пора на отдых. Ты проработал 2ч 00м.']);
     expect(w.notified).toEqual([workStart]);
     await runRange(d, '2026-11-17', '11:01', '11:30');
-    expect(w.sent).toHaveLength(1);
+    // «пора на отдых» — ровно один раз; сайт закрыт, поэтому в 11:20 бот сам сообщает конец отдыха
+    expect(w.sent.filter((t) => t.startsWith('Пора на отдых'))).toHaveLength(1);
+    expect(w.sent).toEqual(['Пора на отдых. Ты проработал 2ч 00м.', 'Отдых закончился. Можно начинать блок 1 из 3.']);
   });
 
   it('если notified_end не сохранился в базе, повторного сообщения всё равно нет', async () => {
@@ -292,5 +294,120 @@ describe('scheduler: без привязанного чата ничего не 
     w.settings.chatId = undefined;
     await runRange(deps(w), '2026-11-17', '08:00', '08:05');
     expect(w.sent).toEqual([]);
+  });
+});
+
+describe('scheduler: сбой отправки — отметка снимается, следующий тик повторяет', () => {
+  /** send, который не доставляет первые n сообщений (Telegram недоступен) */
+  function flaky(d: SchedulerDeps, w: World, n: number) {
+    let fails = n;
+    d.send = async (text) => {
+      if (fails > 0) {
+        fails--;
+        return false;
+      }
+      w.sent.push(text);
+      return true;
+    };
+  }
+
+  it('утро: send() === false → через тик уходит, один раз', async () => {
+    const w = makeWorld({ kv: { 'plan:2026-11-17': { mainTask: 'Монтаж' } } });
+    const d = deps(w);
+    flaky(d, w, 1);
+    await runTick(d, bishkek('2026-11-17', '08:00'));
+    expect(w.sent).toHaveLength(0);
+    expect(w.settings.lastSent?.morning).toBeUndefined();
+    await runRange(d, '2026-11-17', '08:00', '08:05');
+    expect(w.sent.filter((t) => t.includes('Монтаж'))).toHaveLength(1);
+    expect(w.settings.lastSent?.morning).toBe('2026-11-17');
+  });
+
+  it('утро: ошибка Supabase при чтении плана → следующий тик повторяет', async () => {
+    const w = makeWorld({ kv: { 'plan:2026-11-17': { mainTask: 'Монтаж' } } });
+    const d = deps(w);
+    let broken = true;
+    const getKv = d.db.getKv;
+    d.db.getKv = (async (key: string) => {
+      if (broken) throw new Error('supabase down');
+      return getKv(key);
+    }) as Db['getKv'];
+    await runTick(d, bishkek('2026-11-17', '08:00'));
+    expect(w.sent).toHaveLength(0);
+    broken = false;
+    await runTick(d, new Date(bishkek('2026-11-17', '08:00').getTime() + 30_000));
+    expect(w.sent.filter((t) => t.includes('Монтаж'))).toHaveLength(1);
+  });
+
+  it('публикации, будильник и четверг: недоставленное уходит следующим тиком', async () => {
+    const w = makeWorld({
+      settings: { chatId: '100', morningHm: '08:00', eveningHm: '21:00', reminderLimit: 3, lastSent: { morning: '2026-11-19', evening: '2026-11-19' } },
+      alarms: [{ id: 'm', title: 'Медитация', time: '21:00', enabled: true, type: 'meditation' }],
+    });
+    const d = deps(w, [{ channelId: 'c1', text: 'Публикация AKKDLASA' }]);
+    flaky(d, w, 2);
+    await runTick(d, bishkek('2026-11-19', '21:00')); // четверг: будильник и «завтра восстановление» не ушли
+    await runRange(d, '2026-11-19', '21:00', '21:03');
+    expect(w.sent.filter((t) => t === 'Напоминание: Медитация.')).toHaveLength(1);
+    expect(w.sent.filter((t) => t.startsWith('Завтра пятница'))).toHaveLength(1);
+
+    const w2 = makeWorld({ settings: { chatId: '100', morningHm: '08:00', eveningHm: '21:00', reminderLimit: 3, lastSent: { morning: '2026-11-17' } } });
+    const d2 = deps(w2, [{ channelId: 'c1', text: 'Публикация AKKDLASA' }]);
+    flaky(d2, w2, 1);
+    await runRange(d2, '2026-11-17', '08:10', '08:12');
+    expect(w2.sent).toEqual(['Публикация AKKDLASA']);
+  });
+
+  it('упавший startEvening → следующий тик в окне начинает разговор снова', async () => {
+    const w = makeWorld();
+    const d = deps(w);
+    let fail = true;
+    d.conversation.startEvening = async (day) => {
+      if (fail) {
+        fail = false;
+        throw new Error('supabase down');
+      }
+      w.calls.push(`evening:${day}`);
+    };
+    await runTick(d, bishkek('2026-11-17', '21:00'));
+    expect(w.calls).toEqual([]);
+    await runRange(d, '2026-11-17', '21:00', '21:05');
+    expect(w.calls.filter((c) => c.startsWith('evening:'))).toEqual(['evening:2026-11-17']);
+  });
+});
+
+describe('scheduler: таймер без сайта и долгий разговор', () => {
+  it('сайт закрыт → «пора на отдых», через 20 мин одно «Отдых закончился»', async () => {
+    const w = makeWorld({
+      settings: { chatId: '100', morningHm: '08:00', eveningHm: '21:00', reminderLimit: 3, lastSent: { morning: '2026-11-17' } },
+      timer: {
+        phase: 'work', running: true, startedAt: bishkek('2026-11-17', '09:00').toISOString(), accumulatedSec: 0,
+        targetMin: 120, blockIndex: 1, date: '2026-11-17', notifiedEnd: false,
+      },
+    });
+    // timer_state в базе так и остаётся «work»: сайт не открывали
+    await runRange(deps(w), '2026-11-17', '10:59', '11:40');
+    expect(w.sent.filter((t) => t.startsWith('Пора на отдых'))).toHaveLength(1);
+    expect(w.sent.filter((t) => t.startsWith('Отдых закончился'))).toEqual(['Отдых закончился. Можно начинать блок 2 из 3.']);
+    const breakOverAt = w.sent.findIndex((t) => t.startsWith('Отдых закончился'));
+    expect(breakOverAt).toBe(1);
+  });
+
+  it('разговор занят долгим анализом → тик не ждёт дольше предела, таймер-уведомление выходит', async () => {
+    const w = makeWorld({
+      settings: { chatId: '100', morningHm: '08:00', eveningHm: '21:00', reminderLimit: 3, lastSent: { morning: '2026-11-17' } },
+      timer: {
+        phase: 'work', running: true, startedAt: new Date(bishkek('2026-11-17', '19:00').getTime() + 30_000).toISOString(), accumulatedSec: 0,
+        targetMin: 120, blockIndex: 1, date: '2026-11-17', notifiedEnd: false,
+      },
+    });
+    const d: SchedulerDeps = { ...deps(w), conversationWaitMs: 30 };
+    d.conversation.startEvening = () => new Promise<void>(() => {}); // анализ Claude не кончается
+    const started = Date.now();
+    await runTick(d, bishkek('2026-11-17', '20:59'));
+    await runTick(d, bishkek('2026-11-17', '21:00'));
+    expect(Date.now() - started).toBeLessThan(2_000);
+    await runTick(d, new Date(bishkek('2026-11-17', '21:00').getTime() + 30_000));
+    expect(w.sent.filter((t) => t.startsWith('Пора на отдых'))).toHaveLength(1);
   });
 });

@@ -1,7 +1,7 @@
 // Шов к облаку: интерфейс RemoteTable и его реализация через Supabase.
 // В тестах подменяется фейком; компоненты к Supabase напрямую не обращаются.
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { conflictTarget, type TableName } from './tables';
+import { TABLES, conflictTarget, type TableName } from './tables';
 import type { Row } from './mapping';
 
 export interface RemoteTable {
@@ -27,7 +27,10 @@ export function createSupabaseRemote(client: unknown, userId: string): RemoteFac
     async upsert(rows) {
       if (rows.length === 0) return;
       const payload = rows.map((r) => ({ ...r, user_id: userId }));
-      const { error } = await db.from(table).upsert(payload, { onConflict: conflictTarget(table) });
+      // Журнал (game_events): insert с игнором дублей — строку бота сайт не перезаписывает
+      const { error } = await db
+        .from(table)
+        .upsert(payload, { onConflict: conflictTarget(table), ...(TABLES[table].insertOnly ? { ignoreDuplicates: true } : {}) });
       if (error) throw new Error(`${table}: ${error.message}`);
     },
     async select() {

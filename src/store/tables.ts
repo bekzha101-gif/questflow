@@ -12,6 +12,8 @@ export interface TableDef {
   key: KeyColumn;
   /** Колонки содержимого (без user_id, updated_at, deleted, extra) */
   columns: readonly string[];
+  /** Журнал «только вставка» (RLS без update): повтор того же ключа игнорируется, строка не перезаписывается */
+  insertOnly?: true;
 }
 
 export const TABLES: Record<TableName, TableDef> = {
@@ -28,7 +30,7 @@ export const TABLES: Record<TableName, TableDef> = {
     key: 'user_id',
     columns: ['level', 'exp', 'max_exp', 'hp', 'max_hp', 'gold', 'streak', 'best_streak', 'income_usd_total'],
   },
-  game_events: { key: 'id', columns: ['id', 'at', 'kind', 'delta_exp', 'delta_gold', 'delta_hp', 'ref', 'note'] },
+  game_events: { key: 'id', columns: ['id', 'at', 'kind', 'delta_exp', 'delta_gold', 'delta_hp', 'ref', 'note'], insertOnly: true },
   achievements: { key: 'id', columns: ['id', 'unlocked_at'] },
   goals: {
     key: 'id',

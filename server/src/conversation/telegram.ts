@@ -9,12 +9,22 @@ export function toInlineKeyboard(kb: Keyboard): InlineKeyboard {
   return new InlineKeyboard(kb.map((row) => row.map((b) => InlineKeyboard.text(b.text, b.data))));
 }
 
-export function createTelegramFiles(api: Pick<Api, 'getFile'>, token: string, dir: string, doFetch: typeof fetch = fetch): TelegramFiles {
+/** Предел на скачивание файла из Telegram, мс */
+export const TELEGRAM_FILE_TIMEOUT_MS = 60_000;
+
+export function createTelegramFiles(
+  api: Pick<Api, 'getFile'>,
+  token: string,
+  dir: string,
+  doFetch: typeof fetch = fetch,
+  timeoutMs = TELEGRAM_FILE_TIMEOUT_MS,
+): TelegramFiles {
   return {
     async download(fileId, kind) {
       const file = await api.getFile(fileId);
       if (!file.file_path) return null;
-      const res = await doFetch(`https://api.telegram.org/file/bot${token}/${file.file_path}`);
+      // Таймаут: зависшая загрузка держала бы замок разговора
+      const res = await doFetch(`https://api.telegram.org/file/bot${token}/${file.file_path}`, { signal: AbortSignal.timeout(timeoutMs) });
       if (!res.ok) throw new Error(`Telegram не отдал файл: HTTP ${res.status}`);
       fs.mkdirSync(dir, { recursive: true });
       const ext = path.extname(file.file_path) || (kind === 'voice' ? '.ogg' : '.jpg');

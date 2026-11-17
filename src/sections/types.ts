@@ -25,8 +25,6 @@ export interface SectionContext {
   onBuyReward: (reward: Reward) => boolean;
   onAddReward: (reward: Omit<Reward, 'id' | 'timesPurchased'>) => void;
   onUpdateStats: (patch: Partial<UserStats>) => void;
-  onAwardRewards: (exp: number, gold: number, hp?: number) => void;
-  onAddGoldReward: (gold: number) => void;
   onAddNotification: (n: NotificationItem) => void;
   onSyncCalendar: () => void;
   onOpenCalendarModal: () => void;

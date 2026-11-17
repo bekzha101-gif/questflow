@@ -1,11 +1,12 @@
 import { TaskItem } from '../types';
+import { todayStr } from '@shared/time';
 
 export function generateIcsFeed(tasks: TaskItem[]): string {
   const events = tasks
     .filter((t) => !t.completed && (t.dueDate || t.dueTime))
     .map((t) => {
       const now = new Date();
-      const dateStr = t.dueDate || now.toISOString().split('T')[0];
+      const dateStr = t.dueDate || todayStr(now);
       const timeStr = t.dueTime || '09:00';
       const startDateTime = new Date(`${dateStr}T${timeStr}:00`);
       const endDateTime = new Date(startDateTime.getTime() + (t.durationMinutes || 30) * 60 * 1000);

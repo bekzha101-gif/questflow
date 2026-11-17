@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { TaskItem, TimeLogEntry } from '../../types';
-import { pickMainTask, focusHoursToday } from './mainTask';
+import { pickMainTask, focusHoursToday, mainTaskFor } from './mainTask';
 
 const t = (over: Record<string, unknown>): TaskItem =>
   ({ id: 'x', title: 'x', type: 'todo', priority: 'p3', projectId: 'p', tags: [], difficulty: 'easy',
@@ -42,5 +42,24 @@ describe('часы фокуса сегодня', () => {
 
   it('сессия, начатая в 23:30 UTC, относится к следующему дню по Бишкеку', () => {
     expect(focusHoursToday([log({ actualMinutes: 60, startedAt: '2026-11-16T23:30:00.000Z' })], '2026-11-17')).toBe(1);
+  });
+});
+
+describe('главная задача дня по вечернему плану бота', () => {
+  const today = '2026-11-17';
+  const list = [t({ id: 'urgent', priority: 'p1', dueDate: today }), t({ id: 'planned', priority: 'p4' })];
+
+  it('берёт plan:<today>.mainTaskId, даже если по правилам срочнее другая', () => {
+    expect(mainTaskFor(list, today, { mainTaskId: 'planned', mainTask: 'Монтаж' })?.id).toBe('planned');
+  });
+
+  it('задача из плана выполнена или удалена — запасной вариант pickMainTask', () => {
+    const done = [list[0], t({ id: 'planned', priority: 'p4', completed: true })];
+    expect(mainTaskFor(done, today, { mainTaskId: 'planned' })?.id).toBe('urgent');
+    expect(mainTaskFor([list[0]], today, { mainTaskId: 'planned' })?.id).toBe('urgent');
+  });
+
+  it('плана нет — pickMainTask', () => {
+    expect(mainTaskFor(list, today, null)?.id).toBe('urgent');
   });
 });
