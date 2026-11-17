@@ -7,6 +7,15 @@ import {
 import type { Channel } from '@shared/types';
 import { useCollection, useRecord } from '../store';
 
+/** Иконка канала по умолчанию: без эмодзи (в интерфейсе эмодзи не используются) */
+export const DEFAULT_CHANNEL_AVATAR = '';
+
+/** Что показать в кружке канала: своя иконка или первая буква названия */
+export function channelAvatarLabel(avatar: unknown, name: string): string {
+  const own = typeof avatar === 'string' ? avatar.trim() : '';
+  return own || (name.trim()[0] ?? '').toUpperCase();
+}
+
 export interface TeamMember {
   id: string;
   name: string;
@@ -40,7 +49,7 @@ export const TeamChannelsManager: React.FC = () => {
   // Form Channel
   const [channelName, setChannelName] = useState('');
   const [channelHandle, setChannelHandle] = useState('@');
-  const [channelAvatar, setChannelAvatar] = useState('🎬');
+  const [channelAvatar, setChannelAvatar] = useState(DEFAULT_CHANNEL_AVATAR);
 
   const saveTeam = (items: TeamMember[]) => {
     teamRecord.save({ key: 'team', value: items });
@@ -189,7 +198,9 @@ export const TeamChannelsManager: React.FC = () => {
                 className="bg-[#111115] border border-white/[0.08] rounded-2xl p-4 space-y-2 flex items-center justify-between"
               >
                 <div className="flex items-center gap-2.5">
-                  <span className="text-2xl">{String(c.avatar ?? '')}</span>
+                  <span className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center text-sm font-bold text-zinc-300">
+                    {channelAvatarLabel(c.avatar, c.name)}
+                  </span>
                   <div>
                     <h3 className="font-bold text-xs text-zinc-200">{c.name}</h3>
                     <p className="text-[10px] text-zinc-500 font-mono">{String(c.handle ?? '')}</p>
