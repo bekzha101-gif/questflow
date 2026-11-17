@@ -69,11 +69,7 @@ export function broadcastStateChange(payload: {
   rewards?: Reward[];
   boss?: Boss;
 }) {
-  if (syncChannel) {
-    syncChannel.postMessage({
-      type: 'STATE_UPDATE',
-      payload,
-      timestamp: Date.now(),
-    });
-  }
+  // Отключено: целые массивы между вкладками больше не рассылаются — их синхронизирует src/store
+  // (иначе вкладка со старыми данными перезаписывала бы свежие).
+  void payload;
 }

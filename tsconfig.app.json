@@ -20,7 +20,12 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "erasableSyntaxOnly": false,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+
+    /* Общие правила сайта и сервера */
+    "paths": {
+      "@shared/*": ["./shared/*"]
+    }
   },
-  "include": ["src"]
+  "include": ["src", "shared"]
 }

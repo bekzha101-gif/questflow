@@ -1,20 +1,17 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { UserStats, TaskItem, Project, Reward, NotificationItem, GoogleCalendarConfig, SubTask, TimeLogEntry } from './types';
-import { 
-  loadStats, saveStats,
-  loadTasks, saveTasks,
-  loadProjects, saveProjects,
-  loadRewards, saveRewards,
+import {
   loadNotifications, saveNotifications,
   loadCalendarConfig, saveCalendarConfig
 } from './utils/storage';
-import { 
-  loadCloudSyncConfig, 
-  saveCloudSyncConfig, 
-  setupBroadcastSync, 
-  broadcastStateChange, 
-  CloudSyncState 
+import {
+  loadCloudSyncConfig,
+  saveCloudSyncConfig,
+  setupBroadcastSync,
+  CloudSyncState
 } from './utils/cloudSync';
+import { useCollectionState, useRecordState, syncNow, type Converter } from './store';
+import { timeLogConverter } from './store/adapters';
 import { AuthGate } from './components/AuthGate';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { useSupabaseSync } from './hooks/useSupabaseSync';
@@ -55,33 +52,24 @@ import {
 
 
 
+// Задачи из облака могут прийти без массивов (бот пишет только нужные поля) — подставляем пустые
+const taskConverter: Converter<TaskItem, TaskItem> = {
+  toApp: (t) => ({ ...t, tags: t.tags ?? [], subtasks: t.subtasks ?? [] }),
+  fromApp: (t) => t,
+};
+
 export function App() {
-  // Core State
-  const [stats, setStats] = useState<UserStats>(loadStats);
-  const [tasks, setTasks] = useState<TaskItem[]>(loadTasks);
-  const [projects, setProjects] = useState<Project[]>(loadProjects);
-  const [rewards, setRewards] = useState<Reward[]>(loadRewards);
+  // Core State — хранилище src/store (локальный кеш + очередь в Supabase + Realtime)
+  const [stats, setStats] = useRecordState<UserStats>('game_stats', initialStats);
+  const [tasks, setTasks] = useCollectionState<TaskItem>('tasks2', taskConverter);
+  const [projects, setProjects] = useCollectionState<Project>('projects2');
+  const [rewards, setRewards] = useCollectionState<Reward>('rewards2');
   const [notifications, setNotifications] = useState<NotificationItem[]>(loadNotifications);
   const [calendarConfig, setCalendarConfig] = useState<GoogleCalendarConfig>(loadCalendarConfig);
   const [syncConfig, setSyncConfig] = useState<CloudSyncState>(loadCloudSyncConfig);
 
   // Time Tracking State (Toggl Track Style)
-  const [timeLogs, setTimeLogs] = useState<TimeLogEntry[]>(() => {
-    try {
-      const saved = localStorage.getItem('questflow_timelogs');
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('questflow_timelogs', JSON.stringify(timeLogs));
-    } catch (e) {
-      console.error('Failed to save timelogs to localStorage', e);
-    }
-  }, [timeLogs]);
+  const [timeLogs, setTimeLogs] = useCollectionState('focus_sessions', timeLogConverter);
 
   // Active Navigation Tab (Defaults to Today Command Center)
   const [activeTab, setActiveTab] = useState<TabType>('today');
@@ -98,50 +86,8 @@ export function App() {
   const [snackbarAction, setSnackbarAction] = useState<SnackbarAction | null>(null);
 
 
-  // ─── Supabase Cloud Sync ──────────────────────────────────────────────────
-  const { pushStats, pushTasks, pushProjects, pushRewards, pullAll, exportAllData, syncStatus } = useSupabaseSync();
-
-  // On mount: one-time migration to permanently purge zombie tasks and restore clean user state
-  useEffect(() => {
-    const SYNC_CLEAN_KEY = 'questflow_cleanup_v2_applied';
-    if (localStorage.getItem(SYNC_CLEAN_KEY) !== 'true') {
-      const cleanTasks = loadTasks();
-      const cleanStats = loadStats();
-      setTasks(cleanTasks);
-      setStats(cleanStats);
-      saveTasks(cleanTasks);
-      saveStats(cleanStats);
-      pushTasks(cleanTasks);
-      pushStats(cleanStats);
-      localStorage.setItem(SYNC_CLEAN_KEY, 'true');
-    }
-  }, [pushTasks, pushStats]);
-
-  // On mount: pull from cloud if logged in
-  useEffect(() => {
-    pullAll().then((cloudData) => {
-      if (cloudData.stats && cloudData.stats.level >= 4) {
-        setStats(cloudData.stats);
-      }
-      if (cloudData.tasks && cloudData.tasks.length > 0) {
-        // Only accept cloud tasks if they don't contain old zombie tasks
-        const hasZombies = cloudData.tasks.some(t => t.id === 'todo-cadrol' || t.title === 'Cadrol');
-        if (!hasZombies) {
-          setTasks(cloudData.tasks);
-        } else {
-          // Cloud has stale zombies: overwrite cloud with clean tasks!
-          const clean = loadTasks();
-          setTasks(clean);
-          pushTasks(clean);
-        }
-      } else if (tasks.length > 0) {
-        pushTasks(tasks);
-      }
-      if (cloudData.projects?.length) setProjects(cloudData.projects);
-      if (cloudData.rewards?.length) setRewards(cloudData.rewards);
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // run once on mount
+  // ─── Статус облачной синхронизации (сам синк — в src/store) ────────────────
+  const { syncStatus } = useSupabaseSync();
 
   // ─── Auto Daily Reset at Midnight ────────────────────────────────────────
   useEffect(() => {
@@ -213,19 +159,15 @@ export function App() {
 
         if (parsed.stats) {
           setStats(parsed.stats);
-          saveStats(parsed.stats);
         }
         if (Array.isArray(parsed.tasks)) {
           setTasks(parsed.tasks);
-          saveTasks(parsed.tasks);
         }
         if (Array.isArray(parsed.projects)) {
           setProjects(parsed.projects);
-          saveProjects(parsed.projects);
         }
         if (Array.isArray(parsed.rewards)) {
           setRewards(parsed.rewards);
-          saveRewards(parsed.rewards);
         }
         if (Array.isArray(parsed.notifications)) {
           setNotifications(parsed.notifications);
@@ -233,9 +175,6 @@ export function App() {
         }
         if (Array.isArray(parsed.timeLogs)) {
           setTimeLogs(parsed.timeLogs);
-          try {
-            localStorage.setItem('questflow_timelogs', JSON.stringify(parsed.timeLogs));
-          } catch {}
         }
         if (parsed.calendarConfig) {
           setCalendarConfig(parsed.calendarConfig);
@@ -267,44 +206,15 @@ export function App() {
     reader.readAsText(file);
   }, []);
 
-  // Persistent sync to local storage & broadcast to other tabs/devices
-  // Also push to Supabase cloud
-  useEffect(() => { 
-    saveStats(stats); 
-    broadcastStateChange({ stats });
-    pushStats(stats);
-  }, [stats]); // eslint-disable-line
-
-  useEffect(() => { 
-    saveTasks(tasks); 
-    broadcastStateChange({ tasks });
-    pushTasks(tasks);
-  }, [tasks]); // eslint-disable-line
-
-  useEffect(() => { 
-    saveProjects(projects); 
-    broadcastStateChange({ projects });
-    pushProjects(projects);
-  }, [projects]); // eslint-disable-line
-
-  useEffect(() => { 
-    saveRewards(rewards); 
-    broadcastStateChange({ rewards });
-    pushRewards(rewards);
-  }, [rewards]); // eslint-disable-line
-
+  // Задачи, статы, проекты, награды и записи таймера сохраняет src/store (и вкладки синхронизирует он же)
   useEffect(() => { saveNotifications(notifications); }, [notifications]);
   useEffect(() => { saveCalendarConfig(calendarConfig); }, [calendarConfig]);
   useEffect(() => { saveCloudSyncConfig(syncConfig); }, [syncConfig]);
 
   // Setup live BroadcastChannel for multi-device / multi-tab synchronization
   useEffect(() => {
-    setupBroadcastSync((payload) => {
-
-      if (payload.stats) setStats(payload.stats);
-      if (payload.tasks) setTasks(payload.tasks);
-      if (payload.projects) setProjects(payload.projects);
-      if (payload.rewards) setRewards(payload.rewards);
+    setupBroadcastSync(() => {
+      // Данные между вкладками синхронизирует src/store; канал остаётся для кода сопряжения
     });
 
     // Check URL parameters for instant sync pairing code (e.g. ?syncCode=123456)
@@ -526,10 +436,6 @@ export function App() {
     localStorage.removeItem('questflow_bigdata_v3_cleaned');
     localStorage.removeItem('questflow_content_videos_v1');
 
-    // Push fresh state to Supabase
-    pushStats(freshStats);
-    pushTasks(initialTasks);
-    pushRewards(initialRewards);
 
     setNotifications((prev) => [
       {
@@ -1026,7 +932,7 @@ export function App() {
         syncConfig={syncConfig}
         onSaveConfig={setSyncConfig}
         onTriggerSync={() => {
-          broadcastStateChange({ stats, tasks, projects, rewards });
+          void syncNow();
         }}
       />
 

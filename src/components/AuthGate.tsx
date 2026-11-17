@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { SupabaseConfigModal } from './SupabaseConfigModal';
+import { connectCloud, disconnectCloud } from '../store';
+import { needsLegacyImport, runLegacyImport, type ImportReport } from '../store/legacyImport';
+import { ensureSeeds } from '../store/seeds';
 import { 
   Mail, 
   Lock, 
@@ -56,7 +59,45 @@ export function AuthGate({ children }: AuthGateProps) {
   // Form State
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
   const [email, setEmail] = useState('bekzha101@gmail.com');
-  const [password, setPassword] = useState('QuestFlow2026Secure!');
+  const [password, setPassword] = useState('');
+
+  // Вход проверен (есть сессия или точно нет) — только после этого сеем стартовые данные
+  const [authResolved, setAuthResolved] = useState<boolean>(() => !supabase || !isSupabaseConfigured);
+  // Перенос старых данных браузера в новые таблицы (одна кнопка при первом входе новой версии)
+  const [importStage, setImportStage] = useState<'needed' | 'running' | 'done' | 'error'>(() =>
+    needsLegacyImport() ? 'needed' : 'done'
+  );
+  const [importReport, setImportReport] = useState<ImportReport | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+
+  // Облако хранилища: подключаем при входе, отключаем при выходе
+  const userId = session?.user.id ?? null;
+  useEffect(() => {
+    if (userId && supabase) {
+      void connectCloud(supabase, userId);
+    } else {
+      disconnectCloud();
+    }
+  }, [userId]);
+
+  // Стартовые данные из брифинга — один раз, после переноса и после чтения облака
+  useEffect(() => {
+    if (importStage === 'done' && authResolved) void ensureSeeds();
+  }, [importStage, authResolved, userId]);
+
+  const handleLegacyImport = async () => {
+    setImportStage('running');
+    setImportError(null);
+    try {
+      const report = await runLegacyImport();
+      setImportReport(report);
+      setImportStage('done');
+    } catch (e) {
+      console.error('Перенос не удался', e);
+      setImportError(e instanceof Error ? e.message : String(e));
+      setImportStage('error');
+    }
+  };
 
   // On mount: check for existing session quietly in background
   useEffect(() => {
@@ -73,8 +114,10 @@ export function AuthGate({ children }: AuthGateProps) {
       if (session) {
         setSession(session);
       }
+      setAuthResolved(true);
     }).catch(() => {
       // Supabase is offline or paused — stay in guest/local mode
+      if (isMounted) setAuthResolved(true);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -209,10 +252,64 @@ export function AuthGate({ children }: AuthGateProps) {
     setIsSyncInfoModalOpen(false);
   };
 
+  // Первый вход новой версии: сначала перенос старых данных, потом приложение
+  if (importStage !== 'done') {
+    return (
+      <div className="min-h-screen bg-[#09090c] text-zinc-200 flex items-center justify-center p-4">
+        <div className="linear-card bg-[#0e0e13] border border-white/[0.07] rounded-3xl max-w-md w-full p-6 space-y-4">
+          <div className="flex items-center gap-2">
+            <Cloud className="w-5 h-5 text-purple-400" />
+            <h1 className="font-semibold text-sm text-white">Новая версия QuestFlow</h1>
+          </div>
+          <p className="text-xs text-zinc-400 leading-relaxed">
+            Данные теперь хранятся в Supabase, чтобы сайт и Telegram-бот видели одно и то же.
+            Перед переносом браузер скачает файл-бэкап всех данных. Старые данные в браузере не удаляются,
+            повторный перенос ничего не дублирует.
+          </p>
+          {!session && (
+            <p className="text-[11px] text-amber-300/80 leading-relaxed">
+              Вы не вошли в аккаунт: данные перенесутся в новое хранилище браузера и уйдут в облако после входа.
+            </p>
+          )}
+          {importStage === 'error' && (
+            <p className="text-[11px] text-rose-300 flex items-start gap-1.5">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+              <span>Перенос не удался: {importError}. Данные не тронуты, попробуйте ещё раз.</span>
+            </p>
+          )}
+          <button
+            onClick={handleLegacyImport}
+            disabled={importStage === 'running'}
+            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 disabled:opacity-60 text-white text-sm font-medium cursor-pointer"
+          >
+            <Download className="w-4 h-4" />
+            {importStage === 'running' ? 'Переношу…' : 'Перенести в облако'}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // If user is inside the app (session OR guestMode)
   return (
     <>
       {children}
+
+      {importReport && !importReport.alreadyImported && (
+        <div className="fixed bottom-20 md:bottom-6 right-4 z-[9998] max-w-xs bg-[#121218] border border-white/[0.07] rounded-2xl p-4 text-xs text-zinc-300 space-y-2 shadow-2xl">
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-semibold text-emerald-300 flex items-center gap-1.5">
+              <CheckCircle2 className="w-4 h-4" /> Данные перенесены
+            </span>
+            <button onClick={() => setImportReport(null)} className="p-1 text-zinc-500 hover:text-white cursor-pointer">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+          <p className="text-[11px] text-zinc-400">
+            Бэкап: {importReport.backupFile}. Записано строк: {Object.values(importReport.counts).reduce((a, b) => a + (b ?? 0), 0)}.
+          </p>
+        </div>
+      )}
 
       {/* ── Modal: Sync Info & Backup Options ───────────────────────────────── */}
       {isSyncInfoModalOpen && (
