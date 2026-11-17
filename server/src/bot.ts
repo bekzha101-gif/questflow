@@ -55,23 +55,12 @@ export function createBotService(deps: BotDeps): BotService {
     const owner = settings?.chatId ? String(settings.chatId) : null;
     const text = ctx.message?.text;
 
-    if (owner && owner !== chatId) {
+    // Привязка чата — только через npm run setup (владелец подтверждает «Это ты?»).
+    // Пока чат не привязан, бот никого не привязывает сам: иначе хозяином стал бы первый, кто нажал /start.
+    if (!owner || owner !== chatId) {
+      if (!owner) log('Сообщение от непривязанного чата: привяжи бота через npm run setup');
       if (ctx.callbackQuery) await ctx.answerCallbackQuery({ text: TEXT.privateBot });
       else await ctx.reply(TEXT.privateBot);
-      return;
-    }
-
-    if (!owner) {
-      // Привязка — только в личном чате и только командой /start
-      if (chat.type === 'private' && isStart(text)) {
-        await deps.db.saveBotSettings({ chatId });
-        log('Бот привязан к владельцу');
-        await ctx.reply(TEXT.bound);
-      } else if (ctx.callbackQuery) {
-        await ctx.answerCallbackQuery();
-      } else {
-        await ctx.reply(TEXT.needStart);
-      }
       return;
     }
 

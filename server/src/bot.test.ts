@@ -50,14 +50,16 @@ function textUpdate(chatId: number, text: string): Update {
 }
 
 describe('бот отвечает только владельцу', () => {
-  it('первый /start привязывает chat id и отвечает «привязан»', async () => {
-    const { service, api, getSettings } = setup();
+  it('без привязки /start не привязывает чат: привязка только через npm run setup', async () => {
+    const { service, api, handled, getSettings } = setup();
     await service.bot.handleUpdate(textUpdate(555, '/start'));
-    expect(getSettings().chatId).toBe('555');
-    expect(api).toHaveLength(1);
-    expect(api[0].method).toBe('sendMessage');
-    expect(api[0].payload.chat_id).toBe(555);
-    expect(String(api[0].payload.text)).toContain('привязан');
+    await service.bot.handleUpdate(textUpdate(555, 'привет'));
+    expect(getSettings().chatId).toBeUndefined();
+    expect(api.map((c) => [c.method, c.payload.chat_id, c.payload.text])).toEqual([
+      ['sendMessage', 555, 'Этот бот приватный.'],
+      ['sendMessage', 555, 'Этот бот приватный.'],
+    ]);
+    expect(handled).toEqual([]);
   });
 
   it('чужой chat id получает «бот приватный» и ничего больше', async () => {
