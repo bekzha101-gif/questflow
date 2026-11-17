@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canPublish, channelTodo, effectiveStatus, lastPublishedDate, nextDueDates, normalizeVideo, remindersFor } from './channels';
+import { canPublish, channelSchedule, channelTodo, effectiveStatus, lastPublishedDate, nextDueDates, normalizeVideo, remindersFor } from './channels';
 import type { Channel, Video } from './types';
 
 const ch = (over: Partial<Channel> = {}): Channel => ({
@@ -126,6 +126,20 @@ describe('последняя публикация из карточки кана
     const done = vid({ id: 'p', stage: 'published', publishedAt: '2026-11-16' });
     expect(lastPublishedDate(c, [done])).toBe('2026-11-16');
     expect(channelTodo(c, [done], TODAY).dueDate).toBe('2026-11-17');
+  });
+});
+
+describe('2 видео в день: одна публикация сегодня не закрывает день', () => {
+  it('выложено 1 из 2 — расписание начинается с сегодня', () => {
+    const c = ch({ cadencePerDay: 2 });
+    const one = vid({ id: 'p1', stage: 'published', publishedAt: TODAY });
+    expect(channelSchedule(c, [one], TODAY, 2)).toEqual([TODAY, '2026-11-18']);
+    expect(channelTodo(c, [one], TODAY).dueDate).toBe(TODAY);
+  });
+  it('выложено 2 из 2 — следующее видео завтра', () => {
+    const c = ch({ cadencePerDay: 2 });
+    const two = [vid({ id: 'p1', stage: 'published', publishedAt: TODAY }), vid({ id: 'p2', stage: 'published', publishedAt: TODAY })];
+    expect(channelSchedule(c, two, TODAY, 1)).toEqual(['2026-11-18']);
   });
 });
 

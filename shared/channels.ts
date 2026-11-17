@@ -128,10 +128,16 @@ function rawNextDue(channel: Channel, last: string | null, today: string, publis
  * Заброшенный и архивный канал — пусто; канал на паузе — с даты возвращения.
  * Если сегодня уже опубликовано, считаем, что все видео дня готовы.
  */
-export function nextDueDates(channel: Channel, lastPublished: string | null, today: string, count = 7): string[] {
+export function nextDueDates(
+  channel: Channel,
+  lastPublished: string | null,
+  today: string,
+  count = 7,
+  publishedToday = slotsPerDay(channel),
+): string[] {
   const status = effectiveStatus(channel, today);
   if (status === 'abandoned' || status === 'archived') return [];
-  const raw = rawNextDue(channel, lastPublished, today, slotsPerDay(channel));
+  const raw = rawNextDue(channel, lastPublished, today, publishedToday);
   let start = raw < today ? today : raw;
   if (status === 'paused' && channel.pausedUntil && channel.pausedUntil > start) start = channel.pausedUntil;
   const step = intervalDays(channel);
@@ -171,6 +177,19 @@ function publishedOn(channelId: string, videos: Video[], day: string): number {
   ).length;
 }
 
+/**
+ * Сколько видео канала выложено сегодня. Дата из карточки «сегодня выложено» означает:
+ * видео дня готовы (сколько именно — неизвестно); иначе считаем по опубликованным видео.
+ */
+function publishedTodayCount(channel: Channel, videos: Video[], today: string): number {
+  return cardLastPublished(channel) === today ? slotsPerDay(channel) : publishedOn(channel.id, videos, today);
+}
+
+/** Ближайшие даты публикаций по видео канала: при 2 в день одна публикация сегодня не закрывает день */
+export function channelSchedule(channel: Channel, videos: Video[], today: string, count = 7): string[] {
+  return nextDueDates(channel, lastPublishedDate(channel, videos), today, count, publishedTodayCount(channel, videos, today));
+}
+
 /** Первое видео канала в работе (не опубликованное), раньше срок — раньше очередь */
 function videoInWork(channelId: string, videos: Video[]): Video | null {
   const queue = videos
@@ -204,9 +223,7 @@ export function channelTodo(channel: Channel, videos: Video[], today: string): C
 
   const last = lastPublishedDate(channel, videos);
   const current = videoInWork(channel.id, videos);
-  // Дата из карточки «сегодня выложено» означает: видео дня готовы (сколько именно — неизвестно)
-  const publishedToday = cardLastPublished(channel) === today ? slotsPerDay(channel) : publishedOn(channel.id, videos, today);
-  const scheduled = rawNextDue(channel, last, today, publishedToday);
+  const scheduled = rawNextDue(channel, last, today, publishedTodayCount(channel, videos, today));
   const dueDate = current?.publishDate ?? scheduled;
   const urgency = urgencyFor(channel, dueDate, today);
 

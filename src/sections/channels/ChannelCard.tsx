@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { CalendarDays, Check, Pencil } from 'lucide-react';
 import type { Channel, ChannelStatus, Video } from '@shared/types';
-import { CADENCES, cadenceLabel, channelTodo, effectiveStatus, lastPublishedDate, nextDueDates } from '@shared/channels';
+import { CADENCES, cadenceLabel, channelSchedule, channelTodo, effectiveStatus, lastPublishedDate } from '@shared/channels';
 import type { Urgency } from '@shared/channels';
 import { addDays } from '@shared/time';
 
@@ -192,14 +192,14 @@ export const ChannelCard: React.FC<ChannelCardProps> = ({ channel, videos, today
 
       {showSchedule && (
         <ul className="text-[12px] text-zinc-300 flex flex-wrap gap-1.5" aria-label="Ближайшие даты">
-          {nextDueDates(channel, last, today, 6).map((d) => (
+          {channelSchedule(channel, videos, today, 6).map((d) => (
             <li key={d} className="px-2 py-0.5 rounded-md bg-white/[0.05] font-mono text-[11px] flex items-center gap-1">
               {d === today && <Check className="w-3 h-3 text-amber-400" />}
               {dateRu(d)}
               {channel.cadencePerDay >= 2 ? ' ×2' : ''}
             </li>
           ))}
-          {nextDueDates(channel, last, today, 1).length === 0 && <li className="text-zinc-500">Канал не ведётся</li>}
+          {channelSchedule(channel, videos, today, 1).length === 0 && <li className="text-zinc-500">Канал не ведётся</li>}
         </ul>
       )}
     </article>
