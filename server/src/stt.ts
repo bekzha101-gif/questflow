@@ -7,7 +7,8 @@ import path from 'node:path';
 import { serverRoot } from './config';
 
 export interface Stt {
-  transcribe(oggPath: string): Promise<string | null>;
+  /** hints — слова, которые Whisper должен узнавать (названия БАДов и т. п.) */
+  transcribe(oggPath: string, hints?: string[]): Promise<string | null>;
 }
 
 export interface SttOptions {
@@ -17,6 +18,8 @@ export interface SttOptions {
   model?: string;
   /** cuda | cpu (WHISPER_DEVICE) */
   device?: string;
+  /** Постоянные слова-подсказки (WHISPER_HINTS через запятую) */
+  hints?: string[];
   timeoutMs?: number;
   /** Запуск процесса; подменяется в тестах */
   run?: (cmd: string, args: string[], timeoutMs: number) => Promise<string>;
@@ -45,9 +48,11 @@ export function createStt(opts: SttOptions = {}): Stt {
   const run = opts.run ?? execRun;
   const log = opts.log ?? (() => {});
   return {
-    async transcribe(oggPath) {
+    async transcribe(oggPath, hints = []) {
       const python = opts.python ?? defaultPython();
       const args = [sttScriptPath(), oggPath, '--model', opts.model ?? 'large-v3', '--device', opts.device ?? 'cuda'];
+      const words = [...new Set([...(opts.hints ?? []), ...hints].map((w) => w.trim()).filter(Boolean))].slice(0, 40);
+      if (words.length) args.push('--hints', words.join(', '));
       try {
         const out = await run(python, args, opts.timeoutMs ?? 120_000);
         const line = out.trim().split(/\r?\n/).reverse().find((l) => l.trim().startsWith('{'));

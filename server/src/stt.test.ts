@@ -17,6 +17,23 @@ describe('stt.transcribe', () => {
     expect(seen).toContain('C:/tmp/voice.ogg');
   });
 
+  it('слова-подсказки из .env и из базы уходят в --hints без повторов', async () => {
+    let seen: string[] = [];
+    const stt = createStt({
+      hints: ['Эринамакс', ' '],
+      run: async (_cmd, args) => {
+        seen = args;
+        return '{"text": "ok"}';
+      },
+    });
+    await stt.transcribe('a.ogg', ['Tiger Milk', 'Эринамакс']);
+    expect(seen.slice(seen.indexOf('--hints'))).toEqual(['--hints', 'Эринамакс, Tiger Milk']);
+    await stt.transcribe('a.ogg');
+    expect(seen).toContain('--hints');
+    await createStt({ run: async (_c, a) => ((seen = a), '{"text": "ok"}') }).transcribe('a.ogg');
+    expect(seen).not.toContain('--hints');
+  });
+
   it('Whisper не установлен (процесс упал) → null', async () => {
     const stt = createStt({ run: async () => Promise.reject(new Error("ModuleNotFoundError: No module named 'faster_whisper'")) });
     expect(await stt.transcribe('C:/tmp/voice.ogg')).toBeNull();

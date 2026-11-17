@@ -48,6 +48,7 @@ async function main() {
       python: process.env.WHISPER_PYTHON?.trim() || undefined,
       model: process.env.WHISPER_MODEL?.trim() || undefined,
       device: process.env.WHISPER_DEVICE?.trim() || undefined,
+      hints: (process.env.WHISPER_HINTS ?? '').split(','),
       log,
     }),
     files: createTelegramFiles(service.bot.api, config.telegramBotToken, path.join(os.tmpdir(), 'questflow-bot')),

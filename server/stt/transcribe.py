@@ -54,6 +54,7 @@ def main() -> int:
     parser.add_argument("--model", default="large-v3")
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--language", default="ru")
+    parser.add_argument("--hints", default="", help="слова через запятую: названия БАДов и т. п.")
     args = parser.parse_args()
 
     started = time.time()
@@ -82,13 +83,17 @@ def main() -> int:
                 continue
         if model is None:
             raise RuntimeError(f"модель {args.model} не загрузилась")
+        prompt = "Привет. Сегодня я сделал задачи, поработал над каналом и записал видео."
+        if args.hints:
+            prompt += f" Принял: {args.hints}."
         segments, info = model.transcribe(
             load_audio(args.path),
             language=args.language or None,
             vad_filter=True,
             beam_size=5,
             # Подсказка задаёт стиль: русский текст с пунктуацией и заглавными буквами
-            initial_prompt="Привет. Сегодня я сделал задачи, поработал над каналом и записал видео.",
+            initial_prompt=prompt,
+            hotwords=args.hints or None,
             condition_on_previous_text=False,
         )
         text = " ".join(s.text.strip() for s in segments).strip()

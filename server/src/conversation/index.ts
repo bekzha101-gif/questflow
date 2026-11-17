@@ -235,8 +235,11 @@ export function createConversation(deps: ConversationDeps): Conversation {
     log(`Входящее: ${msg.voiceFileId ? 'голос' : msg.photoFileId ? 'фото' : data ? 'кнопка' : 'текст'}`);
     if (msg.voiceFileId) {
       const file = deps.files ? await safe('скачать голосовое', () => deps.files!.download(msg.voiceFileId!, 'voice'), null) : null;
+      // Названия БАДов — подсказка Whisper: без неё он пишет «Эринамакс» как попало
+      const cfg = file ? await safe('названия БАДов', () => store.getBigDataConfig(), null) : null;
+      const hints = (cfg?.supplements ?? []).map((s) => s.name).filter(Boolean);
       const t0 = Date.now();
-      const heard = file ? await deps.stt.transcribe(file) : null;
+      const heard = file ? await deps.stt.transcribe(file, hints) : null;
       if (file) log(`Голос: ${heard ? `расшифрован за ${((Date.now() - t0) / 1000).toFixed(1)} с, ${heard.length} симв.` : 'не расшифрован'}`);
       if (file) await deps.files?.release?.(file).catch(() => {});
       if (!heard) {
