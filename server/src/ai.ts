@@ -7,7 +7,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-export type AiKind = 'day' | 'week' | 'month' | 'sleep_screenshot';
+// advisor — советник по здоровью и жизни: кнопка на сайте, анализ месяца, ответ на сайт и в Telegram
+export type AiKind = 'day' | 'week' | 'month' | 'sleep_screenshot' | 'advisor';
 
 export interface AiStep {
   goalId: string;
@@ -28,6 +29,8 @@ export interface AiResult {
   facts: string[];
   /** Шаги на следующую неделю (только kind = 'week') */
   steps: AiStep[];
+  /** Ответ на вопрос пользователя (только kind = 'advisor', если вопрос был) */
+  answer?: string;
   /** Сон со скриншота Sleep Cycle (только kind = 'sleep_screenshot') */
   sleep?: { sleepMin: number; quality?: number };
 }
@@ -104,7 +107,7 @@ export function spawnCli(command: string): CliRun {
 }
 
 // ─── Промпт ──────────────────────────────────────────────────────────────────
-const KIND_LABEL: Record<Exclude<AiKind, 'sleep_screenshot'>, string> = {
+const KIND_LABEL: Record<Exclude<AiKind, 'sleep_screenshot' | 'advisor'>, string> = {
   day: 'прошедший день',
   week: 'прошедшую неделю',
   month: 'прошедший месяц',
@@ -118,6 +121,23 @@ export function buildPrompt(kind: AiKind, payload: unknown): string {
       'Найди общее время сна (или время в постели, если сна нет) и качество сна в процентах.',
       'Ответь ТОЛЬКО JSON без пояснений: {"sleepMin": <минуты числом>, "quality": <процент числом или null>}.',
       'Если на картинке нет данных сна — ответь {"sleepMin": null, "quality": null}.',
+    ].join('\n');
+  }
+  if (kind === 'advisor') {
+    const q = String((payload as { question?: unknown })?.question ?? '').trim();
+    return [
+      'Ты — личный советник Бакыта по здоровью и жизни (QuestFlow). Разбери последние 30 дней по данным ниже.',
+      'Данные: дни Big Data (сон, качество сна, БАДы, вода, привычки, оценка дня 1–10 и почему, заметки), фокус по дням (норма 3 блока по 120 мин), задачи, цели, раздел health (журнал сна Sleep Cycle, протокол дня: вода, телефон и гаджеты перед сном, прогулка, медитация; урон и восстановление HP, дневник питания и самочувствие после еды), факторы влияния (influence) и прошлые выводы (memory).',
+      'Ищи связи: сон, еда, БАДы, вода, вечерние гаджеты и прогулки — с оценкой дня, фокусом и HP. Пятница — день восстановления без работы.',
+      'Пиши по-русски, коротко, конкретно, с цифрами и датами из данных. Ничего не выдумывай: если данных мало (меньше 10 дней) — прямо скажи «мало данных». Ты не врач: не ставь диагнозов и не назначай лекарства; при тревожных признаках советуй обратиться к врачу.',
+      q ? `Вопрос пользователя: «${q}». Ответь на него в поле answer (3–6 предложений) по данным.` : 'Вопроса нет: поле answer оставь пустой строкой.',
+      'Ответь ТОЛЬКО JSON без пояснений вокруг:',
+      '{"summary": "1–2 предложения о месяце", "answer": "ответ на вопрос или пустая строка", "good": ["что помогает"], "better": ["что вредит или мешает"], "boost": ["конкретные шаги на следующие 2 недели"], "facts": ["долгие выводы для памяти"]}',
+      '- good, better, boost: по 2–5 пунктов каждый, обязательно все три.',
+      '- facts: 0–5 устойчивых связей (например «при сне < 6 ч оценка ниже на 2»).',
+      '',
+      'ДАННЫЕ (JSON):',
+      JSON.stringify(payload),
     ].join('\n');
   }
   const stepsRule =
@@ -207,7 +227,9 @@ export function parseAiText(kind: AiKind, text: string): Omit<AiResult, 'source'
         .filter((s) => typeof s?.goalId === 'string' && typeof s?.title === 'string' && s.title.trim() !== '')
         .map((s) => ({ goalId: String(s.goalId), title: String(s.title).trim() }))
     : [];
-  return { summary: typeof j.summary === 'string' ? j.summary.trim() : '', good, better, boost, facts: strings(j.facts), steps };
+  const base = { summary: typeof j.summary === 'string' ? j.summary.trim() : '', good, better, boost, facts: strings(j.facts), steps };
+  if (kind === 'advisor') return { ...base, steps: [], answer: typeof j.answer === 'string' ? j.answer.trim() : '' };
+  return base;
 }
 
 // ─── Анализ ──────────────────────────────────────────────────────────────────

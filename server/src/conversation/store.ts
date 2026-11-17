@@ -9,6 +9,7 @@ import type {
   BigDataDay,
   Channel,
   FocusSession,
+  FoodEntry,
   GameEvent,
   GameStats,
   Goal,
@@ -66,6 +67,9 @@ export interface ConversationStore {
 
   listAiMemory(): Promise<AiMemory[]>;
   saveAiMemory(row: AiMemory): Promise<void>;
+
+  /** Дневник питания (health_food) за даты [fromDate, toDate] — для AI-советника */
+  listHealthFood(fromDate: string, toDate: string): Promise<FoodEntry[]>;
 
   getKv<T = unknown>(key: string): Promise<T | null>;
   setKv(key: string, value: unknown): Promise<void>;
@@ -223,6 +227,10 @@ export function createSupabaseStore(client: SupabaseLike, ownerUserId: string, n
 
     listAiMemory: () => list<AiMemory>('ai_memory'),
     saveAiMemory: (m) => upsert('ai_memory', m, 'user_id,id'),
+
+    async listHealthFood(fromDate, toDate) {
+      return (await list<FoodEntry>('health_food')).filter((f) => typeof f.date === 'string' && f.date >= fromDate && f.date <= toDate);
+    },
 
     async getKv<T>(key: string) {
       const row = await getOne<{ key: string; value: unknown }>('kv', 'key', key);

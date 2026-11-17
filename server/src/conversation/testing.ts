@@ -8,6 +8,7 @@ import type {
   BigDataDay,
   Channel,
   FocusSession,
+  FoodEntry,
   GameEvent,
   GameStats,
   Goal,
@@ -36,6 +37,8 @@ export interface MemoryData {
   achievements: AchievementRow[];
   memory: AiMemory[];
   kv: Record<string, unknown>;
+  /** Дневник питания (health_food) */
+  food?: FoodEntry[];
 }
 
 const clone = <T>(v: T): T => (v === undefined ? v : JSON.parse(JSON.stringify(v)));
@@ -108,6 +111,7 @@ export function createMemoryStore(data: MemoryData): ConversationStore {
     insertAchievement: async (a) => upsertById(data.achievements, a),
     listAiMemory: async () => clone(data.memory),
     saveAiMemory: async (m) => upsertById(data.memory, m),
+    listHealthFood: async (a, b) => clone((data.food ?? []).filter((f) => f.date >= a && f.date <= b)),
     getKv: async <T,>(key: string) => clone((data.kv[key] as T) ?? null),
     setKv: async (key, value) => void (data.kv[key] = clone(value)),
   };

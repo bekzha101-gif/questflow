@@ -6,6 +6,7 @@ import { createDb, createSupabaseClient } from './db';
 import { createBotService } from './bot';
 import { startScheduler, type ConversationApi } from './scheduler';
 import { createAi } from './ai';
+import { ADVISOR_POLL_MS, createAdvisor } from './advisor';
 import { createStt } from './stt';
 import { createConversation, createSupabaseStore } from './conversation';
 import { createTelegramFiles, toInlineKeyboard } from './conversation/telegram';
@@ -39,11 +40,13 @@ async function main() {
     log,
   });
   const send = (text: string) => service.send(text);
+  const ai = createAi({ apiKey: config.anthropicApiKey, model: process.env.ANTHROPIC_MODEL?.trim() || undefined, log });
+  const store = createSupabaseStore(client, config.ownerUserId);
   // Вечерний разговор, голос и AI-аналитик (таск 09)
   const evening = createConversation({
-    store: createSupabaseStore(client, config.ownerUserId),
+    store,
     send: (text, keyboard) => service.send(text, keyboard ? toInlineKeyboard(keyboard) : undefined),
-    ai: createAi({ apiKey: config.anthropicApiKey, model: process.env.ANTHROPIC_MODEL?.trim() || undefined, log }),
+    ai,
     stt: createStt({
       python: process.env.WHISPER_PYTHON?.trim() || undefined,
       model: process.env.WHISPER_MODEL?.trim() || undefined,
@@ -57,6 +60,12 @@ async function main() {
   conversation = evening;
   // Повтор анализов, которые не удались (Claude был недоступен или упёрся в лимит)
   const retryTimer = setInterval(() => void evening.tick().catch((e) => log(`Повтор анализа: ${(e as Error).message}`)), 5 * 60_000);
+
+  // AI-советник: запрос с сайта (kv ai_advisor) → Claude по данным месяца → ответ на сайт и в Telegram
+  const advisor = createAdvisor({ store, ai, send, log });
+  const advisorTick = () => void advisor.tick().catch((e) => log(`AI-советник: ${(e as Error).message}`));
+  const advisorTimer = setInterval(advisorTick, ADVISOR_POLL_MS);
+  advisorTick();
 
   const stopScheduler = startScheduler({
     db,
@@ -73,6 +82,7 @@ async function main() {
   const shutdown = async () => {
     stopScheduler();
     clearInterval(retryTimer);
+    clearInterval(advisorTimer);
     await service.stop().catch(() => {});
     process.exit(0);
   };

@@ -62,6 +62,7 @@ import {
 } from 'lucide-react';
 
 import { applyGame } from '../sections/progress/game';
+import { AiAdvisorPanel } from '../sections/health/AiAdvisorPanel';
 
 interface HealthBioTrackerProps {
   stats: UserStats;
@@ -960,14 +961,16 @@ export function HealthBioTracker({
       {/* ── 6. AI REPORT & FUTURE ADVICE ──────────────────────────────────────── */}
       {activeTab === 'ai_report' && (
         <div className="space-y-4">
-          <div className="bg-[#111115] border border-purple-500/30 rounded-2xl p-5 shadow-xl space-y-4">
+          {/* Настоящий AI: запрос через kv, анализ Claude на компьютере с ботом */}
+          <AiAdvisorPanel />
+          <div className="bg-[#111115] border border-white/[0.08] rounded-2xl p-5 shadow-xl space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <Sparkles className="w-5 h-5 text-purple-400" />
                 <div>
-                  <h3 className="text-sm font-bold text-white">ИИ-Отчёт Взаимосвязей & Советы в Будущее</h3>
+                  <h3 className="text-sm font-bold text-white">Быстрые подсказки без AI</h3>
                   <p className="text-[11px] text-zinc-400">
-                    Нейросетевой анализ корреляций между едой, сном, будильниками и уровнем здоровья
+                    Считаются по правилам прямо в браузере, без сети: еда, сон, будильники и уровень здоровья
                   </p>
                 </div>
               </div>
@@ -981,7 +984,7 @@ export function HealthBioTracker({
 
             {!aiReport ? (
               <div className="py-10 text-center space-y-3">
-                <p className="text-xs text-zinc-500">Нажмите кнопку выше, чтобы сгенерировать ИИ-отчет</p>
+                <p className="text-xs text-zinc-500">Нажмите «Обновить анализ», чтобы посчитать подсказки</p>
               </div>
             ) : (
               <div className="space-y-4">
