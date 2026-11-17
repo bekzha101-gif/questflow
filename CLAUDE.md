@@ -8,11 +8,10 @@
 - Простые ошибки чини сам (терминал, сборка), не отправляй пользователя исправлять.
 - Ключи и токены не хардкодить: только `.env.local` / переменные окружения (шаблон `.env.example`).
 - Пользователь любит, когда задают много уточняющих вопросов перед крупной фичей и составляют план (`/plan`). Для крупных изменений сначала вопросы и план, потом код.
-- Перед коммитом: `npm run build` (0 ошибок). Коммит после каждой законченной фичи, сообщения в стиле `feat(...)` / `fix(...)`. Пуш в `master` (origin: github.com/bekzha101-gif/questflow) только когда пользователь попросил.
-- Репозиторий уже на `master`, синхронизирован с origin на момент переноса (последний коммит `93c8f83`, режим «Слепой фокус»).
+- Перед коммитом: `npm run check` (тесты + типы + lint + сборка). Коммит после каждой законченной фичи, сообщения в стиле `feat(...)` / `fix(...)`. Пуш в `master` (origin: github.com/bekzha101-gif/questflow) только когда пользователь попросил.
 
 ## Стек и команды
-React 19 + TypeScript 6 + Vite 8, Tailwind 4, framer-motion, lucide-react, Supabase (опционально, облачная синхронизация), vite-plugin-pwa. Деплой: Vercel (`vercel.json`) и GitHub Actions (`.github/workflows/deploy.yml`).
+Сайт: React 19 + TypeScript 6 + Vite 8, Vitest, Tailwind 4, framer-motion, lucide-react, Supabase (опционально, облачная синхронизация), vite-plugin-pwa. Деплой: Vercel (`vercel.json`) и GitHub Actions (`.github/workflows/deploy.yml`). Бот: `server/` (Node 22, grammY, node-cron).
 ```
 npm install        # node_modules не копировались при переносе
 npm run dev        # http://localhost:5173 (vite --host, доступно с телефона по Wi-Fi)
@@ -23,22 +22,22 @@ MCP-сервер задач для агентов: `mcp_server.py` (хранит
 
 ## Карта кода (`src/`)
 - `App.tsx` — корневой стейт, вкладки, общий сброс профиля.
-- `components/Navigation.tsx` — список разделов (`PRIMARY_NAV`, `SECONDARY_NAV`, `getSection`) и боковая навигация для Mac; `MobileBottomNav.tsx` — нижняя навигация телефона; `MoreScreen.tsx` — экран «Ещё».
+- `components/Navigation.tsx` — боковая навигация (`PRIMARY_NAV`); разделы и старые id вкладок — `src/sections/routes.ts` (`getSection`, `resolveTab`); `MobileBottomNav.tsx` — нижняя навигация телефона. `MoreScreen.tsx` удалён.
 - `components/TogglTimerBar.tsx` — таймер в стиле Toggl: фокус 120 мин / отдых 20 мин.
 - `components/CommandCenterToday.tsx` — экран «Сегодня»: четыре колонки Привычки · Ежедневные · Задачи · Награды; `ShoppingListView.tsx` — список покупок (отдельная вкладка).
 - `components/LifeCalendarView.tsx`, `CalendarTimeBlocking.tsx`, `GoogleCalendarModal.tsx` — календарь, тайм-блокинг, Google Calendar.
 - `components/BigDataLifeTracker.tsx` — таблица «Big Data самоконтроль» (31 день).
 - `components/HealthBioTracker.tsx`, `LifeAnalyticsHub.tsx` — здоровье и аналитика.
-- Прочее: `TavernHub`, `HeroTavern`, `BossRaid`, `QuestsHub`, `HabitsDailiesView`, `FlowShortsMode`, `FinancesTracker`, `IdeasPipeline`, `ContentProductionBoard`, `MediaStudioHub`, AI-модалки.
+- Прочее: `TavernHub`, `HeroTavern`, `BossRaid`, `FinancesTracker`, `ContentProductionBoard`, `MediaStudioHub`, AI-модалки.
 - `utils/`: `timerStorage.ts` (устойчивое хранилище таймера), `recoveryCycle.ts` (цикл 7+1), `bigDataTracker.ts`, `calendarSync.ts` / `googleCalendarApi.ts`, `storage.ts`, `cloudSync.ts`, `healthTracker.ts`, `sound.ts`.
 - `data/initialData.ts`, `data/todoistImportData.ts` — стартовые данные (см. правило про «воскрешение» задач).
-- `hooks/useSupabaseSync.ts`, `lib/supabase.ts`; миграция БД: `supabase/migrations/001_initial.sql`.
+- `hooks/useSupabaseSync.ts`, `lib/supabase.ts`; миграции БД: `supabase/migrations/`. Данные теперь идут через `src/store/`; разделы — `src/sections/<today|goals|channels|health|progress>/`; общие правила — `shared/`; бот — `server/`.
 
 ## Решения и требования пользователя (не ломать)
 1. **Задачи пользователя — единственный источник правды.** Нельзя «восстанавливать» удалённые/выполненные задачи из старых данных, памяти или seed-файлов. Был инцидент: старые задачи вернулись после правок. Коммит `c8fc0ad` вычистил «зомби-задачи». Не добавляй старые задачи обратно в `initialData.ts` / `todoistImportData.ts` и не пиши логику, которая воскрешает удалённое.
 2. **Список покупок** живёт только на своей вкладке и не показывается в панели задач/целей дня.
 3. **Таймер:** фокус 120 мин, отдых 20 мин (настраиваемо). После 120 мин автопереход на отдых независимо от кнопки «Стоп»; отработанное время (например 1ч 30м) пишется в календарь с EXP и золотом. Отдых после окончания не стартует работу сам, ждёт ручного старта.
-4. **Таймер переживает закрытие вкладки:** считается по `Date.now()`, сессия хранится в localStorage каждую секунду, офлайн-first, `BroadcastChannel` `questflow_timer_channel_v1` синхронизирует вкладки. Если 2 часа истекли, пока вкладка была закрыта, показывается окно подтверждения. Встроенного фонового звука больше нет (убран 12.10.2026 по просьбе пользователя): музыку во время фокуса включает расширение Brain.fm, см. пункт 13.
+4. **Таймер переживает закрытие вкладки:** считается по `Date.now()`, сессия хранится в localStorage каждую секунду, офлайн-first, `BroadcastChannel` `questflow_timer_channel_v2` синхронизирует вкладки; состояние таймера хранится и в облаке (`timer_state`), управляет им только сайт, не бот. Если 2 часа истекли, пока вкладка была закрыта, показывается окно подтверждения. Встроенного фонового звука больше нет (убран 12.10.2026 по просьбе пользователя): музыку во время фокуса включает расширение Brain.fm, см. пункт 13.
 5. **«Слепой глубокий фокус»:** во время работы цифры скрыты, виден статус «Работает» с пульсирующей точкой, иконка глаза временно показывает время; на кнопке просто «Фокус» (без «120м»). В отдыхе отсчёт виден. По окончании плашка «Отработано: 2ч 00м».
 6. **Цикл восстановления 7+1:** 7 рабочих дней + 1 день активного восстановления (на календаре ячейки: изумрудный фон для работы, рубиновый для детокса, красный квадрат в день восстановления). Старт можно поставить вручную кликом по любой дате. В день детокса фокус-таймер и добавление рабочих задач блокируются сообщением «Сегодня день отдыха. Уберите гаджеты и идите в баню!». Активности: баня/бассейн+сауна, прогулка (10 000+ шагов), медитация 20–30 мин, массаж/МФР/растяжка. Напоминание за 24 часа + системные Web Push (macOS). Награда за соблюдение: +100 HP, +150 EXP, +50 золота, трофей «Мастер перезагрузки»; за нарушение — штраф.
 7. **Big Data (CleverMind v2.0):** таблица стартует полностью пустой (БАДы `(ничего)`, сон `—`, оценка `—`, теги не выбраны). Версионная миграция `questflow_bigdata_v3_cleaned` чистит старый кеш `questflow_bigdata_v1`; кнопка «Сбросить всё» в шапке таблицы. Не возвращай демо-данные.
@@ -46,7 +45,7 @@ MCP-сервер задач для агентов: `mcp_server.py` (хранит
 9. **Bio-Health:** HP не регенерируется сам, есть будильники, журнал еды и сна, AI-советы.
 10. Интерфейс: минималистичный (Linear/Raycast), карточки с тактильными элементами. Пользователь недоволен «ерундой» в дизайне, перед редизайном показывай план.
 
-11. **Навигация (согласовано 12.10.2026):** главные разделы — Сегодня, Задачи, Календарь, Здоровье; Покупки, Награды, Медиа, Финансы — в «Ещё». Одна кнопка «+». RPG-часть приглушена (тонкая строка HP/уровень), тема только тёмная. Чистка кода идёт вместе с перерисовкой каждого экрана, не отдельным этапом.
+11. **Навигация (QuestFlow 2.0, 17.11.2026):** разделы — Сегодня, Цели, Каналы, Здоровье, Прогресс (`SectionType`); Задачи, Покупки, Календарь — вкладки внутри «Целей»; экрана «Ещё» нет, скрытые разделы включаются в меню настроек шапки. Одна кнопка «+». RPG-часть приглушена (тонкая строка HP/уровень), тема только тёмная. Чистка кода идёт вместе с перерисовкой каждого экрана, не отдельным этапом.
 
 12. **Медиа без демо-данных:** каналов у пользователя пока нет, раздел стартует пустым. Не добавляй демо-каналы/видео/команду и не пиши логику, которая возвращает удалённые (то же правило, что для задач).
 
@@ -59,9 +58,10 @@ MCP-сервер задач для агентов: `mcp_server.py` (хранит
 
 17. **Обновление после деплоя:** `utils/appUpdate.ts` при открытии и при возвращении на вкладку сравнивает имя сборки с сервером и, если вышла новая, сбрасывает service worker и кеш и перезагружает страницу (данные в localStorage не трогает). Не возвращай удаление service worker при каждом запуске в `main.tsx`: оно ломало офлайн-режим и показывало старую версию при первом открытии после обновления. После пуша сам проверяй сайт, а не только статус деплоя.
 
-Ключи localStorage (все с префиксом `questflow_`): `tasks_v1`, `stats_v1`, `rewards_v1`, `timelogs`, `timer_*` (work_duration, break_duration, title, selected_task_id), `recovery_cycle_config`, `recovery_completed_activities`, `last_recovery_24h_alert`, `last_recovery_today_alert`, `bigdata_v1`, `bigdata_v3_cleaned`, `hidden_sections_v1`, `media_demo_cleaned_v1`, `channels_v1`, `videos_v1`, `ideas_v1`, `finances_v1`, `team_v1`, `supabase_url`, `supabase_anon_key`, `guest_mode`.
+Данные теперь в кеше `qf2_<table>` и таблицах Supabase (`bigdata_days`, `tasks2`, `channels2` и др.); старые ключи переносит `src/store/legacyImport.ts`. Старые (legacy) ключи localStorage (все с префиксом `questflow_`): `tasks_v1`, `stats_v1`, `rewards_v1`, `timelogs`, `timer_*` (work_duration, break_duration, title, selected_task_id), `recovery_cycle_config`, `recovery_completed_activities`, `last_recovery_24h_alert`, `last_recovery_today_alert`, `bigdata_v1`, `bigdata_v3_cleaned`, `hidden_sections_v1`, `media_demo_cleaned_v1`, `channels_v1`, `videos_v1`, `ideas_v1`, `finances_v1`, `team_v1`, `supabase_url`, `supabase_anon_key`, `guest_mode`.
 
 ## Где лежит контекст из Antigravity
+Если папки `docs/antigravity/` нет, архив не копировался на этот компьютер (она в `.gitignore`).
 - `docs/antigravity/user-requests.md` — все 65 запросов пользователя по порядку (начни отсюда).
 - `docs/antigravity/chat-transcript.md` — весь диалог (ответы целиком, инструменты кратко).
 - `docs/antigravity/checkpoints.md` — 19 сводок контекста от Antigravity.
@@ -82,3 +82,64 @@ UI/дизайн: `ui-ux-pro-max`, `design`, `design-system`, `ui-styling`, `bran
 Когда отвечаешь пользователю, не пиши пути в блоках кода: они не кликаются. Файлы отправляй карточками (SendUserFile), а запуск делай через этот файл.
 
 Запись разговора о переносе проекта (вопросы пользователя и ответы): docs/CONVERSATION-CONTEXT.md (в .gitignore).
+
+<!-- autopilot:start -->
+## Команды проверки
+- `npm run check` — тесты + типы + lint + сборка (211 тестов). `npm test` — только тесты; один файл: `npx vitest run shared/time.test.ts`.
+- `cd server && npm install && npm test && npm run build` — сервер (78 тестов); один файл: `cd server && npx vitest run src/db.test.ts`.
+- `npx vite preview --port 4791` — собранный сайт (после `npm run build`).
+- `cd server && npm run setup` — спрашивает токены и пишет `server/.env`; `cd server && npm run dev` — собрать и запустить бота.
+
+## Окружение (только имена)
+- Сайт (`.env.local`, шаблон `.env.example`): `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`; необязательные `VITE_GEMINI_API_KEY`, `VITE_YOUTUBE_API_KEY`, `VITE_GOOGLE_CLIENT_ID`. В сайт идёт только anon-ключ.
+- Сервер (`server/.env`, шаблон `server/.env.example`): `TELEGRAM_BOT_TOKEN`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `OWNER_USER_ID`; необязательные `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, `WHISPER_PYTHON`, `WHISPER_MODEL`, `WHISPER_DEVICE`. Значения в репозиторий, чаты и логи не попадают.
+
+## Подводные камни
+- Сайт работает с данными только через `src/store` (`useCollection`, `useRecord`); компоненты не трогают `localStorage` и не ходят в Supabase напрямую.
+- Удаление мягкое (`deleted = true`); любой запрос фильтрует удалённое. Сервер обязан слать `updated_at`, иначе триггер БД отбросит запись.
+- `shared/` собирается сервером как строгий CommonJS без DOM: после правки в `shared/` проверяй `cd server && npm run build`.
+- Дату «сегодня» бери только из `shared/time.ts` (Asia/Bishkek); `toISOString().split('T')[0]` не использовать.
+- Миграции к боевой базе — только с разрешения пользователя. В `.github/workflows/deploy.yml` и `.env.production` лежат литералы `VITE_*` (anon-ключ публичный); секретов и service-role там быть не должно.
+
+## Где что
+- Архитектура и поток данных: `docs/architecture.md`. Причины решений: `docs/adr/`. Слова проекта: `CONTEXT.md`.
+- Схема БД: `supabase/migrations/002_questflow2.sql`; типы строк — `shared/types.ts`; таблицы сайта — `src/store/tables.ts`.
+- Эксплуатация бота (установка, автозапуск, логи, бэкапы): `server/docs/server.md`.
+
+## Как здесь работает Autopilot
+### Правка без автопилота
+
+Мелкий баг или доводка после сборки — обычная сессия, без прогона.
+
+Сначала прочитай:
+1. `.autopilot/PROGRESS.md` — что не доделано, известные баги, о чём договорились с пользователем.
+2. Что правили после последней сборки — первая строка таблицы в «История git».
+3. Только если правка их касается: почему сделано так — `docs/adr/`; что значат слова — `CONTEXT.md`;
+   что именно просили — `manifest.md` в папке сборки (указана в начале `PROGRESS.md`).
+
+После правки:
+- коммит — по правилам из «История git»;
+- строка в «Правки без автопилота» в `PROGRESS.md`: дата — что — почему;
+- починенный пункт из «Не доделано» или «Известные баги» — удали;
+- договорились с пользователем о том, что следующая сборка не должна пересматривать, —
+  строка в «Договорились», его словами.
+
+### История git
+
+Целиком не читай — бери срез под вопрос:
+
+| Вопрос | Команда |
+|---|---|
+| что правили после последней сборки | `git log --oneline "$(git log -1 --format=%h --grep='^Autopilot: сборка сдана')"..HEAD -- . ':(exclude).autopilot'` |
+| всё, что делали ради требования | `git log --oneline --grep="R02"` |
+| история файла | `git log --oneline -10 -- <файл>` |
+| когда появился или исчез код | `git log --oneline -S "<фрагмент>"` |
+| почему строка такая | `git blame -L <с>,<по> <файл>`, затем `git show <sha>` |
+| что внутри коммита | `git show --stat <sha>` |
+
+Срез длиннее ~30 коммитов — отдай его субагенту и возьми выжимку в десять строк.
+
+Коммит: заголовок — что (`fix: даты в одном формате`), тело — почему, трейлеры
+`Autopilot-Run: <папка сборки>` для правок автопилота и `Requirements: R02`, если правка
+касается требования из `manifest.md`. Заголовок `Autopilot: сборка сдана` пишет только автопилот — по нему находят последнюю сборку.
+<!-- autopilot:end -->
