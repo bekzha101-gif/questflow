@@ -33,9 +33,7 @@ import {
   Film,
   User,
   Clock,
-  Wand2
 } from 'lucide-react';
-import { AiVideoStudioModal } from './AiVideoStudioModal';
 import { playQuestCompleteSound, playCoinSound } from '../utils/sound';
 import { triggerQuestConfetti } from '../utils/confetti';
 
@@ -68,18 +66,6 @@ export const ContentProductionBoard: React.FC = () => {
   const [isChannelModalOpen, setIsChannelModalOpen] = useState(false);
   const [editingChannel, setEditingChannel] = useState<Channel | null>(null);
   const [editingVideo, setEditingVideo] = useState<VideoItem | null>(null);
-  const [aiStudioVideo, setAiStudioVideo] = useState<VideoItem | null>(null);
-  const [isAiStudioOpen, setIsAiStudioOpen] = useState(false);
-
-  const handleOpenAiStudio = (vid: VideoItem) => {
-    setAiStudioVideo(vid);
-    setIsAiStudioOpen(true);
-  };
-
-  const handleSaveScript = (videoId: string, newScript: string) => {
-    saveVideosState(videos.map((v) => (v.id === videoId ? { ...v, scriptSnippet: newScript } : v)));
-  };
-
 
   // Form Video State
   const [formTitle, setFormTitle] = useState('');
@@ -685,12 +671,6 @@ export const ContentProductionBoard: React.FC = () => {
                           {vid.title}
                         </h3>
 
-                        {/* Script Snippet */}
-                        {vid.scriptSnippet && (
-                          <p className="text-[10px] text-zinc-500 line-clamp-2 italic bg-black/25 p-1.5 rounded-lg border border-white/[0.02]">
-                            "{vid.scriptSnippet}"
-                          </p>
-                        )}
 
                         {/* Metadata */}
                         <div className="space-y-1 text-[10px] text-zinc-400 pt-1 border-t border-white/5 font-mono">
@@ -719,15 +699,6 @@ export const ContentProductionBoard: React.FC = () => {
                         {/* Footer Stage Control */}
                         <div className="pt-2 border-t border-white/5 flex items-center justify-between">
                           <div className="flex items-center gap-1.5">
-                            <button
-                              onClick={() => handleOpenAiStudio(vid)}
-                              className="p-1 px-1.5 rounded-lg bg-purple-950/60 hover:bg-purple-900/80 border border-purple-500/30 text-purple-300 hover:text-white flex items-center gap-1 text-[10px] font-semibold transition-all cursor-pointer shadow-sm"
-                              title="AI Студия Сценариев & Хуков"
-                            >
-                              <Wand2 className="w-3 h-3 text-purple-400" />
-                              <span>AI Студия</span>
-                            </button>
-
                             <button
                               onClick={() => openEditModal(vid)}
                               className="p-1 rounded-lg bg-zinc-900 text-zinc-500 hover:text-zinc-200 cursor-pointer"
@@ -872,17 +843,6 @@ export const ContentProductionBoard: React.FC = () => {
                     className="w-full bg-zinc-900 border border-white/10 rounded-xl px-3 py-2 text-xs text-zinc-200 [color-scheme:dark] focus:outline-none focus:border-zinc-500"
                   />
                 </div>
-              </div>
-
-              <div>
-                <label className="text-xs text-zinc-400 font-medium block mb-1">Хук / Сценарий (Первые 3 секунды)</label>
-                <textarea
-                  rows={2}
-                  placeholder="Вступление, хук..."
-                  value={formScript}
-                  onChange={(e) => setFormScript(e.target.value)}
-                  className="w-full bg-zinc-900 border border-white/10 rounded-xl px-3 py-2 text-xs text-zinc-200 focus:outline-none focus:border-zinc-500"
-                />
               </div>
 
               <div>
@@ -1074,14 +1034,6 @@ export const ContentProductionBoard: React.FC = () => {
           </div>
         </div>
       )}
-
-      {/* AI Viral Hook & Script Studio Modal */}
-      <AiVideoStudioModal
-        isOpen={isAiStudioOpen}
-        onClose={() => setIsAiStudioOpen(false)}
-        video={aiStudioVideo}
-        onSaveScript={handleSaveScript}
-      />
     </div>
   );
 };
