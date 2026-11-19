@@ -89,7 +89,6 @@ export function App() {
   const [isCalendarModalOpen, setIsCalendarModalOpen] = useState(false);
   const [isDeviceSyncOpen, setIsDeviceSyncOpen] = useState(false);
   const [isAiMasterOpen, setIsAiMasterOpen] = useState(false);
-  const [aiGoalDraft, setAiGoalDraft] = useState('');
   const [isLevelUpModalOpen, setIsLevelUpModalOpen] = useState(false);
   const [isHealthModalOpen, setIsHealthModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<TaskItem | null>(null);
@@ -623,7 +622,8 @@ export function App() {
   // Add Batch of Quests from AI
   const handleAddQuestsBatch = (newQuests: Omit<TaskItem, 'id' | 'completed'>[]) => {
     const tasksToAdd: TaskItem[] = newQuests.map((q, idx) => {
-      return { ...q, id: `task-ai-${Date.now()}-${idx}`, completed: false };
+      const { inFocusFlow: _removed, ...quest } = q; // поле Flow Shorts больше не пишем
+      return { ...quest, id: `task-ai-${Date.now()}-${idx}`, completed: false };
     });
     setTasks((prev) => [...tasksToAdd, ...prev]);
     setActiveTab('goals');
@@ -693,10 +693,6 @@ export function App() {
     onOpenCalendarModal: () => setIsCalendarModalOpen(true),
     onOpenQuickAdd: openQuickAdd,
     onOpenHealthModal: () => setIsHealthModalOpen(true),
-    onOpenAiMaster: (goal) => {
-      setAiGoalDraft(goal ?? '');
-      setIsAiMasterOpen(true);
-    },
     onOpenTab: setActiveTab,
   };
 
@@ -807,7 +803,7 @@ export function App() {
       <AiQuestMasterModal
         isOpen={isAiMasterOpen}
         onClose={() => setIsAiMasterOpen(false)}
-        initialGoal={aiGoalDraft}
+        initialGoal=""
         projects={projects}
         onAddQuests={handleAddQuestsBatch}
       />
@@ -870,10 +866,7 @@ export function App() {
         onSelectTab={setActiveTab}
         onToggleTask={handleToggleTask}
         onOpenQuickAdd={() => openQuickAdd()}
-        onOpenAiMaster={() => {
-          setAiGoalDraft('');
-          setIsAiMasterOpen(true);
-        }}
+        onOpenAiMaster={() => setIsAiMasterOpen(true)}
         onExportData={handleExportData}
       />
 

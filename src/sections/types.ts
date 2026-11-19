@@ -31,7 +31,5 @@ export interface SectionContext {
   /** Без аргумента — задача; 'shopping' — покупка */
   onOpenQuickAdd: (kind?: TaskKind) => void;
   onOpenHealthModal: () => void;
-  /** AI-мастер квестов; goal — черновик цели (например, «разбить задачу») */
-  onOpenAiMaster: (goal?: string) => void;
   onOpenTab: (tab: import('./routes').TabType) => void;
 }
