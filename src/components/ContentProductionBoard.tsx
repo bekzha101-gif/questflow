@@ -17,6 +17,7 @@ import {
   channelScope,
   parseTags,
 } from './legacyMedia';
+import { useKanbanDrag } from './useKanbanDrag';
 import { 
   Plus, 
   Edit3, 
@@ -307,7 +308,7 @@ export const ContentProductionBoard: React.FC = () => {
   };
 
   const handleMoveStage = (vid: VideoItem, nextStage: ProductionStage) => {
-    const isNowUploaded = nextStage === 'published' ? true : vid.isUploaded;
+    const isNowUploaded = nextStage === 'published' ? true : vid.stage === 'published' ? false : vid.isUploaded;
     const updated = videos.map((v) =>
       v.id === vid.id ? { ...v, stage: nextStage, isUploaded: isNowUploaded } : v
     );
@@ -320,6 +321,14 @@ export const ContentProductionBoard: React.FC = () => {
       rewardPublish(vid);
     }
   };
+
+  // Перенос карточки мышкой или пальцем в другую колонку
+  const { drag, onPointerDown } = useKanbanDrag((id, stage) => {
+    const vid = videos.find((v) => v.id === id);
+    const next = PRODUCTION_STAGES.find((st) => st.id === stage)?.id;
+    if (vid && next && next !== vid.stage) handleMoveStage(vid, next);
+  });
+  const draggedVideo = drag ? videos.find((v) => v.id === drag.id) : undefined;
 
   // Выбор в меню: все каналы, один канал или тег ('tag:<тег>')
   const scopeIds = channelScope(channels, selectedChannelId);
@@ -605,7 +614,22 @@ export const ContentProductionBoard: React.FC = () => {
         </div>
       )}
 
-      {/* Канбан: Монтаж → Обложка и заголовок → Проверка → Выкладка */}
+      {drag && draggedVideo && (
+        <div
+          className="fixed z-[60] pointer-events-none bg-[#18181f] border border-white/25 border-l-4 rounded-2xl p-3 shadow-2xl rotate-2"
+          style={{
+            left: drag.x - drag.dx,
+            top: drag.y - drag.dy,
+            width: drag.width,
+            borderLeftColor: channelColor(draggedVideo.channelId),
+          }}
+        >
+          <p className="text-[10px] text-zinc-400 truncate">{channels.find((c) => c.id === draggedVideo.channelId)?.name}</p>
+          <p className="font-bold text-xs text-zinc-100 leading-snug">{draggedVideo.title}</p>
+        </div>
+      )}
+
+      {/* Канбан: Монтаж → Обложка и заголовок → Проверка → Выкладка. Карточки перетаскиваются мышкой или пальцем */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5">
         {stages.map((stage) => {
           const stageVideos = filteredVideos.filter((v) => v.stage === stage.id);
@@ -613,7 +637,14 @@ export const ContentProductionBoard: React.FC = () => {
           return (
             <div
               key={stage.id}
-              className="bg-[#0f0f13] border border-white/5 rounded-3xl p-3 flex flex-col min-h-[520px]"
+              data-stage={stage.id}
+              className={`bg-[#0f0f13] border rounded-3xl p-3 flex flex-col min-h-[520px] transition-colors ${
+                drag && drag.overStage === stage.id && draggedVideo?.stage !== stage.id
+                  ? 'border-emerald-400/60 bg-emerald-500/[0.06]'
+                  : drag
+                    ? 'border-white/10'
+                    : 'border-white/5'
+              }`}
             >
               {/* Column Header */}
               <div className="flex items-center justify-between pb-2 mb-2.5 border-b border-white/5 px-1">
@@ -638,7 +669,11 @@ export const ContentProductionBoard: React.FC = () => {
                     return (
                       <div
                         key={vid.id}
-                        className="bg-[#141419] hover:bg-[#18181f] border border-white/[0.08] hover:border-white/20 border-l-4 rounded-2xl p-3 space-y-2 transition-all group shadow-sm"
+                        onPointerDown={(e) => onPointerDown(e, vid.id)}
+                        onContextMenu={(e) => drag && e.preventDefault()}
+                        className={`bg-[#141419] hover:bg-[#18181f] border border-white/[0.08] hover:border-white/20 border-l-4 rounded-2xl p-3 space-y-2 transition-all group shadow-sm select-none cursor-grab active:cursor-grabbing [-webkit-touch-callout:none] ${
+                          drag?.id === vid.id ? 'opacity-30' : ''
+                        }`}
                         style={{ borderLeftColor: channelColor(vid.channelId) }}
                       >
                         {/* Card Header */}
