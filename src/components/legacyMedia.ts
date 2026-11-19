@@ -4,7 +4,15 @@ import { normalizeVideo } from '@shared/channels';
 // Старая «Медиа-Студия» (6 этапов, поля автора/оплаты/сценария) поверх облачных таблиц channels2/videos2.
 // Лишние поля лежат в extra, этап для бота и расписания сводится к трём.
 
-export type ProductionStage = 'scripting' | 'voiceover' | 'editing' | 'review' | 'scheduled' | 'published';
+// Этапы: Монтаж → Обложка и заголовок → Проверка → Выкладка
+export type ProductionStage = 'editing' | 'cover' | 'review' | 'published';
+
+export const PRODUCTION_STAGES: { id: ProductionStage; label: string }[] = [
+  { id: 'editing', label: 'Монтаж' },
+  { id: 'cover', label: 'Обложка и заголовок' },
+  { id: 'review', label: 'Проверка' },
+  { id: 'published', label: 'Выкладка' },
+];
 
 export interface VideoItem {
   id: string;
@@ -31,26 +39,33 @@ export interface Channel {
   avatar: string;
   color: string;
   description?: string;
+  tags: string[];
 }
 
-const STAGES: ProductionStage[] = ['scripting', 'voiceover', 'editing', 'review', 'scheduled', 'published'];
-
 const TO_CLOUD: Record<ProductionStage, VideoStage> = {
-  scripting: 'editing',
-  voiceover: 'editing',
   editing: 'editing',
+  cover: 'editing',
   review: 'review',
-  scheduled: 'review',
   published: 'published',
 };
 
-function isStage(v: unknown): v is ProductionStage {
-  return typeof v === 'string' && (STAGES as string[]).includes(v);
+// Убранные этапы: Сценарий и Озвучка — это Монтаж, Запланировано — Проверка
+const OLD_STAGE: Record<string, ProductionStage> = {
+  scripting: 'editing',
+  voiceover: 'editing',
+  scheduled: 'review',
+};
+
+function toStage(v: unknown): ProductionStage | null {
+  if (typeof v !== 'string') return null;
+  if (v in TO_CLOUD) return v as ProductionStage;
+  return OLD_STAGE[v] ?? null;
 }
 
 export function videoFromCloud(raw: CloudVideo): VideoItem {
   const v = normalizeVideo(raw);
-  const legacy = isStage(v.legacyStage) && TO_CLOUD[v.legacyStage] === v.stage ? v.legacyStage : null;
+  const legacyStage = toStage(v.legacyStage);
+  const legacy = legacyStage && TO_CLOUD[legacyStage] === v.stage ? legacyStage : null;
   const stage: ProductionStage = legacy ?? v.stage;
   const str = (k: string) => (typeof v[k] === 'string' ? (v[k] as string) : undefined);
   const num = (k: string, d?: number) => (typeof v[k] === 'number' ? (v[k] as number) : d);
@@ -85,7 +100,11 @@ export function videoToCloud(item: VideoItem, prev: CloudVideo | undefined, toda
     upload: false,
     ...(base?.checklist ?? {}),
   };
-  if (stage !== 'editing') checklist.edit = true;
+  if (item.stage !== 'editing') checklist.edit = true;
+  if (stage !== 'editing') {
+    checklist.title = true;
+    checklist.thumbnail = true;
+  }
   if (stage === 'published') checklist.upload = true;
   const { stage: legacyStage, ...rest } = item;
   const out: CloudVideo = {
@@ -109,6 +128,7 @@ export function channelFromCloud(c: CloudChannel): Channel {
     avatar,
     color: c.color ?? '#71717a',
     description: c.niche,
+    tags: Array.isArray(c.tags) ? c.tags.filter((t): t is string => typeof t === 'string') : [],
   };
 }
 
@@ -121,4 +141,37 @@ export function channelToCloud(item: Channel, prev: CloudChannel | undefined): C
     ...rest,
     niche: description || undefined,
   };
+}
+
+// ─── Цвета, теги и выбор каналов ─────────────────────────────────────────────
+
+export const CHANNEL_COLORS = ['#71717a', '#ef4444', '#f97316', '#eab308', '#22c55e', '#06b6d4', '#3b82f6', '#8b5cf6', '#ec4899'];
+
+/** «шортсы, военка,  #США» → ['шортсы', 'военка', 'США'] без повторов */
+export function parseTags(text: string): string[] {
+  const out: string[] = [];
+  for (const raw of text.split(/[,;\n]/)) {
+    const tag = raw.trim().replace(/^#+/, '').trim();
+    if (tag && !out.some((t) => t.toLowerCase() === tag.toLowerCase())) out.push(tag);
+  }
+  return out;
+}
+
+export function allTags(channels: Channel[]): string[] {
+  return parseTags(channels.flatMap((c) => c.tags).join(','));
+}
+
+/**
+ * Выбор в меню: 'all', id канала или 'tag:<тег>'.
+ * Возвращает id каналов в выборе; null — все каналы (и когда тег или канал пропал).
+ */
+export function channelScope(channels: Channel[], selected: string): string[] | null {
+  if (selected.startsWith('tag:')) {
+    const tag = selected.slice(4).toLowerCase();
+    const ids = channels.filter((c) => c.tags.some((t) => t.toLowerCase() === tag)).map((c) => c.id);
+    // Тега больше нет ни у одного канала — показываем все
+    return ids.length ? ids : null;
+  }
+  if (selected !== 'all' && channels.some((c) => c.id === selected)) return [selected];
+  return null;
 }

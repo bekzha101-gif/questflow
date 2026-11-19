@@ -11,6 +11,11 @@ import {
   type Channel,
   type ProductionStage,
   type VideoItem,
+  PRODUCTION_STAGES,
+  CHANNEL_COLORS,
+  allTags,
+  channelScope,
+  parseTags,
 } from './legacyMedia';
 import { 
   Plus, 
@@ -78,8 +83,8 @@ export const ContentProductionBoard: React.FC = () => {
 
   // Form Video State
   const [formTitle, setFormTitle] = useState('');
-  const [formChannelId, setFormChannelId] = useState(selectedChannelId === 'all' ? (channels[0]?.id || '') : selectedChannelId);
-  const [formStage, setFormStage] = useState<ProductionStage>('scripting');
+  const [formChannelId, setFormChannelId] = useState('');
+  const [formStage, setFormStage] = useState<ProductionStage>('editing');
   const [formIsUploaded, setFormIsUploaded] = useState(false);
   const [formMemberName, setFormMemberName] = useState('');
   const [formPublishDate, setFormPublishDate] = useState(todayStr());
@@ -93,6 +98,8 @@ export const ContentProductionBoard: React.FC = () => {
   const [chanFormHandle, setChanFormHandle] = useState('@');
   const [chanFormAvatar, setChanFormAvatar] = useState('🦫');
   const [chanFormDesc, setChanFormDesc] = useState('');
+  const [chanFormColor, setChanFormColor] = useState(CHANNEL_COLORS[0]);
+  const [chanFormTags, setChanFormTags] = useState('');
 
   // Close dropdown on click outside
   useEffect(() => {
@@ -144,9 +151,9 @@ export const ContentProductionBoard: React.FC = () => {
     }
     setEditingVideo(null);
     setFormTitle('');
-    const targetChannel = selectedChannelId !== 'all' ? selectedChannelId : (channels[0]?.id || '');
+    const targetChannel = channelScope(channels, selectedChannelId)?.[0] ?? channels[0]?.id ?? '';
     setFormChannelId(targetChannel);
-    setFormStage('scripting');
+    setFormStage('editing');
     setFormIsUploaded(false);
     setFormMemberName('');
     setFormPublishDate(todayStr());
@@ -178,6 +185,8 @@ export const ContentProductionBoard: React.FC = () => {
     setChanFormHandle('@');
     setChanFormAvatar('🎬');
     setChanFormDesc('');
+    setChanFormColor(CHANNEL_COLORS[0]);
+    setChanFormTags('');
     setIsChannelDropdownOpen(false);
     setIsChannelModalOpen(true);
   };
@@ -188,6 +197,9 @@ export const ContentProductionBoard: React.FC = () => {
     setChanFormHandle(chan.handle);
     setChanFormAvatar(chan.avatar);
     setChanFormDesc(chan.description || '');
+    setChanFormColor(chan.color);
+    setChanFormTags(chan.tags.join(', '));
+    setIsChannelDropdownOpen(false);
     setIsChannelModalOpen(true);
   };
 
@@ -204,6 +216,8 @@ export const ContentProductionBoard: React.FC = () => {
               handle: chanFormHandle.trim() || `@${chanFormName.trim().toLowerCase().replace(/\s+/g, '_')}`,
               avatar: chanFormAvatar.trim() || '🎬',
               description: chanFormDesc.trim(),
+              color: chanFormColor,
+              tags: parseTags(chanFormTags),
             }
           : c
       );
@@ -214,14 +228,28 @@ export const ContentProductionBoard: React.FC = () => {
         name: chanFormName.trim(),
         handle: chanFormHandle.trim() || `@${chanFormName.trim().toLowerCase().replace(/\s+/g, '_')}`,
         avatar: chanFormAvatar.trim() || '🎬',
-        color: '#71717a',
+        color: chanFormColor,
         description: chanFormDesc.trim(),
+        tags: parseTags(chanFormTags),
       };
       const nextList = [...channels, newChan];
       saveChannelsState(nextList);
       handleSelectChannel(newChan.id);
     }
 
+    setIsChannelModalOpen(false);
+  };
+
+  // Удаление канала вместе с его видео (мягкое: в облаке помечается deleted)
+  const handleDeleteChannel = (chan: Channel) => {
+    const own = videos.filter((v) => v.channelId === chan.id);
+    const question = own.length
+      ? `Удалить канал «${chan.name}» и его видео (${own.length} шт.)?`
+      : `Удалить канал «${chan.name}»?`;
+    if (!window.confirm(question)) return;
+    for (const v of own) cloudVideos.remove(v.id);
+    cloudChannels.remove(chan.id);
+    if (selectedChannelId === chan.id) handleSelectChannel('all');
     setIsChannelModalOpen(false);
   };
 
@@ -307,14 +335,17 @@ export const ContentProductionBoard: React.FC = () => {
     }
   };
 
-  // Find Active Channel object
-  const activeChannel = channels.find((c) => c.id === selectedChannelId) || channels[0];
+  // Выбор в меню: все каналы, один канал или тег ('tag:<тег>')
+  const scopeIds = channelScope(channels, selectedChannelId);
+  const selectedTag = selectedChannelId.startsWith('tag:') && scopeIds ? selectedChannelId.slice(4) : null;
+  const activeChannel = !selectedTag ? channels.find((c) => c.id === selectedChannelId) : undefined;
+  const isAll = scopeIds === null;
+  const tags = allTags(channels);
+  const channelColor = (id: string) => channels.find((c) => c.id === id)?.color ?? CHANNEL_COLORS[0];
 
   // Filtered videos: STRICTLY filters by selected channel if not 'all'
   const filteredVideos = videos.filter((v) => {
-    if (selectedChannelId !== 'all' && v.channelId !== selectedChannelId) {
-      return false;
-    }
+    if (scopeIds && !scopeIds.includes(v.channelId)) return false;
     if (uploadFilter === 'unuploaded' && v.isUploaded) return false;
     if (uploadFilter === 'uploaded' && !v.isUploaded) return false;
     if (searchQuery.trim()) {
@@ -327,17 +358,10 @@ export const ContentProductionBoard: React.FC = () => {
     return true;
   });
 
-  const stages: { id: ProductionStage; label: string; num: string }[] = [
-    { id: 'scripting', label: 'Сценарий', num: '1' },
-    { id: 'voiceover', label: 'Озвучка', num: '2' },
-    { id: 'editing', label: 'Монтаж', num: '3' },
-    { id: 'review', label: 'Проверка', num: '4' },
-    { id: 'scheduled', label: 'Запланировано', num: '5' },
-    { id: 'published', label: 'Опубликовано', num: '6' },
-  ];
+  const stages = PRODUCTION_STAGES.map((st, i) => ({ ...st, num: String(i + 1) }));
 
   // Channel Metrics
-  const activeChannelVideos = videos.filter((v) => selectedChannelId === 'all' || v.channelId === selectedChannelId);
+  const activeChannelVideos = videos.filter((v) => !scopeIds || scopeIds.includes(v.channelId));
   const totalChannelVideos = activeChannelVideos.length;
   const inProgressCount = activeChannelVideos.filter((v) => v.stage !== 'published').length;
   const publishedCount = activeChannelVideos.filter((v) => v.stage === 'published').length;
@@ -355,16 +379,19 @@ export const ContentProductionBoard: React.FC = () => {
             onClick={() => setIsChannelDropdownOpen(!isChannelDropdownOpen)}
             className="flex items-center gap-3 px-3.5 py-2 rounded-2xl bg-zinc-900/90 hover:bg-zinc-800 border border-white/10 text-left transition-all group shadow-sm"
           >
-            <div className="w-8 h-8 rounded-xl bg-zinc-800 border border-white/10 flex items-center justify-center text-lg shrink-0">
-              {selectedChannelId === 'all' ? '📺' : (activeChannel?.avatar || '🎬')}
+            <div
+              className="w-8 h-8 rounded-xl bg-zinc-800 border border-white/10 flex items-center justify-center text-lg shrink-0"
+              style={activeChannel ? { backgroundColor: `${activeChannel.color}33`, borderColor: activeChannel.color } : undefined}
+            >
+              {isAll ? '📺' : selectedTag ? '#' : (activeChannel?.avatar || '🎬')}
             </div>
 
             <div className="min-w-0 pr-1">
               <p className="text-xs font-bold text-zinc-100 leading-tight truncate font-heading">
-                {selectedChannelId === 'all' ? 'Все каналы' : activeChannel?.name}
+                {isAll ? 'Все каналы' : selectedTag ? `#${selectedTag}` : activeChannel?.name}
               </p>
               <p className="text-[10px] text-zinc-500 font-mono truncate">
-                {selectedChannelId === 'all' ? 'Глобальный контент-план' : activeChannel?.handle}
+                {isAll ? 'Глобальный контент-план' : selectedTag ? `Каналов: ${scopeIds?.length ?? 0}` : activeChannel?.handle}
               </p>
             </div>
 
@@ -379,7 +406,7 @@ export const ContentProductionBoard: React.FC = () => {
               <div
                 onClick={() => handleSelectChannel('all')}
                 className={`flex items-center gap-3 p-2.5 rounded-xl cursor-pointer transition-colors ${
-                  selectedChannelId === 'all' ? 'bg-zinc-800 text-white font-semibold' : 'text-zinc-300 hover:bg-zinc-800/60'
+                  isAll ? 'bg-zinc-800 text-white font-semibold' : 'text-zinc-300 hover:bg-zinc-800/60'
                 }`}
               >
                 <div className="w-7 h-7 rounded-lg bg-zinc-900 border border-white/10 flex items-center justify-center text-sm">
@@ -389,7 +416,7 @@ export const ContentProductionBoard: React.FC = () => {
                   <p className="text-xs font-medium">Все каналы</p>
                   <p className="text-[10px] text-zinc-500">Глобальный контент-план</p>
                 </div>
-                {selectedChannelId === 'all' && <Check className="w-3.5 h-3.5 text-zinc-200" />}
+                {isAll && <Check className="w-3.5 h-3.5 text-zinc-200" />}
               </div>
 
               <div className="h-px bg-white/5 my-1" />
@@ -408,22 +435,64 @@ export const ContentProductionBoard: React.FC = () => {
                         isSelected ? 'bg-zinc-800 text-white font-semibold' : 'text-zinc-300 hover:bg-zinc-800/60'
                       }`}
                     >
-                      <div className="w-7 h-7 rounded-lg bg-zinc-900 border border-white/10 flex items-center justify-center text-base">
+                      <div
+                        className="w-7 h-7 rounded-lg border flex items-center justify-center text-base shrink-0"
+                        style={{ backgroundColor: `${c.color}33`, borderColor: c.color }}
+                      >
                         {c.avatar}
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-xs truncate">{c.name}</p>
-                        <p className="text-[10px] text-zinc-500 font-mono truncate">{c.handle}</p>
+                        <p className="text-[10px] text-zinc-500 font-mono truncate">
+                          {c.tags.length ? c.tags.map((t) => `#${t}`).join(' ') : c.handle}
+                        </p>
                       </div>
                       <span className="text-[10px] font-mono text-zinc-500 px-1.5 py-0.2 rounded bg-zinc-900">
                         {cCount}
                       </span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openEditChannelModal(c);
+                        }}
+                        className="p-1 rounded-md text-zinc-500 hover:text-white hover:bg-zinc-700"
+                        title="Изменить канал"
+                        aria-label={`Изменить канал ${c.name}`}
+                      >
+                        <Edit3 className="w-3 h-3" />
+                      </button>
                     </div>
                   );
                 })}
               </div>
 
               <div className="h-px bg-white/5 my-1" />
+
+              {/* Теги: показать все каналы с тегом */}
+              {tags.length > 0 && (
+                <>
+                  <p className="px-2 pt-1 text-[10px] uppercase tracking-wider text-zinc-500">Теги</p>
+                  <div className="flex flex-wrap gap-1 px-1.5 pb-1">
+                    {tags.map((t) => {
+                      const on = selectedTag?.toLowerCase() === t.toLowerCase();
+                      return (
+                        <button
+                          key={t}
+                          type="button"
+                          onClick={() => handleSelectChannel(`tag:${t}`)}
+                          className={`px-2 py-0.5 rounded-full text-[11px] border transition-colors ${
+                            on ? 'bg-zinc-100 text-zinc-950 border-zinc-100 font-semibold' : 'bg-zinc-900 text-zinc-300 border-white/10 hover:text-white'
+                          }`}
+                        >
+                          #{t}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="h-px bg-white/5 my-1" />
+                </>
+              )}
 
               {/* New Channel Button */}
               <button
@@ -488,10 +557,13 @@ export const ContentProductionBoard: React.FC = () => {
       </div>
 
       {/* ShortsFlow Active Channel Hero Card */}
-      {selectedChannelId !== 'all' && activeChannel && (
+      {activeChannel && (
         <div className="bg-[#111115] border border-white/[0.08] rounded-3xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-md">
           <div className="flex items-start sm:items-center gap-3.5">
-            <div className="w-12 h-12 rounded-2xl bg-zinc-900 border border-white/10 flex items-center justify-center text-2xl shrink-0">
+            <div
+              className="w-12 h-12 rounded-2xl border flex items-center justify-center text-2xl shrink-0"
+              style={{ backgroundColor: `${activeChannel.color}33`, borderColor: activeChannel.color }}
+            >
               {activeChannel.avatar}
             </div>
             <div>
@@ -510,6 +582,20 @@ export const ContentProductionBoard: React.FC = () => {
               </div>
               {activeChannel.description && (
                 <p className="text-xs text-zinc-400 mt-0.5 line-clamp-1">{activeChannel.description}</p>
+              )}
+              {activeChannel.tags.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {activeChannel.tags.map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => handleSelectChannel(`tag:${t}`)}
+                      className="px-1.5 py-0.5 rounded-md text-[10px] bg-zinc-900 border border-white/10 text-zinc-400 hover:text-white"
+                    >
+                      #{t}
+                    </button>
+                  ))}
+                </div>
               )}
             </div>
           </div>
@@ -533,8 +619,8 @@ export const ContentProductionBoard: React.FC = () => {
         </div>
       )}
 
-      {/* 6 Kanban Columns */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3.5">
+      {/* Канбан: Монтаж → Обложка и заголовок → Проверка → Выкладка */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5">
         {stages.map((stage) => {
           const stageVideos = filteredVideos.filter((v) => v.stage === stage.id);
 
@@ -566,11 +652,12 @@ export const ContentProductionBoard: React.FC = () => {
                     return (
                       <div
                         key={vid.id}
-                        className="bg-[#141419] hover:bg-[#18181f] border border-white/[0.08] hover:border-white/20 rounded-2xl p-3 space-y-2 transition-all group shadow-sm"
+                        className="bg-[#141419] hover:bg-[#18181f] border border-white/[0.08] hover:border-white/20 border-l-4 rounded-2xl p-3 space-y-2 transition-all group shadow-sm"
+                        style={{ borderLeftColor: channelColor(vid.channelId) }}
                       >
                         {/* Card Header */}
                         <div className="flex items-start justify-between gap-1.5">
-                          {selectedChannelId === 'all' ? (
+                          {!activeChannel ? (
                             <span className="text-[10px] text-zinc-400 font-medium truncate flex items-center gap-1">
                               <span>{channel?.avatar}</span>
                               <span className="truncate">{channel?.name}</span>
@@ -663,12 +750,11 @@ export const ContentProductionBoard: React.FC = () => {
                             onChange={(e) => handleMoveStage(vid, e.target.value as ProductionStage)}
                             className="bg-zinc-900 border border-white/10 rounded px-1.5 py-0.5 text-[9px] text-zinc-400 focus:outline-none"
                           >
-                            <option value="scripting">1. Сценарий</option>
-                            <option value="voiceover">2. Озвучка</option>
-                            <option value="editing">3. Монтаж</option>
-                            <option value="review">4. Проверка</option>
-                            <option value="scheduled">5. Запланировано</option>
-                            <option value="published">6. Опубликовано</option>
+                            {stages.map((st) => (
+                              <option key={st.id} value={st.id}>
+                                {st.num}. {st.label}
+                              </option>
+                            ))}
                           </select>
                         </div>
                       </div>
@@ -733,12 +819,11 @@ export const ContentProductionBoard: React.FC = () => {
                     onChange={(e) => setFormStage(e.target.value as ProductionStage)}
                     className="w-full bg-zinc-900 border border-white/10 rounded-xl px-3 py-2 text-xs text-zinc-200 focus:outline-none focus:border-zinc-500"
                   >
-                    <option value="scripting">1. Сценарий</option>
-                    <option value="voiceover">2. Озвучка</option>
-                    <option value="editing">3. Монтаж</option>
-                    <option value="review">4. Проверка</option>
-                    <option value="scheduled">5. Запланировано</option>
-                    <option value="published">6. Опубликовано</option>
+                    {stages.map((st) => (
+                      <option key={st.id} value={st.id}>
+                        {st.num}. {st.label}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>
@@ -907,7 +992,70 @@ export const ContentProductionBoard: React.FC = () => {
                 />
               </div>
 
+              <div>
+                <label className="text-xs text-zinc-400 font-medium block mb-1">Цвет</label>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {CHANNEL_COLORS.map((color) => (
+                    <button
+                      key={color}
+                      type="button"
+                      onClick={() => setChanFormColor(color)}
+                      aria-label={`Цвет ${color}`}
+                      aria-pressed={chanFormColor === color}
+                      className={`w-6 h-6 rounded-full border-2 transition-transform ${
+                        chanFormColor === color ? 'border-white scale-110' : 'border-transparent'
+                      }`}
+                      style={{ backgroundColor: color }}
+                    />
+                  ))}
+                  <input
+                    type="color"
+                    value={chanFormColor}
+                    onChange={(e) => setChanFormColor(e.target.value)}
+                    aria-label="Свой цвет"
+                    title="Свой цвет"
+                    className="w-7 h-7 rounded-md bg-transparent border border-white/10 cursor-pointer"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs text-zinc-400 font-medium block mb-1">Теги (через запятую)</label>
+                <input
+                  type="text"
+                  placeholder="военка, США, шортсы"
+                  value={chanFormTags}
+                  onChange={(e) => setChanFormTags(e.target.value)}
+                  className="w-full bg-zinc-900 border border-white/10 rounded-xl px-3 py-2 text-xs text-zinc-200 focus:outline-none focus:border-zinc-500"
+                />
+                {tags.filter((t) => !parseTags(chanFormTags).some((x) => x.toLowerCase() === t.toLowerCase())).length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-1.5">
+                    {tags
+                      .filter((t) => !parseTags(chanFormTags).some((x) => x.toLowerCase() === t.toLowerCase()))
+                      .map((t) => (
+                        <button
+                          key={t}
+                          type="button"
+                          onClick={() => setChanFormTags(parseTags(`${chanFormTags},${t}`).join(', '))}
+                          className="px-1.5 py-0.5 rounded-md text-[10px] bg-zinc-900 border border-white/10 text-zinc-400 hover:text-white"
+                        >
+                          + #{t}
+                        </button>
+                      ))}
+                  </div>
+                )}
+              </div>
+
               <div className="flex justify-end gap-2 pt-2 border-t border-white/5">
+                {editingChannel && (
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteChannel(editingChannel)}
+                    className="mr-auto flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs text-rose-400 hover:bg-rose-500/10"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" /> Удалить канал
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => setIsChannelModalOpen(false)}
