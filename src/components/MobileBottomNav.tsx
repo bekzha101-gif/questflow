@@ -8,8 +8,8 @@ interface MobileBottomNavProps {
   onOpenQuickAdd: () => void;
 }
 
-// Нижняя навигация телефона: 5 разделов и «+» над панелью справа (на 390 px пять пунктов
-// влезают по 78 px, шестой кнопкой в ряду они бы стали уже 64 px и подписи обрезались)
+// Нижняя навигация телефона: 4 раздела и «+» над панелью справа (кнопкой в ряду «+» сузил бы
+// пункты и подписи обрезались)
 export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   activeTab,
   onSelectTab,

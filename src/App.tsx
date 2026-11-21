@@ -24,7 +24,6 @@ import { Navigation, SECTION_TITLES } from './components/Navigation';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { getSection, resolveTab, type TabType } from './sections/routes';
 import type { SectionContext } from './sections/types';
-import { TodaySection } from './sections/today';
 import { GoalsSection } from './sections/goals';
 import { ChannelsSection } from './sections/channels';
 import { HealthSection } from './sections/health';
@@ -737,7 +736,6 @@ export function App() {
 
       {/* 3. Разделы: каждый живёт в своей папке src/sections/<id>/ */}
       <main className="flex-1 overflow-hidden flex flex-col">
-        {section === 'today' && <TodaySection ctx={sectionContext} />}
         {section === 'goals' && (
           <div className="flex-1 overflow-y-auto">
             <GoalsSection ctx={sectionContext} tab={activeTab} />

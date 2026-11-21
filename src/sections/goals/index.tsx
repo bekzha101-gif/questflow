@@ -7,33 +7,51 @@ import { goalsViewFor, type GoalsView, type TabType } from '../routes';
 import { GoalsMonth } from './GoalsMonth';
 import { GoalsArchive } from './GoalsArchive';
 import { GoalsSomeday } from './GoalsSomeday';
+import { TodaySection } from '../today';
 import type { SectionContext } from '../types';
 
 type View = GoalsView | 'goals' | 'someday' | 'archive';
-// Цели месяца открываются по умолчанию; старый id «tasks» открывает вкладку задач
-const initialView = (tab: TabType): View => (tab === 'tasks' || tab === 'shopping' || tab === 'calendar' ? goalsViewFor(tab) : 'goals');
+// «Сегодня» открывается по умолчанию (и при открытии сайта); старые id «tasks», «shopping», «calendar» открывают свою вкладку
+const initialView = (tab: TabType): View => goalsViewFor(tab);
 
-// «Цели»: цели месяца · без срока · архив · задачи · покупки (на своей вкладке) · календарь.
+// «Цели»: сегодня · цели месяца · без срока · архив · задачи · покупки (на своей вкладке) · календарь.
 export function GoalsSection({ ctx, tab }: { ctx: SectionContext; tab: TabType }) {
   const [view, setView] = useState<View>(initialView(tab));
   // Старая ссылка (например, «покупки») открывает свою вкладку, в том числе при переходе из палитры
   useEffect(() => setView(initialView(tab)), [tab]);
 
+  const tabs = (
+    <SubTabs
+      label="Цели"
+      active={view}
+      onChange={setView}
+      items={[
+        { id: 'today', label: 'Сегодня' },
+        { id: 'goals', label: 'Цели месяца' },
+        { id: 'someday', label: 'Без срока' },
+        { id: 'archive', label: 'Архив' },
+        { id: 'tasks', label: 'Задачи', badge: ctx.tasks.filter((t) => t.type === 'todo' && !t.completed).length },
+        { id: 'shopping', label: 'Покупки', badge: ctx.shoppingCount },
+        { id: 'calendar', label: 'Календарь' },
+      ]}
+    />
+  );
+
+  // «Сегодня» — прежний экран из 4 колонок во всю ширину (раскладка не меняется, CLAUDE.md п.16)
+  if (view === 'today') {
+    return (
+      <div className="flex flex-col h-full min-h-0 animate-fade-in">
+        <div className="px-2 sm:px-4 pt-2">{tabs}</div>
+        <div className="flex-1 min-h-0">
+          <TodaySection ctx={ctx} />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-7xl mx-auto py-2 px-2 sm:px-4 space-y-3 animate-fade-in">
-      <SubTabs
-        label="Цели"
-        active={view}
-        onChange={setView}
-        items={[
-          { id: 'goals', label: 'Цели месяца' },
-          { id: 'someday', label: 'Без срока' },
-          { id: 'archive', label: 'Архив' },
-          { id: 'tasks', label: 'Задачи', badge: ctx.tasks.filter((t) => t.type === 'todo' && !t.completed).length },
-          { id: 'shopping', label: 'Покупки', badge: ctx.shoppingCount },
-          { id: 'calendar', label: 'Календарь' },
-        ]}
-      />
+      {tabs}
 
       {view === 'goals' && <GoalsMonth />}
       {view === 'someday' && <GoalsSomeday onMovedToMonth={() => setView('goals')} />}

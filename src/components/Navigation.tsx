@@ -11,9 +11,8 @@ export interface NavItem {
   icon: LucideIcon;
 }
 
-// Ровно 5 разделов: и сбоку на Mac, и снизу на телефоне
+// 4 раздела («Сегодня» — вкладка внутри «Целей»): и сбоку на Mac, и снизу на телефоне
 export const PRIMARY_NAV: NavItem[] = [
-  { id: 'today', label: 'Сегодня', icon: Zap },
   { id: 'goals', label: 'Цели', icon: Target },
   { id: 'channels', label: 'Каналы', icon: Tv },
   { id: 'health', label: 'Здоровье', icon: Heart },
@@ -21,7 +20,6 @@ export const PRIMARY_NAV: NavItem[] = [
 ];
 
 export const SECTION_TITLES: Record<SectionType, string> = {
-  today: 'Сегодня',
   goals: 'Цели',
   channels: 'Каналы',
   health: 'Здоровье',
@@ -37,7 +35,7 @@ interface NavigationProps {
 // Боковая навигация для Mac / широкого экрана
 export const Navigation: React.FC<NavigationProps> = ({ activeTab, onSelectTab, dueTodayCount }) => {
   const section = getSection(activeTab);
-  const badges: Partial<Record<SectionType, number>> = { today: dueTodayCount };
+  const badges: Partial<Record<SectionType, number>> = { goals: dueTodayCount };
 
   return (
     <nav
