@@ -114,9 +114,14 @@ export function goalProgress(
   };
 }
 
+/** Цель без срока: месяц не задан (в облаке month = null) */
+export function isSomeday(goal: Pick<Goal, 'month'>): boolean {
+  return !goal.month;
+}
+
 /** Шаги для выбора задачи таймером: активные цели, текущая неделя, не сделанные, принятые */
 export function stepsForTimer(goals: Goal[], steps: GoalStepEx[], today: string = todayStr()): GoalStepEx[] {
-  const active = new Map(goals.filter((g) => g.status === 'active').map((g) => [g.id, g]));
+  const active = new Map(goals.filter((g) => g.status === 'active' && !isSomeday(g)).map((g) => [g.id, g]));
   return steps.filter((s) => {
     const g = active.get(s.goalId);
     return !!g && !s.done && !s.proposed && s.weekIndex === currentWeekIndex(g.month, today);

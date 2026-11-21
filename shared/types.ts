@@ -117,7 +117,7 @@ export type GoalStatus = 'active' | 'done' | 'failed' | 'archived';
 
 export interface Goal {
   id: string;
-  /** 'YYYY-MM' */
+  /** 'YYYY-MM'; пусто — цель без срока («Когда-нибудь») */
   month: string;
   title: string;
   kind: GoalKind;
@@ -127,6 +127,8 @@ export interface Goal {
   status: GoalStatus;
   summary?: string;
   seed?: boolean;
+  /** Для цели без срока: когда можно начать (например «когда будет бюджет») */
+  condition?: string;
 }
 
 export interface GoalWeek {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { splitTarget, goalProgress, weeksFor, currentWeekIndex, stepsForTimer } from './goals';
+import { splitTarget, goalProgress, weeksFor, currentWeekIndex, stepsForTimer, isSomeday } from './goals';
 import type { Goal, GoalStep, GoalWeek } from './types';
 
 const goal = (over: Partial<Goal> = {}): Goal => ({
@@ -87,5 +87,18 @@ describe('stepsForTimer — шаги недели для выбора задач
       { id: 'e', goalId: 'g2', weekIndex: 3, title: 'цель закрыта' },
     ];
     expect(stepsForTimer(goals, steps, '2026-11-15').map((s) => s.id)).toEqual(['a']);
+  });
+});
+
+describe('isSomeday — цели без срока', () => {
+  it('пустой или отсутствующий месяц — цель без срока', () => {
+    expect(isSomeday({ month: '' })).toBe(true);
+    expect(isSomeday({} as Goal)).toBe(true);
+    expect(isSomeday({ month: '2026-11' })).toBe(false);
+  });
+  it('таймер не берёт шаги цели без срока', () => {
+    const g: Goal = { id: 'g', month: '', title: 'Канал', kind: 'percent', target: 100, status: 'active' };
+    const s: GoalStep = { id: 's', goalId: 'g', weekIndex: 1, title: 'шаг' };
+    expect(stepsForTimer([g], [s], '2026-11-03')).toHaveLength(0);
   });
 });

@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useCollection } from '../../store';
 import type { Goal, GoalWeek } from '@shared/types';
-import { goalPct, monthLabel, monthSummary } from '@shared/goals';
+import { goalPct, isSomeday, monthLabel, monthSummary } from '@shared/goals';
 import { monthKey, todayStr } from '@shared/time';
 import { ProgressBar } from './goalUi';
 
@@ -16,6 +16,7 @@ export function GoalsArchive({ onSetGoal }: { onSetGoal: () => void }) {
   const months = useMemo(() => {
     const by = new Map<string, Goal[]>();
     for (const g of goals) {
+      if (isSomeday(g)) continue; // цели без срока живут на своей вкладке
       // текущий месяц попадает в архив только отправленными туда целями; прошлые месяцы — целиком
       if (g.month >= current && g.status !== 'archived') continue;
       by.set(g.month, [...(by.get(g.month) ?? []), g]);

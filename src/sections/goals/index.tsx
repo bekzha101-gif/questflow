@@ -6,13 +6,14 @@ import { SubTabs } from '../SubTabs';
 import { goalsViewFor, type GoalsView, type TabType } from '../routes';
 import { GoalsMonth } from './GoalsMonth';
 import { GoalsArchive } from './GoalsArchive';
+import { GoalsSomeday } from './GoalsSomeday';
 import type { SectionContext } from '../types';
 
-type View = GoalsView | 'goals' | 'archive';
+type View = GoalsView | 'goals' | 'someday' | 'archive';
 // Цели месяца открываются по умолчанию; старый id «tasks» открывает вкладку задач
 const initialView = (tab: TabType): View => (tab === 'tasks' || tab === 'shopping' || tab === 'calendar' ? goalsViewFor(tab) : 'goals');
 
-// «Цели»: цели месяца · архив · задачи · покупки (на своей вкладке) · календарь.
+// «Цели»: цели месяца · без срока · архив · задачи · покупки (на своей вкладке) · календарь.
 export function GoalsSection({ ctx, tab }: { ctx: SectionContext; tab: TabType }) {
   const [view, setView] = useState<View>(initialView(tab));
   // Старая ссылка (например, «покупки») открывает свою вкладку, в том числе при переходе из палитры
@@ -26,6 +27,7 @@ export function GoalsSection({ ctx, tab }: { ctx: SectionContext; tab: TabType }
         onChange={setView}
         items={[
           { id: 'goals', label: 'Цели месяца' },
+          { id: 'someday', label: 'Без срока' },
           { id: 'archive', label: 'Архив' },
           { id: 'tasks', label: 'Задачи', badge: ctx.tasks.filter((t) => t.type === 'todo' && !t.completed).length },
           { id: 'shopping', label: 'Покупки', badge: ctx.shoppingCount },
@@ -34,6 +36,7 @@ export function GoalsSection({ ctx, tab }: { ctx: SectionContext; tab: TabType }
       />
 
       {view === 'goals' && <GoalsMonth />}
+      {view === 'someday' && <GoalsSomeday onMovedToMonth={() => setView('goals')} />}
       {view === 'archive' && <GoalsArchive onSetGoal={() => setView('goals')} />}
 
       {view === 'tasks' && (
