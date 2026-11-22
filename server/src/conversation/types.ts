@@ -24,6 +24,8 @@ export interface ConversationDeps {
   ai: Ai;
   stt: Stt;
   files?: TelegramFiles;
+  /** Сохранить копию нерасшифрованного голосового; вернуть путь копии или null */
+  keepFailedVoice?(path: string): string | null;
   now?: () => Date;
   log?(message: string): void;
 }

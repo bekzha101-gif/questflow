@@ -26,6 +26,20 @@ export interface SttOptions {
   log?(message: string): void;
 }
 
+export const STT_TIMEOUT_MS = 15 * 60_000;
+
+/** Копия нерасшифрованного голосового в server/logs/voice-failed: чтобы не пропало, его можно расшифровать позже */
+export function keepFailedVoice(oggPath: string, dir = path.join(serverRoot(), 'logs', 'voice-failed')): string | null {
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    const dest = path.join(dir, path.basename(oggPath));
+    fs.copyFileSync(oggPath, dest);
+    return dest;
+  } catch {
+    return null;
+  }
+}
+
 export function sttScriptPath(): string {
   return path.join(serverRoot(), 'stt', 'transcribe.py');
 }
@@ -54,7 +68,8 @@ export function createStt(opts: SttOptions = {}): Stt {
       const words = [...new Set([...(opts.hints ?? []), ...hints].map((w) => w.trim()).filter(Boolean))].slice(0, 40);
       if (words.length) args.push('--hints', words.join(', '));
       try {
-        const out = await run(python, args, opts.timeoutMs ?? 120_000);
+        // 15 минут: когда видеокарта занята рендерами, длинное голосовое за 2 минуты не успевало (22.11.2026)
+        const out = await run(python, args, opts.timeoutMs ?? STT_TIMEOUT_MS);
         const line = out.trim().split(/\r?\n/).reverse().find((l) => l.trim().startsWith('{'));
         if (!line) return null;
         const j = JSON.parse(line) as { text?: unknown; error?: unknown; device?: unknown };

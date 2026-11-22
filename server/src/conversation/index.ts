@@ -24,6 +24,7 @@ export const CONV_TEXT = {
   greeting: 'Вечер. Подведём день: отвечай кнопками, текстом или голосовым.',
   reminder: 'Напоминание: вечерний разговор ждёт ответа. Без ответа день останется без отчёта и HP уменьшится.',
   voiceFailed: 'Не получилось распознать голосовое. Напиши, пожалуйста, текстом.',
+  voiceListening: 'Слушаю голосовое, расшифровываю…',
   stale: 'Это кнопка от прошлого вопроса. Отвечаю на текущий:',
   idle: 'Сейчас разговора нет. Вечерний разговор начнётся в 21:00; чтобы начать раньше — напиши «вечер».',
   alreadyDone: 'Сегодня итог уже подведён.',
@@ -239,8 +240,14 @@ export function createConversation(deps: ConversationDeps): Conversation {
       const cfg = file ? await safe('названия БАДов', () => store.getBigDataConfig(), null) : null;
       const hints = (cfg?.supplements ?? []).map((s) => s.name).filter(Boolean);
       const t0 = Date.now();
+      // Расшифровка может идти минуты (видеокарта занята) — сразу даём знать, что голосовое получено
+      if (file) await deps.send(CONV_TEXT.voiceListening);
       const heard = file ? await deps.stt.transcribe(file, hints) : null;
       if (file) log(`Голос: ${heard ? `расшифрован за ${((Date.now() - t0) / 1000).toFixed(1)} с, ${heard.length} симв.` : 'не расшифрован'}`);
+      if (file && !heard) {
+        const kept = deps.keepFailedVoice?.(file);
+        if (kept) log(`Голос сохранён: ${kept}`);
+      }
       if (file) await deps.files?.release?.(file).catch(() => {});
       if (!heard) {
         await deps.send(CONV_TEXT.voiceFailed);

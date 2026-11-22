@@ -7,7 +7,7 @@ import { createBotService } from './bot';
 import { startScheduler, type ConversationApi } from './scheduler';
 import { createAi } from './ai';
 import { ADVISOR_POLL_MS, createAdvisor } from './advisor';
-import { createStt } from './stt';
+import { createStt, keepFailedVoice } from './stt';
 import { createConversation, createSupabaseStore } from './conversation';
 import { createTelegramFiles, toInlineKeyboard } from './conversation/telegram';
 import { createPublicationSource, loadRemindersFor } from './publications';
@@ -55,6 +55,7 @@ async function main() {
       log,
     }),
     files: createTelegramFiles(service.bot.api, config.telegramBotToken, path.join(os.tmpdir(), 'questflow-bot')),
+    keepFailedVoice,
     log,
   });
   conversation = evening;

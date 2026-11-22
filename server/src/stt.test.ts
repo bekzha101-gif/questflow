@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { createStt } from './stt';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { createStt, keepFailedVoice, STT_TIMEOUT_MS } from './stt';
 
 describe('stt.transcribe', () => {
   it('вызывает server/stt/transcribe.py с файлом и возвращает текст', async () => {
@@ -42,5 +45,24 @@ describe('stt.transcribe', () => {
   it('пустая расшифровка или ошибка в ответе → null', async () => {
     expect(await createStt({ run: async () => '{"text": "  "}' }).transcribe('a.ogg')).toBeNull();
     expect(await createStt({ run: async () => '{"error": "cuda"}' }).transcribe('a.ogg')).toBeNull();
+  });
+});
+
+describe('длинное голосовое при занятой видеокарте', () => {
+  it('ждёт расшифровку до 15 минут, а не 2', async () => {
+    let got = 0;
+    const stt = createStt({ run: async (_c, _a, t) => ((got = t), '{"text":"ок"}') });
+    await stt.transcribe('x.oga');
+    expect(got).toBe(STT_TIMEOUT_MS);
+    expect(STT_TIMEOUT_MS).toBeGreaterThanOrEqual(15 * 60_000);
+  });
+
+  it('нерасшифрованное голосовое сохраняется копией', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qf-voice-'));
+    const src = path.join(dir, 'voice-1.oga');
+    fs.writeFileSync(src, 'opus');
+    const kept = keepFailedVoice(src, path.join(dir, 'kept'));
+    expect(kept && fs.readFileSync(kept, 'utf8')).toBe('opus');
+    expect(keepFailedVoice(path.join(dir, 'нет.oga'), path.join(dir, 'kept'))).toBeNull();
   });
 });

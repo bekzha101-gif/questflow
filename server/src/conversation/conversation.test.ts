@@ -191,6 +191,7 @@ describe('вечерний разговор', () => {
     await w.conv.startEvening('2026-11-17');
     await w.conv.handleUpdate({ chatId: '1', voiceFileId: 'v1' });
     expect(last(w).text).toContain('текстом');
+    expect(w.sent.some((x) => x.text.includes('Слушаю голосовое'))).toBe(true);
     await say(w, '6:30');
     expect(w.data.days['2026-11-17'].sleepMin).toBe(390);
   });
