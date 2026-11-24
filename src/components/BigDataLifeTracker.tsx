@@ -795,7 +795,7 @@ function SleepImport({ month }: { month: string }) {
   return (
     <section className="p-4 rounded-[20px] bg-[#101014] border border-white/[0.07] space-y-3">
       <h3 className="text-[11px] font-semibold tracking-[0.06em] uppercase text-zinc-500">Импорт сна</h3>
-      <p className="text-[11px] text-zinc-500">Обычно сон приходит скриншотом Sleep Cycle в вечернем разговоре с ботом. Здесь — запасные способы.</p>
+      <p className="text-[11px] text-zinc-500">Сон из Sleep Cycle: загрузите CSV или впишите вручную.</p>
       <div className="flex flex-wrap gap-2">
         <SleepCsvButton />
         <button onClick={onFit} disabled={busy} className="h-8 px-3 rounded-[10px] text-xs font-medium bg-[#16161f] border border-white/[0.12] text-zinc-200 disabled:opacity-50">

@@ -1,16 +1,13 @@
-// Точка входа сервера: бот + расписания. Запуск: npm start (после npm run build).
-import os from 'node:os';
+// Точка входа домашнего сервера: AI-советник для сайта и ночной бэкап. Запуск: npm start (после npm run build).
+// Telegram-бот, вечерний разговор и голос убраны 2026-11-24 по просьбе владельца: управление — через Claude напрямую.
+import fs from 'node:fs';
 import path from 'node:path';
+import { todayStr } from '../../shared/time';
 import { envFilePath, loadEnvFile, readConfig, redact, serverRoot, type ServerConfig } from './config';
 import { createDb, createSupabaseClient } from './db';
-import { createBotService } from './bot';
-import { startScheduler, type ConversationApi } from './scheduler';
 import { createAi } from './ai';
 import { ADVISOR_POLL_MS, createAdvisor } from './advisor';
-import { createStt, keepFailedVoice } from './stt';
-import { createConversation, createSupabaseStore } from './conversation';
-import { createTelegramFiles, toInlineKeyboard } from './conversation/telegram';
-import { createPublicationSource, loadRemindersFor } from './publications';
+import { createSupabaseStore } from './conversation/store';
 import { runBackup } from './backup';
 
 // Конфиг виден обработчику падения: текст ошибки проходит через redact, если конфиг уже прочитан
@@ -22,6 +19,13 @@ export function crashLine(e: unknown, config: ServerConfig | null, at: Date = ne
   return `[${at.toISOString()}] Сервер упал: ${config ? redact(message, config) : message}`;
 }
 
+/** Бэкап раз в сутки: файла за сегодня (по Бишкеку) ещё нет — пишем */
+export function backupDue(dir: string, now: Date): boolean {
+  return !fs.existsSync(path.join(dir, `questflow-${todayStr(now)}.json`));
+}
+
+const BACKUP_CHECK_MS = 30 * 60_000;
+
 async function main() {
   loadEnvFile(envFilePath());
   const config = readConfig();
@@ -30,69 +34,34 @@ async function main() {
 
   const client = createSupabaseClient(config.supabaseUrl, config.supabaseServiceRoleKey);
   const db = createDb(client, config.ownerUserId);
-
-  // Разговор подключается лениво: бот и разговор ссылаются друг на друга через send
-  let conversation: ConversationApi | null = null;
-  const service = createBotService({
-    token: config.telegramBotToken,
-    db,
-    conversation: { handleUpdate: (m) => conversation!.handleUpdate(m) },
-    log,
-  });
-  const send = (text: string) => service.send(text);
-  const ai = createAi({ apiKey: config.anthropicApiKey, model: process.env.ANTHROPIC_MODEL?.trim() || undefined, log });
   const store = createSupabaseStore(client, config.ownerUserId);
-  // Вечерний разговор, голос и AI-аналитик (таск 09)
-  const evening = createConversation({
-    store,
-    send: (text, keyboard) => service.send(text, keyboard ? toInlineKeyboard(keyboard) : undefined),
-    ai,
-    stt: createStt({
-      python: process.env.WHISPER_PYTHON?.trim() || undefined,
-      model: process.env.WHISPER_MODEL?.trim() || undefined,
-      device: process.env.WHISPER_DEVICE?.trim() || undefined,
-      hints: (process.env.WHISPER_HINTS ?? '').split(','),
-      log,
-    }),
-    files: createTelegramFiles(service.bot.api, config.telegramBotToken, path.join(os.tmpdir(), 'questflow-bot')),
-    keepFailedVoice,
-    log,
-  });
-  conversation = evening;
-  // Повтор анализов, которые не удались (Claude был недоступен или упёрся в лимит)
-  const retryTimer = setInterval(() => void evening.tick().catch((e) => log(`Повтор анализа: ${(e as Error).message}`)), 5 * 60_000);
+  const ai = createAi({ apiKey: config.anthropicApiKey, model: process.env.ANTHROPIC_MODEL?.trim() || undefined, log });
 
-  // AI-советник: запрос с сайта (kv ai_advisor) → Claude по данным месяца → ответ на сайт и в Telegram
-  const advisor = createAdvisor({ store, ai, send, log });
+  // AI-советник: запрос с сайта (kv ai_advisor) → Claude по данным месяца → ответ на сайт
+  const advisor = createAdvisor({ store, ai, log });
   const advisorTick = () => void advisor.tick().catch((e) => log(`AI-советник: ${(e as Error).message}`));
-  const advisorTimer = setInterval(advisorTick, ADVISOR_POLL_MS);
+  setInterval(advisorTick, ADVISOR_POLL_MS);
   advisorTick();
 
-  const stopScheduler = startScheduler({
-    db,
-    send,
-    conversation,
-    remindersFor: createPublicationSource(db, loadRemindersFor(), log),
-    backup: async (now) => {
-      const file = await runBackup({ dir: path.join(serverRoot(), 'backups'), now, dumpAll: () => db.dumpAll() });
+  const backupDir = path.join(serverRoot(), 'backups');
+  const backupTick = async () => {
+    const now = new Date();
+    if (!backupDue(backupDir, now)) return;
+    try {
+      const file = await runBackup({ dir: backupDir, now, dumpAll: () => db.dumpAll() });
       log(`Бэкап записан: ${path.basename(file)}`);
-    },
-    log,
-  });
-
-  const shutdown = async () => {
-    stopScheduler();
-    clearInterval(retryTimer);
-    clearInterval(advisorTimer);
-    await service.stop().catch(() => {});
-    process.exit(0);
+    } catch (e) {
+      log(`Бэкап не удался: ${(e as Error).message}`);
+    }
   };
+  setInterval(() => void backupTick(), BACKUP_CHECK_MS);
+  void backupTick();
+
+  const shutdown = () => process.exit(0);
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
-
-  log('QuestFlow сервер запущен: бот и расписания (Asia/Bishkek)');
-  await service.start(); // long polling; выход отсюда = бот остановлен
-  throw new Error('Бот остановился');
+  log('QuestFlow сервер запущен: AI-советник и бэкап');
+  await new Promise(() => {}); // работает, пока процесс не остановят
 }
 
 // Запуск только как программа (node dist/.../index.js), не при импорте в тестах

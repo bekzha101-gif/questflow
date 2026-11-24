@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-// advisor — советник по здоровью и жизни: кнопка на сайте, анализ месяца, ответ на сайт и в Telegram
+// advisor — советник по здоровью и жизни: кнопка на сайте, анализ месяца, ответ на сайт
 export type AiKind = 'day' | 'week' | 'month' | 'sleep_screenshot' | 'advisor';
 
 export interface AiStep {
@@ -37,8 +37,6 @@ export interface AiResult {
 
 export interface Ai {
   analyze(kind: AiKind, payload: unknown): Promise<AiResult | null>;
-  /** Свободное задание → текст ответа Claude (CLI, затем API); null — недоступен */
-  complete?(prompt: string): Promise<string | null>;
 }
 
 /** Запуск CLI: аргументы, текст в stdin; возвращает stdout. Подменяется в тестах. */
@@ -281,22 +279,6 @@ export function createAi(opts: AiOptions = {}): Ai {
   }
 
   return {
-    async complete(prompt) {
-      try {
-        const text = await viaCli('day', prompt, null);
-        if (text) return text;
-        log('claude -p (команда): пустой ответ или лимит');
-      } catch (e) {
-        log(`claude -p (команда) недоступен: ${(e as Error).message}`);
-      }
-      try {
-        return await viaApi('day', prompt, null);
-      } catch (e) {
-        log(`Claude API (команда) недоступен: ${(e as Error).message}`);
-        return null;
-      }
-    },
-
     async analyze(kind, payload) {
       const prompt = buildPrompt(kind, payload);
       try {

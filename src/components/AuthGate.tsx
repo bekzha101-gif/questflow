@@ -313,7 +313,7 @@ export function AuthGate({ children }: AuthGateProps) {
             <h1 className="font-semibold text-sm text-white">Новая версия QuestFlow</h1>
           </div>
           <p className="text-xs text-zinc-400 leading-relaxed">
-            Данные теперь хранятся в Supabase, чтобы сайт и Telegram-бот видели одно и то же.
+            Данные теперь хранятся в Supabase, чтобы все устройства видели одно и то же.
             Перед переносом браузер скачает файл-бэкап всех данных. Старые данные в браузере не удаляются,
             повторный перенос ничего не дублирует.
           </p>

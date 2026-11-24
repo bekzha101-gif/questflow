@@ -6,7 +6,7 @@
 
 - `shared/` — чистые правила без React, сети и DOM: `time`, `timer`, `goals`, `channels`, `bigdata`, `gamification`, `types`. Все функции детерминированы, `now` передаётся параметром.
 - `src/` — сайт (React, PWA). Читает и пишет данные только через `src/store`.
-- `server/` — Telegram-бот и расписания на домашнем компьютере (Node 22, CommonJS). Пишет в ту же базу под service-role ключом.
+- `server/` — домашний сервер (Node 22, CommonJS): AI-советник для сайта и ночной бэкап. Пишет в ту же базу под service-role ключом. Telegram-бота нет с 2026-11-24.
 - Общая БД — Supabase, схема `supabase/migrations/002_questflow2.sql`; таблицы `*2`, `game_*`, `bigdata_*`, `kv` и др. Старые таблицы из `001_initial.sql` не удаляются.
 
 ## Поток данных на сайте
@@ -21,13 +21,13 @@
 ## Геймификация
 
 - Все числа и правила — `shared/gamification.ts` (`applyEvent`). Сайт вызывает его через `src/sections/progress/game.ts`.
-- Журнал `game_events` — только вставка, id события `${kind}:${ref}`. Дедуп: сначала вставить событие, статы применять только если вставка прошла (ADR 0004). Иначе сайт и бот применят один день дважды.
-- Сайт закрывает прошедшие дни (`day_close`) при открытии и раз в минуту; бот делает то же через те же id.
+- Журнал `game_events` — только вставка, id события `${kind}:${ref}`. Дедуп: сначала вставить событие, статы применять только если вставка прошла (ADR 0004). Иначе два устройства применят один день дважды.
+- Сайт закрывает прошедшие дни (`day_close`) при открытии и раз в минуту.
 
 ## Таймер
 
 - Логика — `shared/timer.ts` (блок 120 мин, отдых 20 мин, 3 блока — норма дня). Состояние — запись `timer_state` в облаке.
-- Управляет таймером только сайт (`src/components/timer/`, `src/components/TogglTimerBar.tsx`); сервер лишь читает состояние и шлёт уведомление, помечая `notified_end` (ADR 0009).
+- Управляет таймером только сайт (`src/components/timer/`, `src/components/TogglTimerBar.tsx`). Уведомления — только на сайте (ADR 0009; серверные уведомления в Telegram убраны 2026-11-24).
 - Вкладки синхронизируются через `BroadcastChannel` `questflow_timer_channel_v2` (`src/utils/timerStorage.ts`).
 - Расширение `extensions/brainfm-bridge/` слушает атрибут `data-questflow-focus` и событие `questflow:focus`; контракт ломать нельзя.
 
@@ -40,9 +40,10 @@
 
 ## Сервер
 
-- `server/src/index.ts` собирает всё: `config` (чтение `server/.env`), `db` (типизированный доступ, `OWNER_USER_ID` владельца), `bot` (grammY, только чат владельца), `conversation/` (вечерний разговор — машина состояний в `bot_settings.conversation`), `scheduler` (cron каждые 30 с, зона Asia/Bishkek), `ai`, `stt`, `backup`, `publications`.
-- `ai.ts`: `claude -p` в изоляции, запасной путь — Claude API, иначе `null` и отложенный повтор (ADR 0006). `stt.ts` вызывает `server/stt/transcribe.py` (faster-whisper).
-- Эксплуатация (установка, автозапуск, логи, бэкапы 03:00) — `server/docs/server.md`.
+- `server/src/index.ts` собирает всё: `config` (чтение `server/.env`), `db` (`OWNER_USER_ID` владельца, `dumpAll` для бэкапа), `conversation/store.ts` и `conversation/context.ts` (чтение данных для советника), `advisor` (kv `ai_advisor`, опрос ~30 с), `ai`, `backup` (раз в сутки).
+- `ai.ts`: `claude -p` в изоляции, запасной путь — Claude API, иначе `null` (ADR 0006).
+- Telegram-бот, вечерний разговор, расписания и расшифровка голоса удалены 2026-11-24 (пользователь управляет через Claude напрямую); код — в истории git.
+- Эксплуатация (установка, автозапуск, логи, бэкапы) — `server/docs/server.md`.
 - Сервер обязан слать `updated_at` в каждой записи, иначе триггер БД её отбросит.
 
 ## Соглашения
@@ -52,7 +53,7 @@
 - «Сегодня» и даты — только через `shared/time.ts` (Asia/Bishkek). `toISOString().split('T')[0]` запрещён (ADR 0007).
 - Данные пользователя — единственный источник правды: ничего не создавать и не воскрешать автоматически, кроме сидов.
 - Новая таблица: колонки `user_id`, `updated_at`, `deleted`, `extra jsonb`, RLS по `auth.uid()`, Realtime; запись в `src/store/tables.ts`.
-- Тесты лежат рядом с кодом (`*.test.ts`); Supabase в тестах подменяется (`src/store/testing.ts`), у сервера — подмена `send`/`db`/`ai`/`stt`.
+- Тесты лежат рядом с кодом (`*.test.ts`); Supabase в тестах подменяется (`src/store/testing.ts`), у сервера — подмена `db`/`ai` и хранилище в памяти (`server/src/conversation/testing.ts`).
 - Интерфейс и комментарии по-русски, идентификаторы английские, тёмная тема, без эмодзи в UI.
 - Графики — свой SVG (`src/components/BigDataChart.tsx`), новые библиотеки графиков не добавлять.
 

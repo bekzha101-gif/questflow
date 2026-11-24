@@ -1,5 +1,5 @@
 // AI-советник на сайте: запрос и ответ лежат в kv `ai_advisor` (формат — shared/aiAdvisor.ts).
-// Сайт только пишет запрос через хранилище; анализ делает домашний компьютер с ботом через Claude.
+// Сайт только пишет запрос через хранилище; анализ делает домашний компьютер через Claude.
 import { useEffect, useState } from 'react';
 import { store as defaultStore, useRecord, type Store } from '../../store';
 import {

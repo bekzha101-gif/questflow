@@ -1,6 +1,6 @@
 // AI-советник по здоровью и жизни: запрос с сайта и ответ домашнего сервера через одну строку kv.
 // Сайт пишет запрос (status = requested), сервер раз в ~30 с забирает его (processing), зовёт Claude
-// по данным месяца и пишет ответ (done) или ошибку (error); ответ дублируется в Telegram.
+// по данным месяца и пишет ответ (done) или ошибку (error); ответ показывает сайт.
 // Сети на сайте нет: связь только через Supabase (kv), AI-ключей в браузере нет.
 
 /** Ключ строки в таблице kv */
@@ -107,20 +107,4 @@ export function advisorView(state: AiAdvisorState | null, now: Date): AdvisorVie
 /** Можно ли нажать кнопку снова (нет запроса в работе) */
 export function canRequestAdvisor(view: AdvisorView): boolean {
   return view.kind !== 'waiting' && view.kind !== 'processing';
-}
-
-/** Текст ответа для Telegram */
-export function formatAdvisorAnswer(a: AiAdvisorAnswer): string {
-  const block = (title: string, items: string[]) => (items.length ? `${title}\n${items.map((s) => `- ${s}`).join('\n')}` : '');
-  return [
-    'Claude — советник по здоровью и жизни (анализ месяца)',
-    a.question ? `Вопрос: ${a.question}` : '',
-    a.answer ? `Ответ: ${a.answer}` : '',
-    a.summary ? `Итог: ${a.summary}` : '',
-    block('Что помогает:', a.good),
-    block('Что мешает:', a.better),
-    block('Что сделать:', a.boost),
-  ]
-    .filter(Boolean)
-    .join('\n\n');
 }

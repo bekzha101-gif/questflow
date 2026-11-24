@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "commonjs",
-  "description": "QuestFlow: Telegram-бот и расписания на этом компьютере",
+  "description": "QuestFlow: AI-советник и бэкап на этом компьютере",
   "main": "dist/server/src/index.js",
   "engines": {
     "node": ">=22"
@@ -12,14 +12,11 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server/src/index.js",
     "dev": "npm run build && node dist/server/src/index.js",
-    "setup": "npm run build && node dist/server/src/setup.js",
     "test": "vitest run"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.119.0",
-    "dotenv": "^18.0.10",
-    "grammy": "^1.46.0",
-    "node-cron": "^4.6.0"
+    "dotenv": "^18.0.10"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",

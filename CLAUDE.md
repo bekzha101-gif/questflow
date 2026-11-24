@@ -88,11 +88,11 @@ UI/дизайн: `ui-ux-pro-max`, `design`, `design-system`, `ui-styling`, `bran
 - `npm run check` — тесты + типы + lint + сборка (211 тестов). `npm test` — только тесты; один файл: `npx vitest run shared/time.test.ts`.
 - `cd server && npm install && npm test && npm run build` — сервер (78 тестов); один файл: `cd server && npx vitest run src/db.test.ts`.
 - `npx vite preview --port 4791` — собранный сайт (после `npm run build`).
-- `cd server && npm run setup` — спрашивает токены и пишет `server/.env`; `cd server && npm run dev` — собрать и запустить бота.
+- `cd server && npm run dev` — собрать и запустить сервер (AI-советник и бэкап).
 
 ## Окружение (только имена)
 - Сайт (`.env.local`, шаблон `.env.example`): `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`; необязательные `VITE_GEMINI_API_KEY`, `VITE_YOUTUBE_API_KEY`, `VITE_GOOGLE_CLIENT_ID`. В сайт идёт только anon-ключ.
-- Сервер (`server/.env`, шаблон `server/.env.example`): `TELEGRAM_BOT_TOKEN`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `OWNER_USER_ID`; необязательные `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, `WHISPER_PYTHON`, `WHISPER_MODEL`, `WHISPER_DEVICE`. Значения в репозиторий, чаты и логи не попадают.
+- Сервер (`server/.env`, шаблон `server/.env.example`): `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `OWNER_USER_ID`; необязательные `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`. Значения в репозиторий, чаты и логи не попадают.
 
 ## Подводные камни
 - Сайт работает с данными только через `src/store` (`useCollection`, `useRecord`); компоненты не трогают `localStorage` и не ходят в Supabase напрямую.
@@ -104,7 +104,7 @@ UI/дизайн: `ui-ux-pro-max`, `design`, `design-system`, `ui-styling`, `bran
 ## Где что
 - Архитектура и поток данных: `docs/architecture.md`. Причины решений: `docs/adr/`. Слова проекта: `CONTEXT.md`.
 - Схема БД: `supabase/migrations/002_questflow2.sql`; типы строк — `shared/types.ts`; таблицы сайта — `src/store/tables.ts`.
-- Эксплуатация бота (установка, автозапуск, логи, бэкапы): `server/docs/server.md`.
+- Домашний сервер (AI-советник, бэкапы, автозапуск, логи): `server/docs/server.md`. Telegram-бота нет с 2026-11-24: пользователь управляет всем через Claude напрямую.
 
 ## Как здесь работает Autopilot
 ### Правка без автопилота

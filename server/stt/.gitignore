@@ -1,3 +1,0 @@
-# Окружение Python для Whisper — ставит install.ps1, в git не нужно
-.venv/
-__pycache__/

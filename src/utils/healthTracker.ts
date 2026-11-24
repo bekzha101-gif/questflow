@@ -15,7 +15,7 @@ import { store as defaultStore, useCollectionState, type Store } from '../store'
 import { sendDesktopNotification } from './recoveryCycle';
 
 // Здоровье: все данные — в хранилище (src/store), а не в отдельных ключах браузера.
-// Еда — таблица health_food, будильники — health_alarms (их читает и сервер для Telegram),
+// Еда — таблица health_food, будильники — health_alarms ,
 // остальное (протокол дня, сон, урон, восстановление, AI-отчёт) — kv. Старые ключи questflow_*
 // после переноса лежат в kv как legacy:<ключ> и читаются как запасной вариант.
 // Время — только по Бишкеку (shared/time).
@@ -173,7 +173,7 @@ export function loadHealthAlarms(s: Store = defaultStore): HealthAlarmConfig[] {
   return s.hasAnyRow('health_alarms') ? s.items<HealthAlarmConfig>('health_alarms') : DEFAULT_HEALTH_ALARMS;
 }
 
-/** Будильники как useState: первая правка записывает их в health_alarms (сервер шлёт их в Telegram) */
+/** Будильники как useState: первая правка записывает их в health_alarms */
 export function useHealthAlarms(): {
   alarms: HealthAlarmConfig[];
   saved: boolean;

@@ -7,7 +7,6 @@ import {
   AI_ADVISOR_KEY,
   advisorView,
   canRequestAdvisor,
-  formatAdvisorAnswer,
   newAdvisorRequest,
   type AiAdvisorState,
 } from '@shared/aiAdvisor';
@@ -63,12 +62,5 @@ describe('AI-советник: статус на сайте', () => {
     expect(canRequestAdvisor({ kind: 'processing' })).toBe(false);
     expect(canRequestAdvisor({ kind: 'offline', message: '' })).toBe(true);
     expect(canRequestAdvisor({ kind: 'done' })).toBe(true);
-  });
-
-  it('текст для Telegram', () => {
-    const t = formatAdvisorAnswer({ ...last, question: 'Как сон?', answer: 'Норм' });
-    expect(t).toContain('Вопрос: Как сон?');
-    expect(t).toContain('Ответ: Норм');
-    expect(t).toContain('- b');
   });
 });

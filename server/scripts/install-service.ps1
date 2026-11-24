@@ -51,10 +51,10 @@ $settings = New-ScheduledTaskSettingsSet `
   -MultipleInstances IgnoreNew
 
 Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Principal $principal `
-  -Settings $settings -Description "QuestFlow: Telegram-бот и расписания (server\scripts\run.ps1)" -Force | Out-Null
+  -Settings $settings -Description "QuestFlow: AI-советник и бэкап (server\scripts\run.ps1)" -Force | Out-Null
 
 Write-Host "Задача «$TaskName» создана: запуск при включении компьютера под $user."
-Write-Host "run.ps1 перезапускает бота через 10 с после падения; если упал сам run.ps1 — Планировщик поднимет его через 1 мин."
+Write-Host "run.ps1 перезапускает сервер через 10 с после падения; если упал сам run.ps1 — Планировщик поднимет его через 1 мин."
 if ($StartNow) {
   Start-ScheduledTask -TaskName $TaskName
   Write-Host "Задача запущена. Логи: $ServerDir\logs"

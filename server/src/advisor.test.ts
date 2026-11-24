@@ -23,7 +23,6 @@ function setup(over: Partial<MemoryData> = {}, ai?: Ai['analyze']) {
   const store = createMemoryStore(data);
   const calls: { kind: AiKind; payload: unknown }[] = [];
   const analyze = ai ?? (async () => RESULT);
-  const sent: string[] = [];
   const logs: string[] = [];
   const advisor = createAdvisor({
     store,
@@ -33,12 +32,11 @@ function setup(over: Partial<MemoryData> = {}, ai?: Ai['analyze']) {
         return analyze(kind, payload);
       },
     },
-    send: async (t) => (sent.push(t), true),
     now: () => NOW,
     log: (m) => logs.push(m),
   });
   const state = () => data.kv[AI_ADVISOR_KEY] as AiAdvisorState;
-  return { data, advisor, calls, sent, logs, state };
+  return { data, advisor, calls, logs, state };
 }
 
 const request = (over: Partial<AiAdvisorState> = {}): AiAdvisorState => ({
@@ -56,7 +54,7 @@ describe('AI-советник (kv ai_advisor)', () => {
     expect(t.calls).toHaveLength(0);
   });
 
-  it('обрабатывает запрос: Claude kind advisor, ответ в kv (done) и в Telegram', async () => {
+  it('обрабатывает запрос: Claude kind advisor, ответ в kv (done)', async () => {
     const t = setup({
       kv: {
         [AI_ADVISOR_KEY]: request(),
@@ -80,9 +78,6 @@ describe('AI-советник (kv ai_advisor)', () => {
     expect(s.startedAt).toBe(NOW.toISOString());
     expect(s.last?.requestId).toBe('adv-1');
     expect(s.last?.answer).toContain('Магний');
-    expect(t.sent).toHaveLength(1);
-    expect(t.sent[0]).toContain('Вопрос: Помогает ли магний?');
-    expect(t.sent[0]).toContain('Прогулка перед сном');
   });
 
   it('до вызова Claude ставит processing; второй опрос тот же запрос не берёт', async () => {
@@ -102,15 +97,13 @@ describe('AI-советник (kv ai_advisor)', () => {
     // Готовый ответ тоже не берётся второй раз
     expect(await t.advisor.tick()).toBe('none');
     expect(t.calls).toHaveLength(1);
-    expect(t.sent).toHaveLength(1);
   });
 
-  it('Claude недоступен — status error с понятным текстом, в Telegram ничего', async () => {
+  it('Claude недоступен — status error с понятным текстом', async () => {
     const t = setup({ kv: { [AI_ADVISOR_KEY]: request() } }, async () => null);
     expect(await t.advisor.tick()).toBe('error');
     expect(t.state().status).toBe('error');
     expect(t.state().error).toBe(ADVISOR_TEXT.noAi);
-    expect(t.sent).toHaveLength(0);
     expect(t.logs.join('\n')).toContain('Claude не ответил');
   });
 

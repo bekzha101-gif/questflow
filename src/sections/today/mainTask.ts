@@ -28,7 +28,7 @@ export interface DayPlan {
 
 /**
  * Главная задача дня с учётом вечернего плана бота: сначала `plan:<today>.mainTaskId`,
- * если такая задача есть и не выполнена (тогда утром в Telegram и на сайте одна задача);
+ * если такая задача есть и не выполнена;
  * иначе — pickMainTask.
  */
 export function mainTaskFor(tasks: TaskItem[], today: string, plan: DayPlan | null | undefined): TaskItem | null {

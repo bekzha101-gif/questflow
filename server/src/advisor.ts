@@ -1,14 +1,13 @@
 // AI-советник по здоровью и жизни (кнопка «Спросить Claude о месяце» на сайте).
 // Сайт пишет запрос в kv `ai_advisor` (status = requested); сервер раз в ~30 с забирает его:
 // сначала status = processing (повторно не берётся), затем Claude по данным месяца (тот же срез,
-// что у анализа месяца, + раздел здоровья), ответ — в kv (done) и в Telegram. Ошибка — status = error.
+// что у анализа месяца, + раздел здоровья), ответ — в kv (done), его показывает сайт. Ошибка — status = error.
 import type { Ai } from './ai';
 import { addDays, todayStr } from '../../shared/time';
 import {
   ADVISOR_PROCESS_TIMEOUT_MS,
   ADVISOR_TEXT,
   AI_ADVISOR_KEY,
-  formatAdvisorAnswer,
   isAdvisorState,
   type AiAdvisorAnswer,
   type AiAdvisorState,
@@ -19,7 +18,6 @@ import type { ConversationStore } from './conversation/store';
 export interface AdvisorDeps {
   store: ConversationStore;
   ai: Ai;
-  send(text: string): Promise<boolean>;
   now?: () => Date;
   log?(message: string): void;
 }
@@ -146,14 +144,12 @@ export function createAdvisor(deps: AdvisorDeps): Advisor {
         source: r.source,
       };
       await finish(state.id, { status: 'done', last: answer });
-      const sent = await deps.send(formatAdvisorAnswer(answer)).catch(() => false);
-      if (!sent) log('AI-советник: ответ на сайте, но в Telegram не ушёл');
       log(`AI-советник: ответ готов (${r.source})`);
       return 'done';
     } catch (e) {
       const msg = (e as Error).message;
       log(`AI-советник: ошибка: ${msg}`);
-      await finish(state.id, { status: 'error', error: `Ошибка на компьютере с ботом: ${msg.slice(0, 200)}` }).catch((e2) =>
+      await finish(state.id, { status: 'error', error: `Ошибка на домашнем компьютере: ${msg.slice(0, 200)}` }).catch((e2) =>
         log(`AI-советник: не удалось записать ошибку: ${(e2 as Error).message}`),
       );
       return 'error';

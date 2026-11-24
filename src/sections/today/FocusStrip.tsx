@@ -35,7 +35,7 @@ function formatHours(h: number): string {
 // Строка над четырьмя колонками: главная задача дня · таймер · часы фокуса сегодня / 6
 export function FocusStrip({ tasks, timeLogs }: { tasks: TaskItem[]; timeLogs: TimeLogEntry[] }) {
   const today = todayStr();
-  // Вечерний план бота (kv plan:<дата>) важнее правил: утром в Telegram и на сайте одна главная задача
+  // План дня (kv plan:<дата>, писал прежний вечерний разговор) важнее правил
   const plan = useRecord<{ key: string; value?: DayPlan }>('kv', `plan:${today}`).value?.value;
   const main = mainTaskFor(tasks, today, plan);
   const hours = focusHoursToday(timeLogs, today);

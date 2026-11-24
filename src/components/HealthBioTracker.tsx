@@ -906,7 +906,7 @@ export function HealthBioTracker({
               </button>
             </div>
             <p className="text-[11px] text-zinc-500">
-              Звенят при любом открытом разделе сайта. Когда сайт закрыт, напоминание пришлёт Telegram-бот.
+              Звенят, пока сайт открыт (в любом разделе).
             </p>
             {!alarmsSaved && (
               <div className="flex items-center justify-between gap-3 p-3 rounded-xl bg-amber-500/[0.06] border border-amber-500/20">
@@ -961,7 +961,7 @@ export function HealthBioTracker({
       {/* ── 6. AI REPORT & FUTURE ADVICE ──────────────────────────────────────── */}
       {activeTab === 'ai_report' && (
         <div className="space-y-4">
-          {/* Настоящий AI: запрос через kv, анализ Claude на компьютере с ботом */}
+          {/* Настоящий AI: запрос через kv, анализ Claude на домашнем компьютере */}
           <AiAdvisorPanel />
           <div className="bg-[#111115] border border-white/[0.08] rounded-2xl p-5 shadow-xl space-y-4">
             <div className="flex items-center justify-between">

@@ -1,5 +1,5 @@
-// Кнопка «Спросить Claude о месяце»: запрос уходит в kv, компьютер с ботом анализирует месяц
-// через Claude, ответ появляется здесь и в Telegram.
+// Кнопка «Спросить Claude о месяце»: запрос уходит в kv, домашний компьютер анализирует месяц
+// через Claude, ответ появляется здесь.
 import { useState } from 'react';
 import { Bot, Loader2 } from 'lucide-react';
 import { ADVISOR_QUESTION_MAX, canRequestAdvisor } from '@shared/aiAdvisor';
@@ -49,14 +49,14 @@ export function AiAdvisorPanel() {
         <div>
           <h3 className="text-sm font-bold text-white">Claude — советник по здоровью и жизни</h3>
           <p className="text-[11px] text-zinc-400">
-            Компьютер дома разбирает последние 30 дней (сон, еда, БАДы, фокус, привычки, HP). Ответ придёт сюда и в Telegram.
+            Компьютер дома разбирает последние 30 дней (сон, еда, БАДы, фокус, привычки, HP). Ответ придёт сюда.
           </p>
         </div>
       </div>
 
       {!cloud && (
         <p className="text-[11px] text-amber-400/90">
-          Советник работает только после входа в облако: в гостевом режиме запрос не дойдёт до компьютера с ботом.
+          Советник работает только после входа в облако: в гостевом режиме запрос не дойдёт до домашнего компьютера.
         </p>
       )}
 
@@ -79,7 +79,7 @@ export function AiAdvisorPanel() {
 
       {view.kind === 'waiting' && (
         <p className="text-xs text-zinc-400 flex items-center gap-2">
-          <Loader2 className="w-3.5 h-3.5 animate-spin" /> Ждёт компьютер с ботом…
+          <Loader2 className="w-3.5 h-3.5 animate-spin" /> Ждёт домашний компьютер…
         </p>
       )}
       {view.kind === 'processing' && (

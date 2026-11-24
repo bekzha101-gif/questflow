@@ -5,7 +5,6 @@ import fs from 'node:fs';
 import dotenv from 'dotenv';
 
 export const ENV_NAMES = {
-  telegramBotToken: 'TELEGRAM_BOT_TOKEN',
   supabaseUrl: 'SUPABASE_URL',
   supabaseServiceRoleKey: 'SUPABASE_SERVICE_ROLE_KEY',
   ownerUserId: 'OWNER_USER_ID',
@@ -13,7 +12,6 @@ export const ENV_NAMES = {
 } as const;
 
 export interface ServerConfig {
-  telegramBotToken: string;
   supabaseUrl: string;
   supabaseServiceRoleKey: string;
   ownerUserId: string;
@@ -42,14 +40,13 @@ export function loadEnvFile(file = envFilePath()): void {
 
 /** Собирает настройки; при нехватке бросает ошибку с именами переменных (без значений) */
 export function readConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
-  const required = ['telegramBotToken', 'supabaseUrl', 'supabaseServiceRoleKey', 'ownerUserId'] as const;
+  const required = ['supabaseUrl', 'supabaseServiceRoleKey', 'ownerUserId'] as const;
   const missing = required.filter((k) => !env[ENV_NAMES[k]]?.trim()).map((k) => ENV_NAMES[k]);
   if (missing.length) {
-    throw new Error(`Не заданы переменные в server/.env: ${missing.join(', ')}. Запусти: cd server && npm run setup`);
+    throw new Error(`Не заданы переменные в server/.env: ${missing.join(', ')}. Шаблон: server/.env.example`);
   }
   const value = (k: keyof typeof ENV_NAMES) => env[ENV_NAMES[k]]?.trim() || undefined;
   return {
-    telegramBotToken: value('telegramBotToken')!,
     supabaseUrl: value('supabaseUrl')!,
     supabaseServiceRoleKey: value('supabaseServiceRoleKey')!,
     ownerUserId: value('ownerUserId')!,
@@ -60,7 +57,7 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
 /** Убирает значения секретов из текста (на случай, если библиотека вставила их в ошибку) */
 export function redact(text: string, config: Partial<ServerConfig>): string {
   let out = text;
-  for (const v of [config.telegramBotToken, config.supabaseServiceRoleKey, config.anthropicApiKey]) {
+  for (const v of [config.supabaseServiceRoleKey, config.anthropicApiKey]) {
     if (v && v.length >= 8) out = out.split(v).join('[скрыто]');
   }
   return out;
