@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { createConversation, type Conversation } from './index';
+import { CONV_TEXT, createConversation, type Conversation } from './index';
+const CONV_TEXT_IDLE = CONV_TEXT.idle;
 import { createMemoryStore, emptyData, type MemoryData } from './testing';
 import type { Ai, AiKind, AiResult } from '../ai';
 import type { Keyboard } from './types';
@@ -382,5 +383,44 @@ describe('вечерний разговор', () => {
     await skipUntil(w, '__конец__', 10).catch(() => {});
     const month = w.sent.find((x) => x.text.startsWith('Отчёт месяца'));
     expect(month?.text).toContain('Апрель 2027');
+  });
+});
+
+describe('голос вне разговора → команда для «Каналов»', () => {
+  it('днём голосовое разбирается Claude и ждёт подтверждения', async () => {
+    const w = world({
+      channels: [{ id: 'c1', name: 'TRIHGOK', status: 'active', cadencePerDay: 1 }],
+      videos: [{ id: 'v1', channelId: 'c1', title: 'Танки', stage: 'editing' }],
+    });
+    w.now = at('2026-11-17', '14:00');
+    w.heard = 'танки перенеси в проверку';
+    const prompts: string[] = [];
+    const conv = createConversation({
+      store: createMemoryStore(w.data),
+      send: async (text, keyboard) => void w.sent.push({ text, keyboard }) ?? true,
+      ai: {
+        analyze: async () => null,
+        complete: async (p) => {
+          prompts.push(p);
+          return '{"actions":[{"type":"move_video","videoId":"v1","stage":"review"}]}';
+        },
+      },
+      stt: { transcribe: async () => w.heard },
+      files: { download: async (id, kind) => `C:/tmp/${kind}-${id}` },
+      now: () => w.now,
+    });
+    await conv.handleUpdate({ chatId: '1', voiceFileId: 'x' });
+    expect(prompts[0]).toContain('«танки перенеси в проверку»');
+    const ask = w.sent.at(-1)!;
+    expect(ask.text).toContain('«Танки» (TRIHGOK) → Проверка');
+    await conv.handleUpdate({ chatId: '1', callbackData: ask.keyboard![0][0].data });
+    expect(w.data.videos[0]).toMatchObject({ stage: 'review', legacyStage: 'review' });
+  });
+
+  it('без Claude — прежний ответ «разговора нет»', async () => {
+    const w = world();
+    w.now = at('2026-11-17', '14:00');
+    await w.conv.handleUpdate({ chatId: '1', text: 'привет' });
+    expect(w.sent.at(-1)!.text).toBe(CONV_TEXT_IDLE);
   });
 });

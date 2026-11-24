@@ -9,6 +9,7 @@ import type { ConversationApi, IncomingMessage } from '../scheduler';
 import { dateLabel } from './context';
 import { applyGame, closePendingDays } from './game';
 import { AI_LATER, dayAnalysis, dayFactsText, monthAnalysis, monthPlainText, weekAnalysis, weekPlainText } from './reports';
+import { confirmChannelCommand, proposeChannelCommand, type CommandDeps } from './channelCommands';
 import { HANDLERS, NEW_CHANNELS_KEY, saveSleepFromPhoto, type Ask, type StepCtx } from './steps';
 import type { ConvState, ConversationDeps, Input, PendingAi, Step } from './types';
 
@@ -65,6 +66,7 @@ export function createConversation(deps: ConversationDeps): Conversation {
     return isState(v) ? v : null;
   };
   const save = (s: ConvState) => store.saveConversation(s);
+  const cmdDeps: CommandDeps = { store, send: deps.send, complete: deps.ai.complete?.bind(deps.ai), log };
 
   const ctxFor = (state: ConvState, now: Date): StepCtx => ({
     deps,
@@ -229,6 +231,7 @@ export function createConversation(deps: ConversationDeps): Conversation {
     const today = todayStr(now);
     const data = msg.callbackData ?? '';
     if (data.startsWith('qa:') || data.startsWith('qA:')) return acceptSteps(data);
+    if (data.startsWith('cc:')) return confirmChannelCommand(cmdDeps, data, now);
 
     let state = await load();
     let text = msg.text;
@@ -269,6 +272,8 @@ export function createConversation(deps: ConversationDeps): Conversation {
           else await startEveningNow(today, now);
           return;
         }
+        // Вне разговора текст и голос — команды для «Каналов» (Claude разбирает, владелец подтверждает)
+        if (text && (await safe('команда каналов', () => proposeChannelCommand(cmdDeps, text!, now), false))) return;
         await deps.send(CONV_TEXT.idle);
         return;
       }
