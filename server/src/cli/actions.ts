@@ -41,7 +41,8 @@ export type Action =
   | { type: 'update_goal'; goalId: string; add?: number; set?: number }
   | { type: 'add_income'; date: string; amountUsd: number; channelId?: string; source?: string }
   | { type: 'set_plan'; date: string; mainTask: string; mainTaskId?: string }
-  | { type: 'finish_report'; date: string };
+  | { type: 'finish_report'; date: string }
+  | { type: 'add_task'; title: string; dueDate?: string; priority?: string };
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const COLOR_RE = /^#[0-9a-fA-F]{6}$/;
@@ -202,6 +203,12 @@ export function validateActions(raw: unknown, ctx: Ctx): { actions: Action[]; er
         actions.push({ type: 'set_plan', date, mainTask: str(a.mainTask), mainTaskId: opt(a.mainTaskId) });
         return;
       }
+      case 'add_task': {
+        if (!str(a.title)) return bad('нет title');
+        if (a.dueDate !== undefined && !DATE_RE.test(str(a.dueDate))) return bad('dueDate — YYYY-MM-DD');
+        actions.push({ type: 'add_task', title: str(a.title), dueDate: opt(a.dueDate), priority: opt(a.priority) });
+        return;
+      }
       case 'finish_report': {
         const date = str(a.date);
         if (!DATE_RE.test(date)) return bad('date — YYYY-MM-DD');
@@ -269,6 +276,8 @@ export function describeActions(actions: Action[], ctx: Ctx): string[] {
         return `доход $${a.amountUsd} за ${dmy(a.date)}${a.channelId ? ` (${chName(a.channelId)})` : ''}`;
       case 'set_plan':
         return `главная задача на ${dmy(a.date)}: ${a.mainTask}`;
+      case 'add_task':
+        return `новая задача «${a.title}»${a.dueDate ? ` до ${dmy(a.dueDate)}` : ''}`;
       case 'finish_report':
         return `отчёт за ${dmy(a.date)} закрыт, награда за Big Data`;
     }
@@ -388,6 +397,9 @@ export async function applyActions(store: ConversationStore, actions: Action[], 
         await store.setKv(key, { ...plan, mainTask: a.mainTask, firstBlockTask: a.mainTask, ...(a.mainTaskId ? { mainTaskId: a.mainTaskId } : {}) });
         break;
       }
+      case 'add_task':
+        await store.saveTask({ id: id('task'), title: a.title, type: 'todo', kind: 'task', priority: a.priority ?? 'p2', completed: false, ...(a.dueDate ? { dueDate: a.dueDate } : {}) } as Task);
+        break;
       case 'finish_report':
         await store.patchDay(a.date, { reportStatus: 'done' });
         await applyGame(store, { kind: 'bigdata_fill', ref: a.date }, now);
