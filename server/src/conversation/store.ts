@@ -53,6 +53,9 @@ export interface ConversationStore {
   saveChannel(channel: Channel): Promise<void>;
   listVideos(): Promise<Video[]>;
   saveVideo(video: Video): Promise<void>;
+  /** Мягкое удаление (deleted = true), как на сайте */
+  deleteChannel(id: string): Promise<void>;
+  deleteVideo(id: string): Promise<void>;
   listIncome(): Promise<Income[]>;
   saveIncome(row: Income): Promise<void>;
   listRewards(): Promise<Reward[]>;
@@ -160,6 +163,11 @@ export function createSupabaseStore(client: SupabaseLike, ownerUserId: string, n
     return fromRow<T>(data as Row);
   }
 
+  async function softDelete(table: TableName, id: string) {
+    const { error } = await client.from(table).update({ deleted: true, updated_at: now().toISOString() }).eq('user_id', ownerUserId).eq('id', id);
+    if (error) throw new Error(`${table}: ${error.message}`);
+  }
+
   const single = async <T>(table: TableName) => {
     const rows = await selectAll(table);
     return rows[0] ? fromRow<T>(rows[0]) : null;
@@ -207,6 +215,8 @@ export function createSupabaseStore(client: SupabaseLike, ownerUserId: string, n
     saveChannel: (c) => upsert('channels2', c, 'user_id,id'),
     listVideos: () => list<Video>('videos2'),
     saveVideo: (v) => upsert('videos2', v, 'user_id,id'),
+    deleteChannel: (id) => softDelete('channels2', id),
+    deleteVideo: (id) => softDelete('videos2', id),
     listIncome: () => list<Income>('income'),
     saveIncome: (r) => upsert('income', r, 'user_id,id'),
     listRewards: () => list<Reward>('rewards2'),

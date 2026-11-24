@@ -1,4 +1,4 @@
-// AI-советник по здоровью и жизни (кнопка «Спросить Claude о месяце» на сайте).
+// AI-советник по здоровью и жизни (кнопки «Анализ дня / недели / месяца» на сайте).
 // Сайт пишет запрос в kv `ai_advisor` (status = requested); сервер раз в ~30 с забирает его:
 // сначала status = processing (повторно не берётся), затем Claude по данным месяца (тот же срез,
 // что у анализа месяца, + раздел здоровья), ответ — в kv (done), его показывает сайт. Ошибка — status = error.
@@ -9,6 +9,7 @@ import {
   ADVISOR_TEXT,
   AI_ADVISOR_KEY,
   isAdvisorState,
+  type AdvisorPeriod,
   type AiAdvisorAnswer,
   type AiAdvisorState,
 } from '../../shared/aiAdvisor';
@@ -121,8 +122,10 @@ export function createAdvisor(deps: AdvisorDeps): Advisor {
 
     try {
       const today = todayStr(now);
+      const period: AdvisorPeriod = state.period === 'day' || state.period === 'week' ? state.period : 'month';
       const payload = {
-        ...(await buildPayload(deps.store, 'month', today)),
+        ...(await buildPayload(deps.store, period, today)),
+        period,
         health: await healthPayload(deps.store, today),
         question: state.question ?? '',
       };
@@ -136,6 +139,7 @@ export function createAdvisor(deps: AdvisorDeps): Advisor {
         requestId: state.id,
         at: nowOf().toISOString(),
         ...(state.question ? { question: state.question } : {}),
+        period,
         summary: r.summary,
         ...(r.answer ? { answer: r.answer } : {}),
         good: r.good,

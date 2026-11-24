@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Video } from '@shared/types';
-import { allTags, channelFromCloud, channelScope, channelToCloud, parseTags, videoFromCloud, videoToCloud } from './legacyMedia';
+import { allTags, channelFromCloud, channelScope, channelToCloud, parseTags, sortChannelsByStatus, urgentFirst, videoFromCloud, videoToCloud } from './legacyMedia';
 
 const cloud = (over: Partial<Video> = {}): Video => ({ id: 'v1', channelId: 'c1', title: 'T', stage: 'editing', ...over });
 
@@ -37,7 +37,7 @@ describe('legacyMedia', () => {
     const ch = { ...channelFromCloud(prev), description: 'new', handle: '@a' };
     const out = channelToCloud(ch, prev);
     expect(out).toMatchObject({ status: 'paused', cadencePerDay: 2, niche: 'new', handle: '@a' });
-    expect(channelToCloud({ ...ch, id: 'c2' }, undefined)).toMatchObject({ status: 'active', cadencePerDay: 1 });
+    expect(channelToCloud({ ...ch, id: 'c2', status: 'active' }, undefined)).toMatchObject({ status: 'active', cadencePerDay: 1 });
   });
 });
 
@@ -61,5 +61,22 @@ describe('теги и выбор каналов', () => {
   it('теги и цвет сохраняются в облако', () => {
     const c = { ...ch('a', ['x']), color: '#ef4444' };
     expect(channelToCloud(c, undefined)).toMatchObject({ tags: ['x'], color: '#ef4444' });
+  });
+});
+
+describe('статусы каналов и «срочно»', () => {
+  it('статус из облака, неизвестный — Веду; порядок веду → запущу → пауза → забросил', () => {
+    const mk = (id: string, status: string) => channelFromCloud({ id, name: id, status: status as never, cadencePerDay: 1 });
+    const list = [mk('x', 'abandoned'), mk('a', 'active'), mk('p', 'paused'), mk('n', 'planned'), mk('q', 'weird')];
+    expect(list.map((c) => c.status)).toEqual(['abandoned', 'active', 'paused', 'planned', 'active']);
+    expect(sortChannelsByStatus(list).map((c) => c.id)).toEqual(['a', 'q', 'n', 'p', 'x']);
+  });
+
+  it('срочные видео первыми; у выложенного срочность снимается', () => {
+    expect(urgentFirst([{ id: 1 }, { id: 2, urgent: true }, { id: 3 }]).map((v) => v.id)).toEqual([2, 1, 3]);
+    const v = videoFromCloud({ id: 'v', channelId: 'c', title: 't', stage: 'editing', urgent: true });
+    expect(v.urgent).toBe(true);
+    const out = videoToCloud({ ...v, isUploaded: true }, { id: 'v', channelId: 'c', title: 't', stage: 'editing', urgent: true }, '2026-11-24');
+    expect(out.urgent).toBeUndefined();
   });
 });

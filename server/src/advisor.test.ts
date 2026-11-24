@@ -80,6 +80,16 @@ describe('AI-советник (kv ai_advisor)', () => {
     expect(s.last?.answer).toContain('Магний');
   });
 
+  it('анализ недели: срез kind week, период в ответе', async () => {
+    const t = setup({ kv: { [AI_ADVISOR_KEY]: request({ question: undefined, period: 'week' }) } });
+    expect(await t.advisor.tick()).toBe('done');
+    const p = t.calls[0].payload as { kind: string; period: string };
+    expect(p.kind).toBe('week');
+    expect(p.period).toBe('week');
+    expect(t.state().last?.period).toBe('week');
+    expect(buildPrompt('advisor', p)).toContain('последние 7 дней');
+  });
+
   it('до вызова Claude ставит processing; второй опрос тот же запрос не берёт', async () => {
     let release!: (r: AiResult) => void;
     const t = setup({ kv: { [AI_ADVISOR_KEY]: request() } }, () => new Promise<AiResult>((res) => (release = res)));

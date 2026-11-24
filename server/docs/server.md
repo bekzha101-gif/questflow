@@ -31,3 +31,9 @@ Start-ScheduledTask -TaskName "QuestFlow Server"
 После обновления кода: `cd server; npm install; npm run build`, затем остановить и запустить задачу.
 
 Удалить автозапуск: `powershell -ExecutionPolicy Bypass -File server\scripts\install-service.ps1 -Uninstall` (от администратора).
+
+## Инструмент Claude (qf)
+
+`npm run qf --silent -- <команда>` (после `npm run build`): `state`, `evening [дата]`, `reminders [дата]`,
+`snapshot day|week|month [дата]`, `apply <файл.json|-> [--dry]`. Действия и проверка — `src/cli/actions.ts`.
+Им пользуются навыки `.claude/skills/kanaly`, `vecher`, `itog` и задачи расписания приложения Claude.

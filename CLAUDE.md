@@ -89,6 +89,7 @@ UI/дизайн: `ui-ux-pro-max`, `design`, `design-system`, `ui-styling`, `bran
 - `cd server && npm install && npm test && npm run build` — сервер (78 тестов); один файл: `cd server && npx vitest run src/db.test.ts`.
 - `npx vite preview --port 4791` — собранный сайт (после `npm run build`).
 - `cd server && npm run dev` — собрать и запустить сервер (AI-советник и бэкап).
+- `cd server && npm run qf --silent -- state|evening|reminders|snapshot day|week|month|apply <файл> [--dry]` — инструмент Claude: читать и менять каналы, видео, день, цели (`server/src/cli/`). Навыки: `.claude/skills/kanaly` (каналы голосом и цепочка Transformer → photo), `vecher` (вечерний разговор), `itog` (анализ дня/недели/месяца). Расписание приложения Claude: `questflow-vecher` (21:00 Бишкек), `questflow-publikacii` (12:00).
 
 ## Окружение (только имена)
 - Сайт (`.env.local`, шаблон `.env.example`): `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`; необязательные `VITE_GEMINI_API_KEY`, `VITE_YOUTUBE_API_KEY`, `VITE_GOOGLE_CLIENT_ID`. В сайт идёт только anon-ключ.

@@ -1,10 +1,13 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import type { Channel as CloudChannel, Video as CloudVideo } from '@shared/types';
 import { todayStr } from '@shared/time';
+import { CHANNEL_STATUS_COLOR, CHANNEL_STATUS_LABEL } from '@shared/channels';
 import { useCollection } from '../store';
 import { applyGame } from '../sections/progress/game';
 import {
   channelFromCloud,
+  sortChannelsByStatus,
+  urgentFirst,
   channelToCloud,
   videoFromCloud,
   videoToCloud,
@@ -46,7 +49,7 @@ export const ContentProductionBoard: React.FC = () => {
   // Каналы и видео живут в облаке (channels2/videos2), здесь — старый вид
   const cloudChannels = useCollection<CloudChannel>('channels2');
   const cloudVideos = useCollection<CloudVideo>('videos2');
-  const channels = useMemo(() => cloudChannels.items.map(channelFromCloud), [cloudChannels.items]);
+  const channels = useMemo(() => sortChannelsByStatus(cloudChannels.items.map(channelFromCloud)), [cloudChannels.items]);
   const videos = useMemo(() => cloudVideos.items.map(videoFromCloud), [cloudVideos.items]);
 
   // Active Selected Channel ID (по умолчанию — все каналы)
@@ -216,6 +219,7 @@ export const ContentProductionBoard: React.FC = () => {
         handle: chanFormHandle.trim() || `@${chanFormName.trim().toLowerCase().replace(/\s+/g, '_')}`,
         avatar: chanFormAvatar.trim() || '🎬',
         color: chanFormColor,
+        status: 'active',
         description: chanFormDesc.trim(),
         tags: parseTags(chanFormTags),
       };
@@ -437,7 +441,15 @@ export const ContentProductionBoard: React.FC = () => {
                         {c.avatar}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs truncate">{c.name}</p>
+                        <p className="text-xs truncate flex items-center gap-1.5">
+                          <span className="truncate">{c.name}</span>
+                          <span
+                            className="shrink-0 text-[9px] font-semibold px-1 rounded border"
+                            style={{ color: CHANNEL_STATUS_COLOR[c.status], borderColor: `${CHANNEL_STATUS_COLOR[c.status]}66` }}
+                          >
+                            {CHANNEL_STATUS_LABEL[c.status]}
+                          </span>
+                        </p>
                         <p className="text-[10px] text-zinc-500 font-mono truncate">
                           {c.tags.length ? c.tags.map((t) => `#${t}`).join(' ') : c.handle}
                         </p>
@@ -632,7 +644,7 @@ export const ContentProductionBoard: React.FC = () => {
       {/* Канбан: Монтаж → Обложка и заголовок → Проверка → Выкладка. Карточки перетаскиваются мышкой или пальцем */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5">
         {stages.map((stage) => {
-          const stageVideos = filteredVideos.filter((v) => v.stage === stage.id);
+          const stageVideos = urgentFirst(filteredVideos.filter((v) => v.stage === stage.id));
 
           return (
             <div
@@ -701,6 +713,10 @@ export const ContentProductionBoard: React.FC = () => {
                           </button>
                         </div>
 
+                        {vid.urgent && (
+                          <span className="inline-block text-[9px] font-bold px-1.5 py-0.5 rounded bg-rose-600/90 text-white">СРОЧНО</span>
+                        )}
+
                         {/* Title */}
                         <h3 className="font-bold text-xs text-zinc-200 leading-snug">
                           {vid.title}
@@ -717,8 +733,12 @@ export const ContentProductionBoard: React.FC = () => {
                           )}
 
                           {vid.publishDate && (
-                            <div className="flex items-center justify-between text-zinc-500">
-                              <span>Дата:</span>
+                            <div
+                              className={`flex items-center justify-between ${
+                                !vid.isUploaded && vid.publishDate < todayStr() ? 'text-rose-400' : 'text-zinc-500'
+                              }`}
+                            >
+                              <span>{!vid.isUploaded && vid.publishDate < todayStr() ? 'Просрочено:' : 'Дата:'}</span>
                               <span>{vid.publishDate} {vid.publishTime || ''}</span>
                             </div>
                           )}

@@ -267,7 +267,8 @@ export interface HealthAlarm {
 }
 
 // ─── Каналы ──────────────────────────────────────────────────────────────────
-export type ChannelStatus = 'active' | 'paused' | 'abandoned' | 'archived';
+/** active — веду, planned — запущу, paused — пауза, abandoned — забросил, archived — архив (старое) */
+export type ChannelStatus = 'active' | 'planned' | 'paused' | 'abandoned' | 'archived';
 
 export interface Channel {
   id: string;

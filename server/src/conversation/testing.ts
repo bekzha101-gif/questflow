@@ -96,6 +96,12 @@ export function createMemoryStore(data: MemoryData): ConversationStore {
     saveChannel: async (c) => upsertById(data.channels, c),
     listVideos: async () => clone(data.videos),
     saveVideo: async (v) => upsertById(data.videos, v),
+    deleteChannel: async (id) => {
+      data.channels = data.channels.filter((c) => c.id !== id);
+    },
+    deleteVideo: async (id) => {
+      data.videos = data.videos.filter((v) => v.id !== id);
+    },
     listIncome: async () => clone(data.income),
     saveIncome: async (r) => upsertById(data.income, r),
     listRewards: async () => clone(data.rewards),

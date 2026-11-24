@@ -1,5 +1,5 @@
-import type { Channel as CloudChannel, Video as CloudVideo, VideoStage } from '@shared/types';
-import { normalizeVideo } from '@shared/channels';
+import type { Channel as CloudChannel, ChannelStatus, Video as CloudVideo, VideoStage } from '@shared/types';
+import { isChannelStatus, normalizeVideo } from '@shared/channels';
 
 // Старая «Медиа-Студия» (6 этапов, поля автора/оплаты/сценария) поверх облачных таблиц channels2/videos2.
 // Лишние поля лежат в extra, этап для бота и расписания сводится к трём.
@@ -30,6 +30,8 @@ export interface VideoItem {
   aspectRatio?: '9:16' | '16:9';
   expReward: number;
   goldReward: number;
+  /** «Срочно» — ставит владелец голосом через Claude или на сайте */
+  urgent?: boolean;
 }
 
 export interface Channel {
@@ -40,6 +42,8 @@ export interface Channel {
   color: string;
   description?: string;
   tags: string[];
+  /** Веду / Запущу / Пауза / Забросил */
+  status: ChannelStatus;
 }
 
 const TO_CLOUD: Record<ProductionStage, VideoStage> = {
@@ -85,6 +89,7 @@ export function videoFromCloud(raw: CloudVideo): VideoItem {
     aspectRatio: v.aspectRatio === '16:9' ? '16:9' : '9:16',
     expReward: num('expReward', 75)!,
     goldReward: num('goldReward', 50)!,
+    ...(v.urgent === true && v.stage !== 'published' ? { urgent: true } : {}),
   };
 }
 
@@ -116,6 +121,7 @@ export function videoToCloud(item: VideoItem, prev: CloudVideo | undefined, toda
   };
   if (stage === 'published') out.publishedAt = base?.publishedAt ?? today;
   else delete out.publishedAt;
+  if (!item.urgent || stage === 'published') delete out.urgent;
   return out;
 }
 
@@ -129,13 +135,13 @@ export function channelFromCloud(c: CloudChannel): Channel {
     color: c.color ?? '#71717a',
     description: c.niche,
     tags: Array.isArray(c.tags) ? c.tags.filter((t): t is string => typeof t === 'string') : [],
+    status: isChannelStatus(c.status) ? c.status : 'active',
   };
 }
 
 export function channelToCloud(item: Channel, prev: CloudChannel | undefined): CloudChannel {
   const { description, ...rest } = item;
   return {
-    status: 'active',
     cadencePerDay: 1,
     ...(prev ?? {}),
     ...rest,
@@ -174,4 +180,19 @@ export function channelScope(channels: Channel[], selected: string): string[] | 
   }
   if (selected !== 'all' && channels.some((c) => c.id === selected)) return [selected];
   return null;
+}
+
+/** Порядок каналов в списке: веду → запущу → пауза → забросил → архив */
+const STATUS_ORDER: Record<ChannelStatus, number> = { active: 0, planned: 1, paused: 2, abandoned: 3, archived: 4 };
+
+export function sortChannelsByStatus<T extends { status: ChannelStatus }>(list: T[]): T[] {
+  return list
+    .map((c, i) => ({ c, i }))
+    .sort((a, b) => STATUS_ORDER[a.c.status] - STATUS_ORDER[b.c.status] || a.i - b.i)
+    .map((x) => x.c);
+}
+
+/** Срочные видео — первыми, остальной порядок не меняется */
+export function urgentFirst<T extends { urgent?: boolean }>(list: T[]): T[] {
+  return [...list.filter((v) => v.urgent), ...list.filter((v) => !v.urgent)];
 }

@@ -35,7 +35,7 @@ describe('AI-советник: запрос с сайта', () => {
   });
 
   it('пустой вопрос не пишется', () => {
-    expect(newAdvisorRequest(null, '   ', NOW, 'x')).toEqual({ id: 'x', status: 'requested', requestedAt: NOW.toISOString() });
+    expect(newAdvisorRequest(null, '   ', NOW, 'x')).toEqual({ id: 'x', status: 'requested', period: 'month', requestedAt: NOW.toISOString() });
   });
 });
 
@@ -46,7 +46,7 @@ describe('AI-советник: статус на сайте', () => {
     expect(advisorView(null, NOW).kind).toBe('idle');
     expect(advisorView(req, plus(2)).kind).toBe('waiting');
     expect(advisorView(req, plus(4))).toEqual({ kind: 'offline', message: ADVISOR_TEXT.offline });
-    expect(ADVISOR_TEXT.offline).toContain('Компьютер с ботом не отвечает');
+    expect(ADVISOR_TEXT.offline).toContain('Домашний компьютер не отвечает');
   });
 
   it('анализирует до 10 минут, потом — прервался', () => {

@@ -1,8 +1,8 @@
-// Кнопка «Спросить Claude о месяце»: запрос уходит в kv, домашний компьютер анализирует месяц
+// Кнопки «Анализ дня / недели / месяца»: запрос уходит в kv, домашний компьютер разбирает период
 // через Claude, ответ появляется здесь.
 import { useState } from 'react';
 import { Bot, Loader2 } from 'lucide-react';
-import { ADVISOR_QUESTION_MAX, canRequestAdvisor } from '@shared/aiAdvisor';
+import { ADVISOR_PERIOD_LABEL, ADVISOR_QUESTION_MAX, canRequestAdvisor, type AdvisorPeriod } from '@shared/aiAdvisor';
 import { useCloudConnected } from '../../store';
 import { useAiAdvisor } from './aiAdvisor';
 
@@ -36,11 +36,12 @@ export function AiAdvisorPanel() {
   const canAsk = cloud && canRequestAdvisor(view);
   const last = state?.last;
 
-  const ask = () => {
+  const ask = (period: AdvisorPeriod = 'month') => {
     if (!canAsk) return;
-    request(question);
+    request(question, period);
     setQuestion('');
   };
+  const asking = state?.period ? ADVISOR_PERIOD_LABEL[state.period] : 'месяц';
 
   return (
     <div className="bg-[#111115] border border-purple-500/30 rounded-2xl p-5 shadow-xl space-y-4">
@@ -49,7 +50,7 @@ export function AiAdvisorPanel() {
         <div>
           <h3 className="text-sm font-bold text-white">Claude — советник по здоровью и жизни</h3>
           <p className="text-[11px] text-zinc-400">
-            Компьютер дома разбирает последние 30 дней (сон, еда, БАДы, фокус, привычки, HP). Ответ придёт сюда.
+            Компьютер дома разбирает день, неделю или месяц (сон, еда, БАДы, фокус, привычки, HP). Ответ придёт сюда.
           </p>
         </div>
       </div>
@@ -64,17 +65,22 @@ export function AiAdvisorPanel() {
         <input
           value={question}
           onChange={(e) => setQuestion(e.target.value.slice(0, ADVISOR_QUESTION_MAX))}
-          onKeyDown={(e) => e.key === 'Enter' && ask()}
+          onKeyDown={(e) => e.key === 'Enter' && ask('month')}
           placeholder="Вопрос (необязательно): например, помогает ли магний со сном?"
           className="flex-1 bg-[#16161c] border border-white/[0.08] rounded-xl px-3 py-2 text-xs text-white placeholder:text-zinc-600 outline-none focus:border-purple-500/50"
         />
-        <button
-          onClick={ask}
-          disabled={!canAsk}
-          className="px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs cursor-pointer transition-all shadow-md whitespace-nowrap"
-        >
-          Спросить Claude о месяце
-        </button>
+        <div className="flex gap-1.5">
+          {(['day', 'week', 'month'] as const).map((p) => (
+            <button
+              key={p}
+              onClick={() => ask(p)}
+              disabled={!canAsk}
+              className="px-3 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs cursor-pointer transition-all shadow-md whitespace-nowrap"
+            >
+              Анализ {p === 'day' ? 'дня' : p === 'week' ? 'недели' : 'месяца'}
+            </button>
+          ))}
+        </div>
       </div>
 
       {view.kind === 'waiting' && (
@@ -84,7 +90,7 @@ export function AiAdvisorPanel() {
       )}
       {view.kind === 'processing' && (
         <p className="text-xs text-purple-300 flex items-center gap-2">
-          <Loader2 className="w-3.5 h-3.5 animate-spin" /> Claude анализирует месяц (обычно 1–3 минуты)…
+          <Loader2 className="w-3.5 h-3.5 animate-spin" /> Claude анализирует {asking} (обычно 1–3 минуты)…
         </p>
       )}
       {(view.kind === 'error' || view.kind === 'offline') && (
@@ -93,7 +99,9 @@ export function AiAdvisorPanel() {
 
       {last ? (
         <div className="space-y-3 pt-3 border-t border-white/[0.06]">
-          <p className="text-[10px] font-mono text-zinc-500">Ответ от {when(last.at)}</p>
+          <p className="text-[10px] font-mono text-zinc-500">
+            Анализ: {ADVISOR_PERIOD_LABEL[last.period ?? 'month']} · {when(last.at)}
+          </p>
           {last.question && <p className="text-xs text-zinc-400">Вопрос: {last.question}</p>}
           {last.answer && <p className="text-xs text-white leading-relaxed">{last.answer}</p>}
           {last.summary && (
@@ -104,7 +112,7 @@ export function AiAdvisorPanel() {
           <List title="Что сделать" items={last.boost} color="text-amber-400" />
         </div>
       ) : (
-        view.kind === 'idle' && <p className="text-xs text-zinc-500">Ответов пока нет. Нажмите кнопку, чтобы Claude разобрал месяц.</p>
+        view.kind === 'idle' && <p className="text-xs text-zinc-500">Ответов пока нет. Нажмите кнопку, чтобы Claude разобрал день, неделю или месяц.</p>
       )}
     </div>
   );

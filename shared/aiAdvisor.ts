@@ -8,6 +8,11 @@ export const AI_ADVISOR_KEY = 'ai_advisor';
 
 export type AiAdvisorStatus = 'requested' | 'processing' | 'done' | 'error';
 
+/** Что разобрать: прошедший день, неделю или месяц (старые запросы без поля — месяц) */
+export type AdvisorPeriod = 'day' | 'week' | 'month';
+
+export const ADVISOR_PERIOD_LABEL: Record<AdvisorPeriod, string> = { day: 'день', week: 'неделю', month: 'месяц' };
+
 export interface AiAdvisorAnswer {
   /** id запроса, на который это ответ */
   requestId: string;
@@ -15,6 +20,8 @@ export interface AiAdvisorAnswer {
   at: string;
   /** Вопрос пользователя, если был */
   question?: string;
+  /** Какой период разобран */
+  period?: AdvisorPeriod;
   summary: string;
   /** Ответ на вопрос пользователя */
   answer?: string;
@@ -31,6 +38,8 @@ export interface AiAdvisorState {
   status: AiAdvisorStatus;
   /** Необязательный вопрос пользователя */
   question?: string;
+  /** Какой период разобрать (нет поля — месяц) */
+  period?: AdvisorPeriod;
   /** Когда нажата кнопка (ISO) */
   requestedAt: string;
   /** Когда сервер взял запрос (ISO) */
@@ -43,7 +52,7 @@ export interface AiAdvisorState {
   last?: AiAdvisorAnswer;
 }
 
-/** Сервер не взял запрос за это время — компьютер с ботом, скорее всего, выключен */
+/** Сервер не взял запрос за это время — домашний компьютер или сервер, скорее всего, выключен */
 export const ADVISOR_PICKUP_TIMEOUT_MS = 3 * 60_000;
 /** Анализ дольше этого — считаем прерванным (claude -p ждёт до 4 мин, плюс запасной API) */
 export const ADVISOR_PROCESS_TIMEOUT_MS = 10 * 60_000;
@@ -51,8 +60,8 @@ export const ADVISOR_PROCESS_TIMEOUT_MS = 10 * 60_000;
 export const ADVISOR_QUESTION_MAX = 500;
 
 export const ADVISOR_TEXT = {
-  offline: 'Компьютер с ботом не отвечает: запрос никто не взял за 3 минуты. Проверьте, что компьютер включён и бот запущен.',
-  stuck: 'Анализ прервался: компьютер с ботом не закончил за 10 минут. Нажмите ещё раз.',
+  offline: 'Домашний компьютер не отвечает: запрос никто не взял за 3 минуты. Проверьте, что компьютер включён и сервер QuestFlow запущен.',
+  stuck: 'Анализ прервался: домашний компьютер не закончил за 10 минут. Нажмите ещё раз.',
   noAi: 'Claude сейчас недоступен (нет ответа от claude -p и нет запасного ключа API, или исчерпан лимит). Попробуйте позже.',
 };
 
@@ -68,12 +77,19 @@ export function isAdvisorState(v: unknown): v is AiAdvisorState {
 }
 
 /** Новый запрос: прошлый ответ сохраняется в last */
-export function newAdvisorRequest(prev: AiAdvisorState | null, question: string, now: Date, id?: string): AiAdvisorState {
+export function newAdvisorRequest(
+  prev: AiAdvisorState | null,
+  question: string,
+  now: Date,
+  id?: string,
+  period: AdvisorPeriod = 'month',
+): AiAdvisorState {
   const q = question.trim().slice(0, ADVISOR_QUESTION_MAX);
   return {
     id: id ?? `adv-${now.getTime()}-${Math.random().toString(36).slice(2, 7)}`,
     status: 'requested',
     ...(q ? { question: q } : {}),
+    period,
     requestedAt: now.toISOString(),
     ...(prev?.last ? { last: prev.last } : {}),
   };

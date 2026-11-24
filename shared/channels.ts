@@ -54,6 +54,27 @@ export function cadenceLabel(cadencePerDay: number): string {
 
 // ─── Статус ──────────────────────────────────────────────────────────────────
 
+export const CHANNEL_STATUS_LABEL: Record<ChannelStatus, string> = {
+  active: 'Веду',
+  planned: 'Запущу',
+  paused: 'Пауза',
+  abandoned: 'Забросил',
+  archived: 'Архив',
+};
+
+/** Цвет канала по статусу: при смене статуса цвет ставится сам */
+export const CHANNEL_STATUS_COLOR: Record<ChannelStatus, string> = {
+  active: '#22c55e',
+  planned: '#3b82f6',
+  paused: '#eab308',
+  abandoned: '#71717a',
+  archived: '#71717a',
+};
+
+export function isChannelStatus(v: unknown): v is ChannelStatus {
+  return typeof v === 'string' && v in CHANNEL_STATUS_LABEL;
+}
+
 /** Пауза с датой сама возвращается в «Веду» в день окончания */
 export function effectiveStatus(channel: Channel, today: string): ChannelStatus {
   if (channel.status === 'paused' && channel.pausedUntil && channel.pausedUntil <= today) return 'active';
@@ -136,7 +157,7 @@ export function nextDueDates(
   publishedToday = slotsPerDay(channel),
 ): string[] {
   const status = effectiveStatus(channel, today);
-  if (status === 'abandoned' || status === 'archived') return [];
+  if (status === 'abandoned' || status === 'archived' || status === 'planned') return [];
   const raw = rawNextDue(channel, lastPublished, today, publishedToday);
   let start = raw < today ? today : raw;
   if (status === 'paused' && channel.pausedUntil && channel.pausedUntil > start) start = channel.pausedUntil;
@@ -218,7 +239,8 @@ export function channelTodo(channel: Channel, videos: Video[], today: string): C
     };
   }
   if (status !== 'active') {
-    return { step: 'none', label: status === 'abandoned' ? 'Канал заброшен' : 'Канал в архиве', dueDate: null, urgency: 'none' };
+    const label = status === 'abandoned' ? 'Канал заброшен' : status === 'planned' ? 'Канал ещё не запущен' : 'Канал в архиве';
+    return { step: 'none', label, dueDate: null, urgency: 'none' };
   }
 
   const last = lastPublishedDate(channel, videos);
